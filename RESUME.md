@@ -138,11 +138,22 @@ Nine assertions in `phase3check` cover it, including the wiring, not just the pi
 **Licence:** all rights reserved, source-available for verification only. NOT open source.
 Do not reintroduce MIT. The history was deliberately squashed so no MIT commit exists.
 
-**Azure client id** `c71ceea0-f906-468f-bad6-962ccbf3e835` is in `auth.config.json`, which is
-**gitignored**. `auth.config.example.json` ships with a placeholder. Sign-in reaches Microsoft and
-Xbox Live but the final Minecraft exchange will 403 until Mojang approves the app at
-https://aka.ms/mce-reviewappid — the review form was submitted with `localhost` first and should be
-resubmitted with the repo URL.
+**Azure client id** lives in `auth.config.json`, which is **gitignored**, and it is not written down
+anywhere else — not here, not in a commit message, not in a PR. `auth.config.example.json` ships
+with a placeholder. Read the live value with
+`node -e "console.log(require('./auth.config.json').clientId)"` rather than keeping a copy of it in
+a document.
+
+**Why that sentence changed.** The previous version of this file stated the id inline — inside the
+very paragraph explaining that it is kept out of git — and this repository is public, so it was
+readable by anyone from commit `a46edfd` onward. `.gitignore` covered the filename and everybody
+took that for the whole story. The app has since been re-registered and the old id is dead, but the
+lesson stands: a filename check proves a filename is absent, and only searching for the VALUE
+proves the value is. `tools/packcheck.mjs` already holds that standard for the packaged build.
+
+Sign-in reaches Microsoft and Xbox Live but the final Minecraft exchange will 403 until Mojang
+approves the app at https://aka.ms/mce-reviewappid — the app was re-registered, so that approval
+has to be requested again, with the repo URL rather than `localhost`.
 
 **Never commit:** the real `auth.config.json`, anything under `%APPDATA%/Kestrel`, the user's
 Minecraft username (fixture data says `Player`), or local paths containing the Windows username.
