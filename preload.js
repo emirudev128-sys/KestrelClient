@@ -53,6 +53,11 @@
      .content.setEnabled(id, kind, file, on) -> renames to/from .jar.disabled
      .content.remove(id, kind, file)         -> deletes the file
      .content.updates(id, kind)              -> [{file, state, from, to}]
+     .pack.choose()                          -> a .mrpack plan, or null if the
+                                                picker was dismissed. Takes no
+                                                path: the dialog is opened in the
+                                                main process.
+     .pack.install(planId, name)             -> {instance, files, overrides}
 
    WHY THERE IS NO .game.launchCommand().  The command line, the classpath,
    the argument file and the session are all main-process facts and none of
@@ -179,6 +184,19 @@ contextBridge.exposeInMainWorld('kestrel', {
     setEnabled(instanceId, kind, file, on) { return call('content:enable', String(instanceId || ''), String(kind || 'mod'), String(file || ''), !!on); },
     remove(instanceId, kind, file) { return call('content:remove', String(instanceId || ''), String(kind || 'mod'), String(file || '')); },
     updates(instanceId, kind) { return call('content:updates', String(instanceId || ''), String(kind || 'mod')); }
+  },
+
+  /* ── modpacks ───────────────────────────────────────────────────────────
+     TWO FUNCTIONS AND NO PATH BETWEEN THEM.  choose() takes nothing: the
+     main process opens the picker, reads the .mrpack and answers with what
+     is in it, so this side never holds a filename and cannot ask for one.
+     install() hands back the plan id it was given and a display name.
+
+     choose() resolves to null when the dialog is dismissed. That is not an
+     error and the UI needs to be able to tell the difference. */
+  pack: {
+    choose() { return call('pack:choose'); },
+    install(planId, name) { return call('pack:install', String(planId || ''), String(name || '')); }
   },
 
   openDataFolder() { return call('shell:open-root'); }

@@ -5858,10 +5858,19 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     if (host) {
       rec.group = groupOf(tr);
       rec.playtime = { hrs: 'lo', h: '0h', m: '00m' };
-      host.instances.create(rec).then(function (saved) {
-        if (saved && saved.id) tr.setAttribute('data-id', saved.id);
-        if (typeof then === 'function') then(saved);
-      }, function (err) { say('Could not write the instance folder. ' + esc(err.message)); });
+      /* A MODPACK INSTALL ALREADY MADE THE FOLDER.  packInstall() creates the
+         instance in the main process — it has to, because the files go into
+         it as they download — so the row is stamped with the id that came
+         back rather than creating a second instance for the same pack. */
+      if (d.id) {
+        tr.setAttribute('data-id', String(d.id));
+        if (typeof then === 'function') then(rec);
+      } else {
+        host.instances.create(rec).then(function (saved) {
+          if (saved && saved.id) tr.setAttribute('data-id', saved.id);
+          if (typeof then === 'function') then(saved);
+        }, function (err) { say('Could not write the instance folder. ' + esc(err.message)); });
+      }
     }
     return tr;
   }
@@ -6465,6 +6474,77 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     ], { label: 'Import ' + f.name });
   }
 
+  /* ── a .mrpack, for real ──────────────────────────────────────────────────
+     THE PAGE NEVER HOLDS A PATH.  choose() takes no argument: the main
+     process opens the picker, reads the manifest and answers with what is in
+     it. What comes back is a plan and an id, and install() hands the id
+     straight back — so nothing here can name a file to read or a url to
+     fetch, which is the same rule the Modrinth browser runs on.
+
+     THE CONFIRMATION IS THE PACK'S OWN NUMBERS.  Not the file size and not
+     the name of the file: the Minecraft version, the loader and its build,
+     how many files, how many of them are configuration, and anything the
+     pack asked for that will not be installed.  A modpack is a few hundred
+     jars from a few hundred authors and this is the moment to say so.      */
+  function impPackReal(btn) {
+    host.pack.choose().then(function (plan) {
+      /* a dismissed dialog is an answer, not a failure */
+      if (!plan) return;
+
+      var name = freeName(plan.name || 'Modpack');
+      var loader = plan.loader
+        ? plan.loader.charAt(0).toUpperCase() + plan.loader.slice(1) + (plan.loaderVersion ? ' ' + plan.loaderVersion : '')
+        : 'no loader';
+      if (impFileH) impFileH.textContent = plan.name + (plan.versionId ? ' ' + plan.versionId : '');
+      if (impFileS) {
+        impFileS.textContent = plan.files + ' files, ' + bytesWord(plan.bytes)
+          + (plan.overrides ? ' · ' + plan.overrides + ' configuration files' : '')
+          + ' · read, not run';
+      }
+
+      var note = fig(plan.name) + (plan.versionId ? ' ' + fig(plan.versionId) : '')
+        + ' asks for ' + fig(plan.mc) + ' with ' + fig(loader) + '. '
+        + plan.files + ' files, ' + bytesWord(plan.bytes)
+        + (plan.overrides ? ', and ' + plan.overrides + ' configuration files it brings with it' : '')
+        + '. Every one is checked against the hash the pack published before it is kept, '
+        + 'and it would be created as ' + esc(name) + ' at ' + fig(instancePath(slugOf(name), 'short')) + '.';
+      if (plan.skipped && plan.skipped.length) {
+        note += ' ' + plan.skipped.length + ' server-side file'
+          + (plan.skipped.length === 1 ? '' : 's') + ' in the pack will be skipped, which is correct for a client.';
+      }
+
+      popover.menu(btn || document.body, [
+        { note: note },
+        { label: 'Install as ' + name, run: function () { impPackInstall(plan, name); } },
+        { label: 'Cancel' }
+      ], { label: 'Install ' + plan.name });
+    }, function (err) {
+      say('That pack could not be read. ' + esc(err.message));
+    });
+  }
+
+  function impPackInstall(plan, name) {
+    say('Installing ' + esc(name) + ' — the Minecraft version and the loader come down first, then the pack&rsquo;s own files.');
+    host.pack.install(plan.id, name).then(function (r) {
+      /* the folder already exists: packInstall made it, so the row is
+         stamped with that id rather than creating a second instance */
+      addInstance({
+        id: r.instance, name: name, art: 'p-atm', ver: plan.mc,
+        loader: plan.loader ? plan.loader.charAt(0).toUpperCase() + plan.loader.slice(1) : 'Vanilla',
+        lver: plan.loaderVersion || '', mods: r.files, size: bytesWord(plan.bytes), when: 'Never'
+      });
+      say(esc(name) + ' installed — ' + r.files + ' files'
+        + (r.overrides ? ' and ' + r.overrides + ' configuration files' : '')
+        + ', each checked against the hash the pack published.'
+        + (r.skipped ? ' ' + r.skipped + ' server-side file' + (r.skipped === 1 ? '' : 's') + ' skipped.' : ''));
+      location.hash = '#instances';
+    }, function (err) {
+      /* packInstall removes the half-built instance itself, so there is
+         nothing on screen to undo — only something to explain */
+      say('That pack did not install, and nothing was left behind. ' + esc(err.message));
+    });
+  }
+
   document.addEventListener('click', function (e) {
     var a = e.target.closest ? e.target.closest('[data-act]') : null;
     if (!a) return;
@@ -6473,6 +6553,12 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     if (act === 'imp-dup') { e.preventDefault(); impDuplicate(); return; }
     if (act === 'imp-pack') {
       e.preventDefault();
+      /* THE REAL ONE WHEN THERE IS A BACKEND.  In the browser build there is
+         no window.kestrel, no file dialog and nothing to install into, so the
+         fixture below still describes what would happen.  In the app the
+         manifest is read for real and the numbers in the confirmation are the
+         pack's own rather than the picker's. */
+      if (host && host.pack) { impPackReal(a); return; }
       say('Pick an ' + fig('.mrpack') + ', a CurseForge ' + fig('.zip') + ' or a MultiMC export. It is read, never run.');
       pickFile('.mrpack,.zip,.modpack,application/zip', impPack);
       return;

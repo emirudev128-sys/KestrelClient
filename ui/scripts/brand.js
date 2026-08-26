@@ -87,7 +87,7 @@ export const STRINGS = {
   'browse.offline':
     '{name} could not reach <span class="mono">api.modrinth.com</span>, so this is the list that ships with the app: {n} real projects with their real authors, download counts and build numbers, read off Modrinth and frozen. Search, the filters and Install all work on it.',
   'import.pack':
-    'Modrinth <span class="mono">.mrpack</span> and CurseForge <span class="mono">.zip</span> exports. {name} resolves the mod list first and shows you anything it could not find before it writes a single file.',
+    'Modrinth <span class="mono">.mrpack</span> exports. {name} reads the manifest and shows you the Minecraft version, the loader and the file count before it writes anything — and every file is checked against the hash the pack published. CurseForge <span class="mono">.zip</span> packs are a different manifest and are not read yet.',
   'import.found':     '{name} looked in the usual install locations. Nothing is copied until you pick which instances to bring across, and the originals are left alone.',
   'new.java':
     '{name} picks the runtime from the Minecraft version, so there is no Java setting here and there is not going to be one. This one gets <span class="mono">Temurin 21.0.5</span>, already on the machine.',

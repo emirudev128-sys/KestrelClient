@@ -86,6 +86,14 @@ is excluded from `files:`, so an installer built from this repo cannot leak it. 
 installed copy, put `auth.config.json` in `%APPDATA%\Kestrel\` — `auth-config.js` looks there
 first, which is what that ordering was always for.
 
+**Modpacks install, and the Import screen is wired to it.** `mc/modpack.js` reads a `.mrpack`,
+plans it, and installs it as a new instance. The picker is opened in the MAIN process — `pack.choose()`
+takes no argument at all, so the renderer cannot name a file to read any more than it can name a url
+to download — and `pack.install()` hands back only the plan id. Verified: Fabulously Optimized
+installed end to end (50 files, 55 overrides), and a bogus plan id round-trips through IPC and comes
+back refused. NOT covered by a test: the `dialog.showOpenDialog` seam itself, which needs a human to
+click. CurseForge `.zip` is a different manifest and is refused by name.
+
 **Modern Forge and NeoForge work now.** `mc/processors.js` runs the installer's processors — a JVM
 per processor, in order, with the `data` block resolved for the client side. NeoForge 1.21.1 was
 installed and **launched into a world**; Forge 1.20.1 installs and its declared output digests are

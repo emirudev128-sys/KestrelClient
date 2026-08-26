@@ -56,6 +56,8 @@ Electron, no bundler and no build step — the same `ui/` files the browser gets
     auth-config.js  the one place the Azure client id comes from
     auth.config.example.json  the placeholder it ships with; copy it to auth.config.json
                     (gitignored, and excluded from a packaged build) and put your own id in
+    mc/modpack.js   .mrpack: read the manifest, plan it, install it as a new instance. The
+                    picker is opened HERE, not in the page — pack.choose() takes no argument
 
 `contextIsolation` is on and `nodeIntegration` is off, so the page has no `require`, no `fs` and
 no `ipcRenderer`. Everything privileged happens in the main process, and every record and id
