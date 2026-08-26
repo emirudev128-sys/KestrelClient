@@ -1,0 +1,618 @@
+/* ============================================================================
+   Design tokens.  Custom properties only; no selectors carry rules other than
+   :root and the palette/theme blocks at the foot of this file.
+
+   THE RULE THAT MAKES THEMING POSSIBLE
+   Every colour in the app comes from a semantic token.  No component ever
+   names a hex.  Components ask for --s-pane, --ink, --line-region, --go.  A
+   palette is then nothing but a set of values for those tokens, and swapping
+   one cannot break a component, because no component knows what a palette is.
+   That includes the pixel art: the block icons and the player heads are cut
+   from --art-1..--art-5, so they re-tone with the palette instead of staying
+   a hard-coded grey when the window goes light.
+
+   Two axes:
+     data-palette   slate | cinder | basalt | tundra
+     data-theme     dark  | light
+   Four palettes, two variants each, eight complete systems.  The accent may
+   additionally be overridden inline by the validating picker on #appearance.
+   ========================================================================= */
+
+:root {
+
+  /* --- typography ----------------------------------------------------------
+     Archivo: an industrial grotesque with flat-sided bowls, a tall x-height
+     and tight apertures, and a width axis we actually use — the display line
+     is condensed to 92%, the 10px column heads are widened to 104% so they
+     hold their counters.  Azeret Mono carries every figure that has to line
+     up.
+
+     ---------------------------------------------------------------------
+     THE FIGURE FACE.  Re-derived this round, because the previous rule was
+     broad enough not to be deciding anything.
+
+     It said: mono marks a measured value and stops at its edge.  Read
+     literally that makes every digit in a launcher mono, and it did — a
+     disk figure in a headline, a clock time in the middle of a sentence and
+     an exit code in another sentence all came out in the same brighter,
+     letterspaced treatment.  Three unrelated contexts, one face, chosen by
+     resemblance.  A test that never says no is describing what is already
+     there rather than deciding anything.
+
+     So the question changed.  Not "is this a value" — everything in a
+     launcher is a value — but "what is the monospaced face DOING here".  It
+     does two jobs, and it is used where one of them exists.
+
+       1. ALIGNMENT.  Figures that are read against each other need their
+          digits in the same places.  That happens when a figure has a SLOT
+          OF ITS OWN: a table cell, a log column, a mark on a scale, the
+          readout of a control.  Figures stacked down a column align with
+          each other; a readout aligns with itself as it changes under the
+          pointer, which is the same job in one place.  The face belongs to
+          the slot, so every cell in a mono column is mono — including the
+          ones reading "Never" or an em dash.
+
+       2. TRANSCRIPTION.  A string whose exact characters are the meaning,
+          because someone may copy it, compare it against another copy, or
+          type it back: a version or build identifier (1.21.4, Fabric
+          0.16.9, Temurin 21.0.5), a path, a file extension, a keycap, a
+          colour value, a share code, a UUID, a route.  Mono is doing the
+          0-versus-O job, and it does that job in running text too.
+
+     3. EVERYTHING ELSE IS THE UI FACE, DIGITS INCLUDED.  Prose is prose.
+        A figure inside a sentence, a caption or a status label is not
+        aligning with anything and nobody will retype it, so it does not
+        change face: "13 mods, 2.4 GB on disk", "All 23 instances",
+        "41.6 GB free on C:", "Exited normally after 1h 12m, exit code 0",
+        "Renews 6 Sep", "56px label".  A sentence keeps one face from its
+        first word to its last.
+
+     HOW FAR IT REACHES INSIDE A SLOT.  Within a slot mono stops at the
+     edge of the value: the unit NOUN beside it is a label on the slot and
+     stays proportional — "1,842/3,617" mono, "files" not; "6/32 GB" mono,
+     "allocated" not.  This is the one half of the old rule worth keeping,
+     and the difference is that it is now scoped to slots instead of being
+     applied to every string in the app with a digit in it.
+
+     THE TEST, IN ORDER.  Is this a slot whose job is to hold a figure — a
+     cell, a scale mark, a readout?  Then mono, up to the value's edge.  Is
+     it a literal?  Then mono, anywhere, prose included.  Otherwise the UI
+     face.  Nothing else is consulted.
+
+     The three cases the audit named are now decided rather than matched:
+
+       "13 mods, 2.4 GB on disk"    shares its box with words      -> UI face
+       "exit code 0" in a sentence  shares its box with words      -> UI face
+       "15:02 -> 16:31" in the log  owns its box, in a column      -> mono
+
+     Note the third against the second.  The SAME clock time is mono in the
+     session log and proportional in a sentence, because the log aligns and
+     the sentence does not.  That is the rule working: the treatment follows
+     the job, not the shape of the string.
+
+     One copy rule keeps the test from needing exceptions: a value with a
+     denominator is written with a SLASH and never with the word "of", so a
+     readout in a column stays one value in one box — "1,842/3,617 files",
+     "6/32 GB".  And one reading of clause 2 rather than an exception to it:
+     a version inside a product's PROPER NAME is a name, not an identifier.
+     "Java 8" and "Windows 11" stay in the UI face because nobody
+     transcribes a Java 8, while "Temurin 8u442" and "Fabric 0.16.9" are
+     build strings whose characters matter and are mono.
+     --------------------------------------------------------------------- */
+  --font-ui:   "Archivo", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Azeret Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+
+  --size-10: 10px;
+  --size-11: 11px;
+  --size-12: 12px;
+  --size-13: 13px;
+  --size-15: 15px;
+  --size-17: 17px;
+  --size-21: 21px;
+  --size-28: 28px;   /* the subject line when the window is too short for 44 */
+  --size-44: 44px;   /* THE SUBJECT TIER.  One size, one place, one job: the
+                        object the screen acts on.  Nothing lives between 21
+                        and 44, and no screen has two of them. */
+
+  --lh-flat:  1.0;
+  --lh-tight: 1.05;
+  --lh-head:  1.2;
+  --lh-ui:    1.35;
+  --lh-text:  1.55;
+
+  /* tracking scales with size: negative up top, positive down at label sizes */
+  --track-display: -0.032em;  /* 44px  */
+  --track-title:   -0.016em;  /* 17–21px */
+  --track-ui:      -0.008em;  /* 13–15px */
+  --track-body:    -0.002em;  /* 12px  */
+  --track-label:    0.072em;  /* 11px caps */
+  --track-micro:    0.104em;  /* 10px caps */
+  --track-mono:    -0.022em;  /* Azeret runs wide; pull it back inline */
+
+  --wide-display: 92%;   /* wdth axis, display */
+  --wide-ui:     100%;
+  --wide-label:  104%;   /* wdth axis, the column head */
+
+  --w-reg:  400;
+  --w-med:  500;
+  --w-semi: 600;
+  --w-bold: 700;
+
+  /* --- spacing: dense in the controls, coarse at section boundaries -------- */
+  --sp-1:  2px;
+  --sp-2:  4px;
+  --sp-3:  6px;
+  --sp-4:  8px;
+  --sp-5:  12px;
+  --sp-6:  16px;
+  --sp-7:  20px;
+  --sp-8:  28px;
+  --sp-9:  40px;
+  --sp-10: 56px;
+
+  /* --- radius ladder, tied to element scale --------------------------------
+     Nested radius = outer − padding: a 7px panel with 2px inset lands on 5px. */
+  --r-key:   2px;   /* keycaps, tags, the progress rail cap */
+  --r-chip:  3px;   /* badges, 20px-tall controls, avatars  */
+  --r-ctl:   5px;   /* inputs, rows, nav items, buttons     */
+  --r-panel: 7px;   /* the launch control, grouped lists    */
+  --r-float: 10px;  /* palette, popovers, dialogs           */
+  --r-round: 999px; /* only genuinely circular things       */
+
+  /* --- fixed metrics -------------------------------------------------------
+     ONE VERTICAL UNIT.  --u is the row.  Every repeating row in the app is
+     one unit tall and every selected pill is one unit tall, on all four
+     screens: the instance table, the tweak list, the category list, the nav
+     rail, the pinned list, the settings index.  A settings row, which
+     carries a label, a hint and a control, is two units.
+
+     The previous build had four vertical grids — 31 on Instances, 32 on
+     Tweaks, 36/31/27 on Play and nothing repeating on Settings — and the
+     two list grids differing by a single pixel read as a bug rather than as
+     a decision.  There is now one number and everything is a multiple of it.
+
+     The three-band pitch on Play went with it, and so did the tone decay
+     that rode on top of it: see THE TABLE RULE in app.css.                  */
+  --u:          32px;
+  --h-titlebar: 36px;
+  --h-panehead: 46px;
+  --h-status:   26px;
+  --h-row:      var(--u);
+  --h-row-sm:   var(--u);
+  --h-pill:     var(--u);   /* every selected pill, everywhere               */
+  --h-ctl:      28px;       /* a control is not a row: inputs, ghost buttons */
+  --h-go:       56px;   /* the compound launch control: label over selection  */
+  --w-rail:     204px;
+  --w-rail-min: 56px;   /* icons only, under 1040px of window                */
+  --w-aside:    284px;
+  --w-wincap:   46px;
+  --w-cats:     158px;   /* module categories                       */
+  --w-modlist:  372px;   /* module list, between cats and settings   */
+  --w-els:      198px;   /* HUD element tree                         */
+  --w-insp:     218px;   /* HUD inspector                            */
+  --h-opt:      30px;    /* a module option row: denser than --h-row */
+  --h-opt-sp:   26px;    /* the shared spine, denser again           */
+  --pane-pad:   26px;    /* every screen's content starts and ends here */
+
+  /* --- the instance card ---------------------------------------------------
+     ONE TRACK WIDTH, TWO PLACES.  The card is the same component in the
+     #instances grid and in the Recent strip on #play, so its width is one
+     number and the grid derives its COLUMN COUNT from it rather than the
+     other way round: `repeat(auto-fill, minmax(--card-w, 1fr))`.  Columns
+     then follow the width of the window with no breakpoint list to keep in
+     sync, which is the whole reason the number lives here.
+
+     It is a clamp because a 168px card in a 2356px pane gives fourteen
+     columns of thumbnail, and a 23-item library laid out fourteen wide is
+     two rows and a void — the exact defect this round is fixing, rotated
+     90°.  The card grows with the window until it is a card and not a
+     thumbnail, and the count comes down as it does.
+
+     --card-gap is the gutter AND the value the nested radius is cut from:
+     art radius = --r-panel, card radius = --r-panel, and the art meets the
+     card edge with no inset, so nothing needs an outer-minus-padding step.  */
+  --card-w:    172px;
+  --card-gap:  14px;
+  /* the hover control row is --h-ctl tall like every other control in the
+     app, so the card's Play is the same 28px object as the toolbar's .prim
+     and the app still has exactly one control height */
+  --card-act:  var(--h-ctl);
+
+  /* --- icon stroke, per RENDERED size --------------------------------------
+     Last round the stroke was baked into each glyph as a presentation
+     attribute, keyed off the glyph's name — x-* drawn at 1.60, r-* at 1.46,
+     n-* at 1.35.  That works only while every glyph is used at the size its
+     prefix implies, and it was not: x-folder and x-terminal were also being
+     placed at 14, 18, 20 and 34px, where a 1.60 stroke in a 16-unit box
+     lands at 1.87, 2.40, 2.66 and 4.25 device px.  Small glyphs were being
+     drawn heavier than large ones, which is the exact inversion of what
+     optical scaling asks for.
+
+     So no glyph carries a stroke of its own any more.  stroke-width is
+     inherited from the host <svg>, and app.css sets it from the size that
+     <svg> is actually rendered at — the value can no longer disagree with
+     the drawing.
+
+     The ladder: absolute weight rises with the glyph, weight as a FRACTION
+     of the glyph falls, because a small mark needs proportionally more ink
+     to survive and an absolutely thicker stroke at 12px is what "heavy at
+     small size" looks like.  Both directions are checked by measurement, not
+     by eye: the fraction column below is monotonically decreasing and the
+     device column monotonically increasing, and there is no size at which
+     two glyphs can differ.
+
+     Round 6 was flatter than this and inverted at the top.  Its 12px class
+     landed at 1.200 device px and its 16px class at 1.350 — a 12.5% gap
+     across a 33% size jump, which is why the small glyphs read as heavy as
+     the rail's — while a 12px-class glyph placed at 18px came out at 1.800,
+     heavier than every larger glyph in the app, and the same glyph at 34px
+     came out at 3.400.  The gap at the small end is now 23.8% and the top
+     of the ladder no longer overtakes itself.
+
+        px    device   fraction        px    device   fraction
+        10     0.95     .0950          18     1.44     .0800
+        11     1.00     .0909          20     1.56     .0780
+        12     1.05     .0875          22     1.68     .0764
+        13     1.10     .0846          30     2.16     .0720
+        14     1.16     .0829          34     2.38     .0700
+        16     1.30     .0813
+
+     The numbers below are those device weights expressed in the 16-unit
+     authoring box (device x 16 / rendered px), which is what stroke-width
+     means once the symbol has been scaled.                                */
+  --st-10: 1.520;
+  --st-11: 1.455;
+  --st-12: 1.400;
+  --st-13: 1.354;
+  --st-14: 1.326;
+  --st-16: 1.300;
+  --st-18: 1.280;
+  --st-20: 1.248;
+  --st-22: 1.222;
+  --st-30: 1.152;
+  --st-34: 1.120;
+  --st-cap: 0.950;   /* window caption glyphs: a 10-unit box at 10px */
+
+  /* --- motion: duration follows travel distance ---------------------------- */
+  --t-tint:  80ms;   /* colour / opacity only, no travel        */
+  --t-near:  120ms;  /* a few px: hover fills, row states       */
+  --t-mid:   180ms;  /* popovers, menus, palette                */
+  --t-far:   280ms;  /* pane-scale movement, progress fills     */
+  --e-out: cubic-bezier(0.16, 0.84, 0.44, 1);
+  --e-std: cubic-bezier(0.32, 0.08, 0.24, 1);
+
+  --focus-w: 2px;
+
+  /* --- optical constants ---------------------------------------------------
+     A circle needs ~112.8% of an equal-width square to carry the same weight. */
+  --optical-circle: 1.128;
+
+  /* --- the game frame ------------------------------------------------------
+     The HUD editor previews the GAME, not the app, so these do not move with
+     the palette and they do not invert in the light theme: the game is dark
+     in both.  They are here rather than in the components because the rule is
+     that no component names a colour, and a preview is still a component.
+     --hud-* are the values Lunar ships as defaults, composited: a background
+     at 44% black and a border at 62%.                                       */
+  --game-ground: #0D0F12;
+  --game-ink:    #ECEFF2;
+  --game-dim:    #9BA1A7;
+  --game-vanilla:#5A6068;
+  --game-guide:  #FFFFFF;
+  --hud-bg:      rgba(0, 0, 0, 0.44);
+  --hud-bg-hi:   rgba(255, 255, 255, 0.70);
+  --hud-on-hi:   #12151B;
+  --item-1: #8B939C;  --item-2: #6E93AA;  --item-3: #9A8548;
+  --item-4: #6C7076;  --item-5: #B9BEC4;
+  --dur-hi: #57B24A;  --dur-mid: #C6A32B;  --dur-lo: #C0503B;
+
+  /* --- instance marks and skins: colour as CONTENT ------------------------
+     The one place in this app where colour is not state.  An instance mark
+     is a block face the user picked and a head is a skin they are wearing;
+     both are pictures of things in the game, so they are cut from the
+     game's own colours and they do NOT move with the palette or invert with
+     the theme, for the same reason --game-* above does not: a grass block
+     is green in a light window too.
+
+     They exist because the marks are the only thing that separates
+     '1.20.1 Fabric', '1.20.1 Fabric copy' and '1.21.4 Fabric' at a glance, and
+     until this round they were five tints of the same grey, which made the
+     identifying column identify nothing.  Values are the muted end of the
+     real textures — nothing here reaches the chroma of the accent, so a
+     mark can never be mistaken for a state.                              */
+  --blk-1a: #6F7F4A;  --blk-1b: #4E5C33;  --blk-1c: #8C9C63;  /* grass    */
+  --blk-2a: #6B5B4E;  --blk-2b: #52453B;  --blk-2c: #8A7766;  /* dirt     */
+  --blk-3a: #3A3550;  --blk-3b: #262238;  --blk-3c: #56507A;  /* obsidian */
+  --blk-4a: #8C5C4A;  --blk-4b: #6E4438;  --blk-4c: #A87465;  /* brick    */
+  --blk-5a: #5E7C86;  --blk-5b: #45606A;  --blk-5c: #7FA0AA;  /* prismarine */
+  --blk-6a: #8A8478;  --blk-6b: #6B665C;  --blk-6c: #A5A093;  /* stone    */
+  --blk-7a: #7A4E52;  --blk-7b: #5C393C;  --blk-7c: #96666B;  /* nether   */
+  --blk-8a: #A08B4E;  --blk-8b: #7C6A38;  --blk-8c: #BFA968;  /* sandstone */
+  --skin-hair: #3B2A21;  --skin-face: #B98A64;  --skin-shade: #96684A;
+  --skin-eye:  #3E5C86;  --skin-shirt: #4A6B8A;  --skin-mouth: #7A4F38;
+  --skin-b-hair: #6B4A2A; --skin-b-shirt: #6B7A4A;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-tint: 1ms;
+    --t-near: 1ms;
+    --t-mid:  1ms;
+    --t-far:  1ms;
+  }
+}
+
+/* ============================================================================
+   COLOUR.  Everything below is per palette and per theme.
+
+   THE SURFACE LADDER has seven steps and each has exactly one job:
+
+     --s-well    inset: scroll wells, field grounds, a slider track
+     --s-app     chrome: titlebar, rail, inspector, status bar.  An inspector
+                 is chrome — it describes the document, it is not part of it.
+     --s-pane    the work surface, the document itself
+     --s-raise   an object sitting ON the surface: field, popover, strip, chip
+     --s-hover   pointer over an interactive
+     --s-sel     selected / current — a state that persists after the pointer
+                 leaves, and therefore not the same token as hover
+     --s-active  pressed
+
+   LIGHT IS NOT AN INVERSION.  Three things change direction, one does not:
+
+     · The ladder's SPACING is identical in both themes — the same six
+       lightness deltas — but its DIRECTION and anchor differ.  On dark the
+       chrome is darker than the pane and elevation climbs.  On light the
+       chrome is DARKER than the pane too, which means it sits below the
+       work surface rather than above it, and --s-raise lifts to white.
+     · Interaction reverses.  On dark, hovering something makes it lighter.
+       On light, --s-raise is already at white, so hover and pressed go the
+       other way and darken.  Same ramp, opposite sign.  That is why hover
+       and elevation cannot share a token.
+     · Hairlines get STRONGER relative to the ground.  A line that reads at
+       6% lightness above near-black vanishes at 6% below near-white, so the
+       light hairlines are cut two to three times deeper in relative terms.
+     · Shadows do real work on light and almost none on dark.  --e-raise is
+       a genuine shadow in the light themes and flat in the dark ones; it is
+       used only on things that genuinely float — the launch control, menus,
+       the palette — never on a card or a row.
+
+   THE ACCENT IS RE-DERIVED FOR LIGHT, NOT INVERTED.  This is the item the
+   previous build got wrong, and it got it wrong by half-fixing it.
+
+   On dark, gold at oklch(.792 .144 87) measures 9.45:1 on the pane, so one
+   token carries all three of the accent's jobs — a 56px fill, a 6px dot and
+   a 2px rail.  The previous build kept that same value as the light FILL,
+   where it measures 1.90:1 against the near-white pane.  A 4.9x collapse.
+   Measured by squint, the strongest thing in the light frame stopped being
+   the launch control and became the page title: the application lost its
+   centre of gravity in one of its two themes.
+
+   The earlier reasoning for keeping it was that darkening a gold until it
+   passes gives mud.  That is true AT THE SAME HUE — oklch(.55 .11 87) is an
+   olive — and it stops being true 17 degrees away.  Yellow has almost no
+   chroma left at mid lightness; amber has plenty.  So the light cut is the
+   same accent rotated to hue 70 and dropped to oklch(.546 .120 70):
+
+     #9C6200 on the light pane   4.71:1   (was 1.90:1)
+     white on #9C6200            5.05:1
+     hue rotation from the dark cut   16.8 deg
+
+   16.8 degrees is inside the 20 the standard sets as the line between a
+   second cut of one accent and a second accent, so this is still one
+   colour.  It is checked, not asserted: every number above is measured.
+
+   AND THE SPLIT COLLAPSES.  Round 4 split --go from --go-ink because no
+   single light value could be both a fill and a >=4.5:1 mark.  The re-cut
+   value is 4.71:1 on the pane, so it is a legal mark as well as a legal
+   fill, and --go-ink is once again simply --go in BOTH themes.  One accent
+   value per theme, four palettes, eight systems, no exceptions.
+
+   Direction reverses with everything else: on dark --go-hi is brighter than
+   --go because hover lifts off a dark ground; on light it is darker,
+   because on a light ground hover deepens.
+   ========================================================================= */
+
+/* ── SLATE — cold blue-grey ground, the shipping gold.  The default. ───────
+   Hue 258 at chroma .012; a window with no warmth in it anywhere except the
+   thing that starts the game.                                               */
+:root,
+html[data-palette="slate"],
+.pal[data-pal="slate"] {
+  color-scheme: dark;
+  --s-well:   #040609;  --s-app:    #0A0E13;  --s-pane:   #12151B;
+  --s-raise:  #1B1F25;  --s-hover:  #25292E;  --s-sel:    #25292E;  --s-active: #2F3339;
+  --line-row: #24272C;  --line-region: #2D3137;  --line-define: #474B51;
+  --ink:  #F1F4F7;  --body: #CDCFD3;  --meta: #929497;  --mute: #646669;  --faint: #484A4D;
+  --go:      #E3B439;  --go-hi:  #F5C64E;  --go-lo: #CFA11B;
+  --go-ink:  #E3B439;  /* one value, both jobs, in both themes now */
+  --go-sub-o: 0.74;
+  --go-track:#2F2000;  --go-fill:#201500;  --on-go: #0A0E13;
+  --go-divide: rgba(10, 14, 19, 0.30);
+  --art-1: #0A0E13; --art-2: #2F3339; --art-3: #484A4D; --art-4: #929497; --art-5: #CDCFD3;
+  --danger: #B63132;  --on-danger: #FFFFFF;
+  --focus-ink: #F1F4F7;
+  --scrim: rgba(4, 6, 9, 0.58);
+  --veil:  rgba(4, 6, 9, 0.93);
+  --e-raise: none;
+  --pop-shadow: 0 20px 44px -16px rgba(0,0,0,.78), 0 3px 10px -3px rgba(0,0,0,.55);
+}
+html[data-palette="slate"][data-theme="light"],
+html[data-theme="light"] .pal[data-pal="slate"] {
+  color-scheme: light;
+  --s-well:   #D8DBDF;  --s-app:    #E7EAEF;  --s-pane:   #F5F7FB;
+  --s-raise:  #FFFFFF;  --s-hover:  #E8EBEE;  --s-sel:    #E2E4E7;  --s-active: #DCDEE1;
+  --line-row: #D7DADF;  --line-region: #C4C7CC;  --line-define: #A2A5A9;
+  --ink:  #0B0C0F;  --body: #2C2E31;  --meta: #595B5E;  --mute: #86888B;  --faint: #A5A8AB;
+  /* oklch(.546 .120 70) — 4.71:1 on the pane, 5.05:1 under white */
+  --go:      #9C6200;  --go-hi:  #8A5500;  --go-lo: #7A4900;
+  --go-ink:  #9C6200;  /* the split is gone: one value, both jobs */
+  --go-track:#F8DAB9;  --go-fill:#FDEDDC;  --on-go: #FFFFFF;
+  --go-sub-o: 0.94;
+  --go-divide: rgba(255, 255, 255, 0.30);
+  --art-1: #EAEDF0; --art-2: #C4C7CC; --art-3: #A5A8AB; --art-4: #595B5E; --art-5: #2C2E31;
+  --danger: #892122;  --on-danger: #FFFFFF;
+  --focus-ink: #0B0C0F;
+  --scrim: rgba(58, 62, 70, 0.34);
+  --veil:  rgba(245, 247, 251, 0.94);
+  --e-raise: 0 1px 2px rgba(20,24,32,.06), 0 6px 14px -5px rgba(20,24,32,.20);
+  --pop-shadow: 0 16px 34px -14px rgba(20,24,32,.30), 0 2px 6px -2px rgba(20,24,32,.16);
+}
+
+/* ── CINDER — near-black true neutral, gold cut a step brighter. ────────────
+   Chroma .004, one full step darker than Slate: the palette for a dark room
+   and an OLED panel.  The accent is lifted to .818 to stay 10.8:1 against a
+   ground that has moved away underneath it.                                 */
+html[data-palette="cinder"],
+.pal[data-pal="cinder"] {
+  color-scheme: dark;
+  --s-well:   #020203;  --s-app:    #07080A;  --s-pane:   #0E0F11;
+  --s-raise:  #17181A;  --s-hover:  #212224;  --s-sel:    #212224;  --s-active: #2A2B2D;
+  --line-row: #1F2022;  --line-region: #292A2C;  --line-define: #424345;
+  --ink:  #F3F3F5;  --body: #CECFD1;  --meta: #939495;  --mute: #656667;  --faint: #4A4A4C;
+  --go:      #EBBD39;  --go-hi:  #FECF50;  --go-lo: #D7AA19;
+  --go-ink:  #EBBD39;
+  --go-sub-o: 0.74;
+  --go-track:#2F2000;  --go-fill:#201600;  --on-go: #07080A;
+  --go-divide: rgba(7, 8, 10, 0.32);
+  --art-1: #07080A; --art-2: #2A2B2D; --art-3: #4A4A4C; --art-4: #939495; --art-5: #CECFD1;
+  --danger: #B63132;  --on-danger: #FFFFFF;
+  --focus-ink: #F3F3F5;
+  --scrim: rgba(2, 2, 3, 0.62);
+  --veil:  rgba(2, 2, 3, 0.94);
+  --e-raise: none;
+  --pop-shadow: 0 20px 44px -16px rgba(0,0,0,.86), 0 3px 10px -3px rgba(0,0,0,.62);
+}
+html[data-palette="cinder"][data-theme="light"],
+html[data-theme="light"] .pal[data-pal="cinder"] {
+  color-scheme: light;
+  --s-well:   #DDDEE1;  --s-app:    #EDEEF0;  --s-pane:   #FBFCFE;
+  --s-raise:  #FFFFFF;  --s-hover:  #EEEFF1;  --s-sel:    #E7E8EA;  --s-active: #E1E2E5;
+  --line-row: #DDDFE2;  --line-region: #CACBCE;  --line-define: #A7A9AC;
+  --ink:  #0C0C0D;  --body: #2D2E2F;  --meta: #5A5B5C;  --mute: #878889;  --faint: #A7A8A9;
+  /* oklch(.550 .121 70) — 4.83:1 on the pane, 4.95:1 under white */
+  --go:      #9E6300;  --go-hi:  #8C5600;  --go-lo: #7B4A00;
+  --go-ink:  #9E6300;
+  --go-track:#F8DCBD;  --go-fill:#FDEFDF;  --on-go: #FFFFFF;
+  --go-sub-o: 0.94;
+  --go-divide: rgba(255, 255, 255, 0.30);
+  --art-1: #F0F1F3; --art-2: #CACBCE; --art-3: #A7A8A9; --art-4: #5A5B5C; --art-5: #2D2E2F;
+  --danger: #892122;  --on-danger: #FFFFFF;
+  --focus-ink: #0C0C0D;
+  --scrim: rgba(60, 60, 62, 0.32);
+  --veil:  rgba(251, 252, 254, 0.94);
+  --e-raise: 0 1px 2px rgba(16,16,18,.06), 0 6px 14px -5px rgba(16,16,18,.19);
+  --pop-shadow: 0 16px 34px -14px rgba(16,16,18,.28), 0 2px 6px -2px rgba(16,16,18,.15);
+}
+
+/* ── BASALT — cold graphite, ice accent. ───────────────────────────────────
+   For anyone who wants no warm colour in the window at all.  oklch(.80 .09
+   232) is a pale azure at 9.9:1 — 145° off the gold, 39° off teal, 38° off
+   indigo, and far too pale and too low in chroma to be either preset.       */
+html[data-palette="basalt"],
+.pal[data-pal="basalt"] {
+  color-scheme: dark;
+  --s-well:   #040608;  --s-app:    #0B0E11;  --s-pane:   #131518;
+  --s-raise:  #1C1F22;  --s-hover:  #26292C;  --s-sel:    #26292C;  --s-active: #303336;
+  --line-row: #25272A;  --line-region: #2E3134;  --line-define: #484B4E;
+  --ink:  #F2F4F6;  --body: #CECFD1;  --meta: #929496;  --mute: #656668;  --faint: #494A4C;
+  --go:      #80C8EE;  --go-hi:  #91DAFF;  --go-lo: #6DB5DA;
+  --go-ink:  #80C8EE;
+  --go-sub-o: 0.74;
+  --go-track:#0D2632;  --go-fill:#091921;  --on-go: #0B0E11;
+  --go-divide: rgba(11, 14, 17, 0.30);
+  --art-1: #0B0E11; --art-2: #303336; --art-3: #494A4C; --art-4: #929496; --art-5: #CECFD1;
+  --danger: #B63132;  --on-danger: #FFFFFF;
+  --focus-ink: #F2F4F6;
+  --scrim: rgba(4, 6, 8, 0.58);
+  --veil:  rgba(4, 6, 8, 0.93);
+  --e-raise: none;
+  --pop-shadow: 0 20px 44px -16px rgba(0,0,0,.78), 0 3px 10px -3px rgba(0,0,0,.55);
+}
+html[data-palette="basalt"][data-theme="light"],
+html[data-theme="light"] .pal[data-pal="basalt"] {
+  color-scheme: light;
+  --s-well:   #D7DADD;  --s-app:    #E7EAED;  --s-pane:   #F5F7FA;
+  --s-raise:  #FFFFFF;  --s-hover:  #E8EBEE;  --s-sel:    #E1E4E7;  --s-active: #DBDEE1;
+  --line-row: #D6DADF;  --line-region: #C3C7CB;  --line-define: #A1A5A9;
+  --ink:  #0B0C0E;  --body: #2D2E2F;  --meta: #595B5D;  --mute: #86888A;  --faint: #A6A8AA;
+  /* oklch(.509 .132 246) — 5.35:1 on the pane, 5.56:1 under --on-go.  An ice
+     needs no hue rotation: blue keeps its chroma all the way down. */
+  --go:      #006AAC;  --go-hi:  #005A93;  --go-lo: #004B7B;
+  --go-ink:  #006AAC;
+  --go-sub-o: 0.94;
+  --go-track:#B6E3FF;  --go-fill:#D4F2FF;  --on-go: #F7FCFF;
+  --go-divide: rgba(247, 252, 255, 0.34);
+  --art-1: #EAEDF0; --art-2: #C3C7CB; --art-3: #A6A8AA; --art-4: #595B5D; --art-5: #2D2E2F;
+  --danger: #892122;  --on-danger: #FFFFFF;
+  --focus-ink: #0B0C0E;
+  --scrim: rgba(56, 60, 66, 0.34);
+  --veil:  rgba(245, 247, 250, 0.94);
+  --e-raise: 0 1px 2px rgba(18,22,28,.06), 0 6px 14px -5px rgba(18,22,28,.20);
+  --pop-shadow: 0 16px 34px -14px rgba(18,22,28,.30), 0 2px 6px -2px rgba(18,22,28,.16);
+}
+
+/* ── TUNDRA — the airiest of the four, ice accent cut deeper. ───────────────
+   Hue 236 at chroma .019, and the whole ladder lifted a step: the dark
+   variant is a soft dark rather than a near-black, and the light variant has
+   visible blue in the paper.  The accent drops to .768 so it does not blow
+   out against a ground that has come up to meet it.                        */
+html[data-palette="tundra"],
+.pal[data-pal="tundra"] {
+  color-scheme: dark;
+  --s-well:   #030A0F;  --s-app:    #0A1319;  --s-pane:   #111B21;
+  --s-raise:  #1B252C;  --s-hover:  #242F36;  --s-sel:    #242F36;  --s-active: #2E3940;
+  --line-row: #242D33;  --line-region: #2E373E;  --line-define: #485259;
+  --ink:  #EFF4F8;  --body: #CBD0D4;  --meta: #8F9498;  --mute: #62676A;  --faint: #474B4E;
+  --go:      #68C0EA;  --go-hi:  #7AD2FC;  --go-lo: #54ACD6;
+  --go-ink:  #68C0EA;
+  --go-sub-o: 0.74;
+  --go-track:#072634;  --go-fill:#061A23;  --on-go: #0A1319;
+  --go-divide: rgba(10, 19, 25, 0.30);
+  --art-1: #0A1319; --art-2: #2E3940; --art-3: #474B4E; --art-4: #8F9498; --art-5: #CBD0D4;
+  --danger: #B63132;  --on-danger: #FFFFFF;
+  --focus-ink: #EFF4F8;
+  --scrim: rgba(3, 10, 15, 0.58);
+  --veil:  rgba(3, 10, 15, 0.93);
+  --e-raise: none;
+  --pop-shadow: 0 20px 44px -16px rgba(0,0,0,.74), 0 3px 10px -3px rgba(0,0,0,.52);
+}
+html[data-palette="tundra"][data-theme="light"],
+html[data-theme="light"] .pal[data-pal="tundra"] {
+  color-scheme: light;
+  --s-well:   #D1D8DD;  --s-app:    #E0E7EC;  --s-pane:   #EEF5FA;
+  --s-raise:  #FAFDFF;  --s-hover:  #E1E8ED;  --s-sel:    #DBE2E6;  --s-active: #D5DCE1;
+  --line-row: #CED9E0;  --line-region: #BBC5CC;  --line-define: #99A3AA;
+  --ink:  #090D0F;  --body: #2A2E31;  --meta: #575C5F;  --mute: #83888C;  --faint: #A3A8AC;
+  /* oklch(.479 .119 245) — 5.92:1 on the pane, 6.25:1 under --on-go */
+  --go:      #00629B;  --go-hi:  #005285;  --go-lo: #00436F;
+  --go-ink:  #00629B;
+  --go-sub-o: 0.94;
+  --go-track:#B9E3FF;  --go-fill:#D5F1FF;  --on-go: #F5FBFF;
+  --go-divide: rgba(245, 251, 255, 0.34);
+  --art-1: #E3EAEF; --art-2: #BBC5CC; --art-3: #A3A8AC; --art-4: #575C5F; --art-5: #2A2E31;
+  --danger: #892122;  --on-danger: #FFFFFF;
+  --focus-ink: #090D0F;
+  --scrim: rgba(48, 58, 68, 0.34);
+  --veil:  rgba(238, 245, 250, 0.94);
+  --e-raise: 0 1px 2px rgba(14,26,36,.06), 0 6px 14px -5px rgba(14,26,36,.21);
+  --pop-shadow: 0 16px 34px -14px rgba(14,26,36,.30), 0 2px 6px -2px rgba(14,26,36,.17);
+}
+
+/* Touch guidance applies only to touch.  On a mouse these rows stay
+   pointer-sized; 44px targets would cost half the list. */
+@media (any-pointer: coarse) {
+  :root { --u: 40px; --h-ctl: 34px; }
+}
+
+/* A short window is a real desktop case — half a 1080p screen is 960x540 —
+   and the fixed chrome has to give way rather than eat the list.  The
+   subject drops a tier and the hero's padding halves; nothing is hidden. */
+@media (max-height: 720px) {
+  :root {
+    --h-titlebar: 32px;
+    --h-panehead: 40px;
+    --h-status:   24px;
+    --size-44:    var(--size-28);
+    --h-go:       48px;
+  }
+}

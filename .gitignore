@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# your own Azure application id — see auth.config.example.json
+auth.config.json
+
+# generated single-file build (regenerate from ui/)
+kestrel.html
+
+# build/design history, not part of the product
+variants/
+shots/
+ref/
+docs/round*-verdicts.json
+docs/round*-judgement.json
+
+# local scanner path
+.semgrep-path
+.scanpath
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# scratch
+.tmp-*

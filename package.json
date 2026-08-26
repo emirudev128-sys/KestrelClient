@@ -1,0 +1,24 @@
+{
+  "name": "mc-launcher",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "clicktest": "node tools/clicktest.mjs",
+    "audit": "node tools/audit.mjs ui",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright": "^1.62.1"
+  },
+  "devDependencies": {
+    "electron": "^44.0.0",
+    "eslint": "^10.9.1",
+    "eslint-plugin-security": "^4.0.1"
+  }
+}

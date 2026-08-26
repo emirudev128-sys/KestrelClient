@@ -1,0 +1,463 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="sprite" aria-hidden="true" focusable="false">
+<!-- ============================================================================
+     Icon set — drawn from five construction rules.  A set is a grammar, not a
+     collection, which is why the rules are written down and not the glyphs.
+
+     THE SWEEP.  Rounds 1–3 lost glyphs to server, sliders-horizontal,
+     panels-top-left, refresh-cw, folder, terminal, chevron-right and plus.
+     Round 4 redrew the set and still shipped `instances` as the stock `copy` —
+     "two offset squares, unmodified silhouette" — because the metaphor was
+     never questioned, only the corner radius.  This round every glyph was
+     re-tested against the question "what is the library's drawing of this
+     idea, and is mine a different DRAWING or a different IDEA?"
+
+       instances  metaphor replaced.  No second body, no diagonal offset:
+                  one octagonal body with two solid tabs standing on it.
+       copy       deleted outright.  Every honest drawing of copy is a
+                  rectangle behind a rectangle; three buttons say Copy in
+                  words instead, which is smaller than the glyph was.
+       browse     was a 2×2 of four equal cells, which is every library's
+                  `layout-grid`.  Now two panels of unequal width.
+       warn       was an outlined triangle with a bang inside.  Inverted:
+                  the triangle is the mass and the bar is cut out of it.
+       external   the notched box is the universal construction, so the box
+                  is closed and the arrow leaves it from the corner.
+       undo/redo  the return path turns at a SQUARE corner.  Chamfering it
+                  read as the usual curve at 12px, which is the point.
+       modules    a closed frame with a readout in its corner: what a HUD
+                  module IS, rather than a cog or a plug or a jigsaw piece.
+       hud        the same frame, with the element straddling the corner and
+                  a scale handle on it — anchored, and grabbable.
+       preset     a solid label over a card.  Not two offset anythings.
+
+     CONSTRUCTION
+     1. 16-unit box.  Every segment runs at 0°, 90° or 45°.  Nothing else.
+        (The only circles in the file are things that are genuinely round.)
+     2. BUTT CAPS, MITRE JOINS — the SVG defaults, so they are not written
+        out below.  This is the single largest silhouette difference from the
+        libraries, which set round/round on everything.
+     3. Corners are CHAMFERED, not radiused: a 45° cut.  Enclosures are
+        octagons rather than rounded rectangles.
+     4. Terminals are square.  An arrowhead is a filled triangle, never two
+        strokes meeting at a point.
+     5. Solid mass carries meaning: what is filled is the subject, what is
+        stroked is the container.
+
+     SIZE CLASSES — five, and a glyph is re-authored per class rather than
+     scaled.  Each class has its own DETAIL BUDGET, so the 14px cut of a
+     glyph has fewer parts than the 16px cut, not smaller ones:
+
+        w-  10px  window caption          1 element
+        l-  10px  loader mark, in a badge 1 element, solid, no chamfer
+        x-  12px  window chrome, inline   2 elements, no chamfer
+        r-  14px  list rows, quiet btns   2 elements, no chamfer
+        n-  16px  the rail                3 elements, chamfered
+        c-  18px  the launch control      up to 5, chamfered
+
+     STROKE IS NOT IN THIS FILE.  It used to be: each class carried its
+     weight as a stroke-width attribute on every path.  That binds the
+     weight to the glyph's NAME rather than to the size it is drawn at, and
+     the two drifted — the 12px cut of folder and terminal was also being
+     placed at 14, 18, 20 and 34px, where its 1.60 stroke rendered up to
+     4.25 device px and the small glyphs came out heavier than the large
+     ones.  Every stroke-width attribute is now gone; stroke-width is
+     inherited from the host <svg> and set in app.css from the size that
+     <svg> is actually rendered at, so a glyph used at the wrong size gets
+     the right weight anyway.  See --st-* in tokens.css for the ladder.
+
+     A 1.7-unit chamfer lands at 1.3 device px in the 12px class, which is
+     mush, so the small classes drop it and square up instead.  Compare
+     n-servers with r-servers: three parts against two, the ground line gone
+     and the plate switched from an outline to a solid, because at 14px a
+     1.46 stroke around a 4-unit plate closes its counter up entirely.
+
+     OPTICS
+     · Every play triangle is centred on its AREA CENTROID, computed, not on
+       its bounding box.  All three land at x = 8.00 exactly.  The two rear
+       corners carry the chamfer; the tip stays sharp because a blunted tip
+       reads as a different symbol.
+     · Circles are drawn at ~112.8% of the equal-width square they replace.
+     · Glyphs sit on the 13px x-height band, pulled ~0.3 units above the
+       geometric centre of the box.
+     · Slider and track rails break around their knobs rather than running
+       behind them.
+
+     COLOUR
+     Nothing here names a hex.  Line art is currentColor; the pixel art at the
+     foot of the file is cut from --art-1..--art-5, so the block faces and the
+     player heads re-tone with the palette and the theme instead of staying a
+     hard-coded grey when the window goes light.
+     ========================================================================= -->
+
+  <!-- ── brand ─────────────────────────────────────────────────────────────
+       Two chevrons, all edges at 45°, the lower one smaller and quieter: a
+       bird seen from below.  No radial mark, no asterisk, no ray count. -->
+  <symbol id="mark" viewBox="0 0 16 16">
+    <path d="M8 2.4 14.6 9.9h-3.1L8 6.4 4.5 9.9H1.4Z" fill="currentColor"/>
+    <path d="M8 7.5 9.7 13.8 8 12.5 6.3 13.8Z" fill="currentColor" opacity=".55"/>
+  </symbol>
+
+  <!-- ══ 18px · the launch control ══════════════════════════════════════ -->
+
+  <symbol id="c-play" viewBox="0 0 16 16">
+    <path d="M5.01 4.1 6.21 2.9 13.61 8 6.21 13.1 5.01 11.9Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="c-stop" viewBox="0 0 16 16">
+    <path d="M5.7 4.2h4.6l1.5 1.5v4.6l-1.5 1.5H5.7l-1.5-1.5V5.7Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="c-down" viewBox="0 0 16 16">
+    <path d="M8 2.7v3.4" fill="none" stroke="currentColor"/>
+    <path d="M4.5 5.7h7L8 10.7Z" fill="currentColor"/>
+    <path d="M3 12.9h10" fill="none" stroke="currentColor"/>
+  </symbol>
+  <symbol id="c-repair" viewBox="0 0 16 16">
+    <path d="M11.9 6.9v5.7H4.1V4.6h5.1" fill="none" stroke="currentColor"/>
+    <path d="M9.4 2.1 13.4 4.6 9.4 7.1Z" fill="currentColor"/>
+  </symbol>
+
+  <!-- ══ 16px · the rail ════════════════════════════════════════════════ -->
+
+  <symbol id="n-play" viewBox="0 0 16 16">
+    <path d="M5.21 4.3 6.21 3.3 13.31 8 6.21 12.7 5.21 11.7Z" fill="none" stroke="currentColor"/>
+  </symbol>
+  <!-- instances: a tabbed panel.  Round 4 drew this as a full rectangle with an
+       open L behind it, which is the construction of the stock `copy` glyph with the
+       corners squared off, and a critic named it as such.  The whole idea is
+       gone: no second body, no diagonal offset.  What is left is one octagonal
+       body with two SOLID tabs standing on its top edge — several installs,
+       one of them open.  The tabs are unequal, because the one in front is
+       the one you are in. -->
+  <symbol id="n-instances" viewBox="0 0 16 16">
+    <path d="M3.4 2.4h3.6v3H3.4ZM8.8 2.4h2.4v3H8.8Z" fill="currentColor"/>
+    <path d="M2.3 5.4h11.4v6.6l-1.7 1.7H2.3Z" fill="none" stroke="currentColor"/>
+  </symbol>
+  <!-- modules: what a module IS, on screen — a readout pinned inside the
+       frame of the game.  Two opposite corner brackets stand for the screen
+       (a closed rectangle would just be a window) and two solid bars of
+       unequal length are the readout sitting in it. -->
+  <symbol id="n-modules" viewBox="0 0 16 16">
+    <path d="M3.6 3.8h8.8l1.4 1.4v5.6l-1.4 1.4H3.6l-1.4-1.4V5.2Z" fill="none" stroke="currentColor"/>
+    <path d="M4 5.5h5.2v1.5H4ZM4 8.1h3.1v1.5H4Z" fill="currentColor"/>
+  </symbol>
+  <!-- servers: a signpost.  A saved server is a name and an address — a
+       named place — so the glyph is a post with a plate on it, notched at
+       the far end.  Not a stack of rack units with status lights. -->
+  <symbol id="n-servers" viewBox="0 0 16 16">
+    <path d="M4.7 2.6v10.8" fill="none" stroke="currentColor"/>
+    <path d="M4.7 3.7h7.8l-2.2 2.4 2.2 2.4H4.7Z" fill="none" stroke="currentColor"/>
+    <path d="M2.8 13.4h3.8" fill="none" stroke="currentColor"/>
+  </symbol>
+  <!-- accounts: the game stores a face as an 8×8 square, so the glyph is a
+       square head with square eyes, over shoulders that rise at 45°.  Not a
+       circle with an arc under it. -->
+  <symbol id="n-accounts" viewBox="0 0 16 16">
+    <path d="M5.2 2.7h5.6v5.6H5.2Z" fill="none" stroke="currentColor"/>
+    <path d="M6.3 4.5h1.3v1.3H6.3ZM8.4 4.5h1.3v1.3H8.4Z" fill="currentColor"/>
+    <path d="M2.7 13.4v-1.7l1.9-1.9h6.8l1.9 1.9v1.7" fill="none" stroke="currentColor"/>
+  </symbol>
+  <!-- settings: a cog whose four teeth are square notches CUT INTO an
+       octagon rather than nubs stuck onto a circle, over a hollow square
+       bore.  Not a twelve-tooth round cog, not a row of sliders. -->
+  <symbol id="n-settings" viewBox="0 0 16 16">
+    <path d="M5.8 2.8h1v1.4h2.4V2.8h1L13.2 5.8v1h-1.4v2.4h1.4v1L10.2 13.2h-1v-1.4H6.8v1.4h-1L2.8 10.2v-1h1.4V6.8H2.8v-1Z" fill="none" stroke="currentColor"/>
+    <path d="M6.7 6.7h2.6v2.6H6.7Z" fill="none" stroke="currentColor"/>
+  </symbol>
+  <!-- appearance: one square, split on the diagonal, half solid. -->
+  <symbol id="n-theme" viewBox="0 0 16 16">
+    <path d="M4.5 2.6h7l1.9 1.9v7l-1.9 1.9h-7l-1.9-1.9v-7Z" fill="none" stroke="currentColor"/>
+    <path d="M13.4 4.5v7l-1.9 1.9h-7Z" fill="currentColor"/>
+  </symbol>
+
+  <!-- ══ 14px · list rows and quiet buttons ═════════════════════════════
+       Square corners, one part fewer, a heavier stroke.  These are separate
+       drawings from the 16px cuts above, not the same paths at another size. -->
+
+  <symbol id="r-play" viewBox="0 0 16 16">
+    <path d="M5.45 4.6 6.35 3.7 12.85 8 6.35 12.3 5.45 11.4Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="r-instances" viewBox="0 0 16 16">
+    <path d="M3.3 2.7h3.6v2.9H3.3ZM8.7 2.7h2.4v2.9H8.7Z" fill="currentColor"/>
+    <path d="M2.7 5.6h10.6v7.7H2.7Z" fill="none" stroke="currentColor"/>
+  </symbol>
+  <symbol id="r-modules" viewBox="0 0 16 16">
+    <path d="M2.5 4h11v8H2.5Z" fill="none" stroke="currentColor"/>
+    <path d="M4.2 5.6h5.4v1.7H4.2ZM4.2 8.3h3.2v1.7H4.2Z" fill="currentColor"/>
+  </symbol>
+  <!-- the layout editor: an element ANCHORED to an edge, so the solid block
+       straddles the frame's corner instead of floating inside it.  A block
+       sitting neatly inside a rectangle is our own x-terminal. -->
+  <symbol id="r-hud" viewBox="0 0 16 16">
+    <path d="M2.7 3.6h10.6v8.8H2.7Z" fill="none" stroke="currentColor"/>
+    <path d="M4.7 5.6h4.4v2.6H4.7ZM10.7 10.4h3.4v3.4h-3.4Z" fill="currentColor"/>
+  </symbol>
+  <!-- a preset: two bands, the loaded one solid.  Stacked square-on with a gap
+       between them, never offset on the diagonal. -->
+  <symbol id="r-preset" viewBox="0 0 16 16">
+    <path d="M2.7 2.8h7.3v2.7H2.7Z" fill="currentColor"/>
+    <path d="M2.7 6.4h10.6v6.9H2.7Z" fill="none" stroke="currentColor"/>
+  </symbol>
+  <symbol id="r-servers" viewBox="0 0 16 16">
+    <path d="M4.8 2.7v10.6" fill="none" stroke="currentColor"/>
+    <path d="M4.8 3.8h7.6l-2.1 2.4 2.1 2.4H4.8Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="r-accounts" viewBox="0 0 16 16">
+    <path d="M5.4 2.9h5.2v5.2H5.4Z" fill="none" stroke="currentColor"/>
+    <path d="M2.9 13.3v-1.8l1.8-1.8h6.6l1.8 1.8v1.8" fill="none" stroke="currentColor"/>
+  </symbol>
+  <symbol id="r-settings" viewBox="0 0 16 16">
+    <path d="M5.7 3h1.1v1.2h2.4V3h1.1L13 5.7v1.1h-1.2v2.4H13v1.1L10.3 13H9.2v-1.2H6.8V13H5.7L3 10.3V9.2h1.2V6.8H3V5.7Z" fill="none" stroke="currentColor"/>
+    <path d="M6.6 6.6h2.8v2.8H6.6Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="r-refresh" viewBox="0 0 16 16">
+    <path d="M11.9 6.9v5.6H4.1V4.6h5" fill="none" stroke="currentColor"/>
+    <path d="M9.2 2.2 13.3 4.6 9.2 7Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="r-chev" viewBox="0 0 16 16">
+    <path d="M6.2 3.3 10.9 8 6.2 12.7 5 11.5 8.5 8 5 4.5Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="r-caret" viewBox="0 0 16 16">
+    <path d="M4.2 6.2h7.6L8 10.5Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="r-dots" viewBox="0 0 16 16">
+    <path d="M3 7h2v2H3ZM7 7h2v2H7ZM11 7h2v2h-2Z" fill="currentColor"/>
+  </symbol>
+  <!-- warn: the triangle is the MASS and the bar is cut out of it, the reverse
+       of every library's outlined triangle with a stroked bang inside. -->
+  <symbol id="r-warn" viewBox="0 0 16 16">
+    <path d="M6.9 2.3h2.2l5.1 10.9H1.8ZM7.3 6.6h1.4v3.2H7.3ZM7.3 10.6h1.4v1.4H7.3Z" fill="currentColor" fill-rule="evenodd"/>
+  </symbol>
+  <symbol id="r-check" viewBox="0 0 16 16">
+    <path d="M6.3 12.6 2.1 8.4 3.6 6.9l2.7 2.7 6.1-6.1 1.5 1.5Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="r-down" viewBox="0 0 16 16">
+    <path d="M4.6 5.9h6.8L8 10.5Z" fill="currentColor"/>
+    <path d="M3.4 12.7h9.2" fill="none" stroke="currentColor"/>
+  </symbol>
+  <symbol id="r-mod" viewBox="0 0 16 16">
+    <path d="M5.6 3.4h7.6v9.2H5.6Z" fill="none" stroke="currentColor"/>
+    <path d="M5.6 6.2H2.9M5.6 9.8H2.9" fill="none" stroke="currentColor"/>
+  </symbol>
+  <!-- a credential: a square bit on a shaft.  Used where the app says where a
+       token is kept, which is a place, not a padlock. -->
+  <symbol id="r-key" viewBox="0 0 16 16">
+    <path d="M2.7 5.7h3.6v4.6H2.7Z" fill="none" stroke="currentColor"/>
+    <path d="M6.3 8h7M11.5 8v2.5" fill="none" stroke="currentColor"/>
+  </symbol>
+  <!-- an offline profile: the same place-octagon, struck through. -->
+  <symbol id="r-offline" viewBox="0 0 16 16">
+    <path d="M4.8 2.7v10.6" fill="none" stroke="currentColor"/>
+    <path d="M4.8 3.8h7.6l-2.1 2.4 2.1 2.4H4.8Z" fill="none" stroke="currentColor"/>
+    <path d="M2.6 13.4 13.4 2.6" fill="none" stroke="currentColor"/>
+  </symbol>
+  <symbol id="r-theme" viewBox="0 0 16 16">
+    <path d="M2.8 2.8h10.4v10.4H2.8Z" fill="none" stroke="currentColor"/>
+    <path d="M13.2 2.8v10.4H2.8Z" fill="currentColor"/>
+  </symbol>
+
+  <!-- ══ 12px · window chrome and inline buttons ════════════════════════ -->
+
+  <symbol id="x-search" viewBox="0 0 16 16">
+    <path d="M5.1 2.6h2.6l2.5 2.5v2.6l-2.5 2.5H5.1L2.6 7.7V5.1Z" fill="none" stroke="currentColor"/>
+    <path d="M10.2 10.2 13.6 13.6" fill="none" stroke="currentColor"/>
+  </symbol>
+  <symbol id="x-refresh" viewBox="0 0 16 16">
+    <path d="M11.9 7v5.4H4.1V4.4h5" fill="none" stroke="currentColor"/>
+    <path d="M9 2 13.5 4.4 9 6.8Z" fill="currentColor"/>
+  </symbol>
+  <!-- a console: the frame is the subject and the block cursor is the mass.
+       Not a chevron and an underscore floating with no enclosure. -->
+  <symbol id="x-terminal" viewBox="0 0 16 16">
+    <path d="M2.5 3.4h11v9.2h-11Z" fill="none" stroke="currentColor"/>
+    <path d="M4.9 9h3.2v1.8H4.9Z" fill="currentColor"/>
+  </symbol>
+  <!-- a drawer front: the tab is a 45° step, the corners are square, and the
+       seam across the face is what makes it a drawer rather than a folder. -->
+  <symbol id="x-folder" viewBox="0 0 16 16">
+    <path d="M2.5 12.9V6l1.6-1.6h3.5l1.6 1.6h4.3v6.9Z" fill="none" stroke="currentColor"/>
+    <path d="M2.5 9.1h11" fill="none" stroke="currentColor"/>
+  </symbol>
+  <!-- There is no copy glyph in this set any more.  The only honest drawing of
+       "copy" is a rectangle behind a rectangle, which is the stock set's `copy` and
+       everyone else's, so the three places that used one now say Copy in
+       words — a 4-character label at 11px is smaller than the icon was. -->
+  <symbol id="x-plus" viewBox="0 0 16 16">
+    <path d="M6.85 2.7h2.3v4.15h4.15v2.3H9.15v4.15h-2.3V9.15H2.7v-2.3h4.15Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="x-minus" viewBox="0 0 16 16">
+    <path d="M2.7 6.85h10.6v2.3H2.7Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="x-external" viewBox="0 0 16 16">
+    <path d="M2.4 7.2h6.4v6.2H2.4Z" fill="none" stroke="currentColor"/>
+    <path d="M8.6 2.6h4.8v4.8l-1.7-1.7-2.2 2.2-1.4-1.4 2.2-2.2Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="x-lock" viewBox="0 0 16 16">
+    <path d="M5.2 7V5.1l1.4-1.4h2.8L10.8 5.1V7" fill="none" stroke="currentColor"/>
+    <path d="M2.9 7h10.2v6.4H2.9ZM7.2 8.9h1.6v2.6H7.2Z" fill="currentColor" fill-rule="evenodd"/>
+  </symbol>
+  <symbol id="x-sort" viewBox="0 0 16 16">
+    <path d="M2.7 4.6h6.6M2.7 8h4.4" fill="none" stroke="currentColor"/>
+    <path d="M9.6 8.6h4l-2 4.4Z" fill="currentColor"/>
+  </symbol>
+  <!-- a cartridge, for "add from disk": the label band is the mass. -->
+  <symbol id="x-disk" viewBox="0 0 16 16">
+    <path d="M2.6 3.2h10.8v9.6H2.6Z" fill="none" stroke="currentColor"/>
+    <path d="M5.2 3.2h5.6v3.4H5.2Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="x-mod" viewBox="0 0 16 16">
+    <path d="M5.5 3.2h7.9v9.6H5.5Z" fill="none" stroke="currentColor"/>
+    <path d="M5.5 6H2.7M5.5 10H2.7" fill="none" stroke="currentColor"/>
+  </symbol>
+  <symbol id="x-down" viewBox="0 0 16 16">
+    <path d="M4.4 5.6h7.2L8 10.6Z" fill="currentColor"/>
+    <path d="M2.9 12.9h10.2" fill="none" stroke="currentColor"/>
+  </symbol>
+  <!-- browse a catalogue: two panels of unequal width, not a 2×2 grid — a grid
+       of four equal cells is `layout-grid` in every library there is. -->
+  <symbol id="x-browse" viewBox="0 0 16 16">
+    <path d="M2.5 3h4.1v10H2.5Z" fill="currentColor"/>
+    <path d="M8.2 3h5.3v10H8.2Z" fill="none" stroke="currentColor"/>
+  </symbol>
+  <symbol id="x-box" viewBox="0 0 16 16">
+    <path d="M2.6 5 5 2.6h6L13.4 5v8.4H2.6Z" fill="none" stroke="currentColor"/>
+    <path d="M2.6 7.4h10.8M7 7.4v2.4h2V7.4" fill="none" stroke="currentColor"/>
+  </symbol>
+  <symbol id="x-key" viewBox="0 0 16 16">
+    <path d="M2.7 5.6h3.8v4.8H2.7Z" fill="none" stroke="currentColor"/>
+    <path d="M6.5 8h6.8M11.6 8v2.6" fill="none" stroke="currentColor"/>
+  </symbol>
+  <symbol id="x-theme" viewBox="0 0 16 16">
+    <path d="M2.7 2.7h10.6v10.6H2.7Z" fill="none" stroke="currentColor"/>
+    <path d="M13.3 2.7v10.6H2.7Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="x-reset" viewBox="0 0 16 16">
+    <path d="M4.1 9v3.4h7.8V4.6H6.9" fill="none" stroke="currentColor"/>
+    <path d="M6.8 2.2 2.7 4.6 6.8 7Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="x-hud" viewBox="0 0 16 16">
+    <path d="M2.5 3.4h11v9.2h-11Z" fill="none" stroke="currentColor"/>
+    <path d="M4.6 5.4h4.2v2.4H4.6ZM11.4 10.6h3.3v3.3h-3.3Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="x-preset" viewBox="0 0 16 16">
+    <path d="M2.6 2.8h7.4v2.7H2.6Z" fill="currentColor"/>
+    <path d="M2.6 6.4h10.8v6.9H2.6Z" fill="none" stroke="currentColor"/>
+  </symbol>
+  <!-- undo / redo: the libraries all draw a curved arrow with a round tip.
+       This set has no curves, so the return path turns at 90° and chamfers
+       into the run, and the head is the usual solid triangle. -->
+  <symbol id="x-undo" viewBox="0 0 16 16">
+    <path d="M6.4 3.4 2.2 6.3l4.2 2.9Z" fill="currentColor"/>
+    <path d="M3.4 6.3h9.9v6.9" fill="none" stroke="currentColor"/>
+  </symbol>
+  <symbol id="x-redo" viewBox="0 0 16 16">
+    <path d="M9.6 3.4 13.8 6.3l-4.2 2.9Z" fill="currentColor"/>
+    <path d="M12.6 6.3H2.7v6.9" fill="none" stroke="currentColor"/>
+  </symbol>
+  <!-- CHANGE VERSION.  Two runs, opposite directions, solid heads — rule 4.
+       Not a circular-arrow "refresh": swapping which build an instance runs
+       is an exchange, not a reload, and x-refresh already owns reload. -->
+  <symbol id="x-swap" viewBox="0 0 16 16">
+    <path d="M9.4 2.7 13.3 5.6 9.4 8.5ZM6.6 7.5 2.7 10.4l3.9 2.9Z" fill="currentColor"/>
+    <path d="M2.7 5.6h7.6M13.3 10.4H5.7" fill="none" stroke="currentColor"/>
+  </symbol>
+
+  <!-- THE TWO VIEWS, drawn as what they produce rather than as generic
+       layout glyphs.  x-grid is two CARDS — a square of art with a full title
+       bar and a shorter second line under it, which is the component the
+       button switches to.  A 2×2 of four equal cells is `layout-grid` in
+       every library there is, and x-browse already refused it once.
+       x-list is our table: a mark column and a rule per row. -->
+  <symbol id="x-grid" viewBox="0 0 16 16">
+    <path d="M2.4 2.8h5.2v5.2H2.4zM8.4 2.8h5.2v5.2H8.4z" fill="currentColor"/>
+    <path d="M2.4 9.4h5.2v1.3H2.4zM8.4 9.4h5.2v1.3H8.4zM2.4 12h3.3v1.3H2.4zM8.4 12h3.3v1.3H8.4z" fill="currentColor"/>
+  </symbol>
+  <symbol id="x-list" viewBox="0 0 16 16">
+    <path d="M2.4 3.5h2.3v2.3H2.4zM2.4 6.9h2.3v2.3H2.4zM2.4 10.3h2.3v2.3H2.4z" fill="currentColor"/>
+    <path d="M6.3 4.6h7.3M6.3 8h7.3M6.3 11.4h7.3" fill="none" stroke="currentColor"/>
+  </symbol>
+
+  <!-- ══ loader marks ═══════════════════════════════════════════════════
+       A SIXTH SIZE CLASS, `l-`, at 10px: the mark inside the version badge
+       on an instance card.  One element, solid mass, no chamfer — the same
+       budget the 10px window-caption class runs on.  These are the only
+       glyphs in the file that stand for a THIRD-PARTY THING rather than for
+       an action or an object, so each is drawn from what the loader is,
+       not from its wordmark: a weave, an anvil, a notched anvil, a quilt.
+       Vanilla has no mark, because "no loader" is not a brand. -->
+  <symbol id="l-fabric" viewBox="0 0 16 16">
+    <path d="M2 5.6h12v1.9H2zM2 9.1h12V11H2zM5.1 2.5H7v11H5.1zM9.6 2.5h1.9v11H9.6z" fill="currentColor"/>
+  </symbol>
+  <symbol id="l-forge" viewBox="0 0 16 16">
+    <path d="M2.6 3.2H13.4V5.8H9.6v3.8l3 3H3.4l3-3V5.8H2.6Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="l-neo" viewBox="0 0 16 16">
+    <path d="M2.6 3.2h4.2L8 4.4l1.2-1.2h4.2V5.8H9.6v3.8l3 3H3.4l3-3V5.8H2.6Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="l-quilt" viewBox="0 0 16 16">
+    <path d="M2.4 2.4h5.2v5.2H2.4zM8.4 8.4h5.2v5.2H8.4zM11 2.2 13.8 5l-2.8 2.8L8.2 5Z" fill="currentColor"/>
+  </symbol>
+
+  <!-- the one heavier tick, for a 10px checkbox where 1.6 would close up -->
+  <symbol id="t-check" viewBox="0 0 16 16">
+    <path d="M6.2 12.9 1.7 8.4 3.5 6.6l2.7 2.7 6.3-6.3 1.8 1.8Z" fill="currentColor"/>
+  </symbol>
+
+  <!-- ══ 10px · window caption ══════════════════════════════════════════ -->
+
+  <symbol id="w-min" viewBox="0 0 10 10"><path d="M.8 5h8.4" fill="none" stroke="currentColor"/></symbol>
+  <symbol id="w-max" viewBox="0 0 10 10"><path d="M1 1h8v8H1Z" fill="none" stroke="currentColor"/></symbol>
+  <symbol id="w-close" viewBox="0 0 10 10"><path d="M1.2 1.2 8.8 8.8M8.8 1.2 1.2 8.8" fill="none" stroke="currentColor"/></symbol>
+
+  <!-- ══ instance marks ═════════════════════════════════════════════════
+       A real library does not show one placeholder five times.  Three KINDS
+       of mark live here, because three kinds is what a launcher actually has:
+
+         b-*   a block face the user picked out of the icon list
+         p-*   artwork that arrived inside an imported pack
+         (and a monogram tile, which is CSS and a letter, not a symbol —
+          it is what an instance gets when it has neither of the above)
+
+       All of it is cut from --art-1..--art-5, so it re-tones with the
+       palette rather than staying a hard-coded grey in the light theme. -->
+
+  <symbol id="b-grass" viewBox="0 0 8 8"><path d="M0 0h8v8H0z" fill="var(--blk-2a)"/><path d="M0 0h8v3H0z" fill="var(--blk-1a)"/><path d="M0 0h8v1H0z" fill="var(--blk-1c)"/><path d="M1 3h1v1H1zM4 3h2v1H4z" fill="var(--blk-1b)"/><path d="M2 5h2v1H2zM5 6h2v1H5z" fill="var(--blk-2b)"/></symbol>
+  <symbol id="b-obsid" viewBox="0 0 8 8"><path d="M0 0h8v8H0z" fill="var(--blk-3b)"/><path d="M2 1h2v2H2zM5 4h2v2H5zM1 5h2v2H1z" fill="var(--blk-3a)"/><path d="M2 1h1v1H2zM5 4h1v1H5z" fill="var(--blk-3c)"/></symbol>
+  <symbol id="b-brick" viewBox="0 0 8 8"><path d="M0 0h8v8H0z" fill="var(--blk-4a)"/><path d="M0 2h8v1H0zM0 5h8v1H0z" fill="var(--blk-4b)"/><path d="M3 0h1v2H3zM6 3h1v2H6zM1 6h1v2H1z" fill="var(--blk-4b)"/><path d="M0 0h8v1H0z" fill="var(--blk-4c)"/></symbol>
+  <symbol id="b-prism" viewBox="0 0 8 8"><path d="M0 0h8v8H0z" fill="var(--blk-5a)"/><path d="M0 0h4v4H0zM4 4h4v4H4z" fill="var(--blk-5b)"/><path d="M1 1h2v2H1zM5 5h2v2H5z" fill="var(--blk-5c)"/></symbol>
+  <symbol id="b-stone" viewBox="0 0 8 8"><path d="M0 0h8v8H0z" fill="var(--blk-6a)"/><path d="M1 1h2v1H1zM4 2h2v1H4zM2 4h3v1H2zM5 5h2v1H5zM1 6h2v1H1z" fill="var(--blk-6b)"/><path d="M0 0h8v1H0z" fill="var(--blk-6c)"/></symbol>
+  <symbol id="b-nether" viewBox="0 0 8 8"><path d="M0 0h8v8H0z" fill="var(--blk-7a)"/><path d="M1 0h1v1H1zM5 1h1v1H5zM2 2h1v1H2zM6 4h1v1H6zM3 5h1v1H3zM0 6h1v1H0zM4 7h1v1H4z" fill="var(--blk-7b)"/><path d="M6 2h1v1H6zM1 4h1v1H1z" fill="var(--blk-7c)"/></symbol>
+  <symbol id="b-sand" viewBox="0 0 8 8"><path d="M0 0h8v8H0z" fill="var(--blk-8a)"/><path d="M0 0h8v1H0zM0 6h8v1H0z" fill="var(--blk-8c)"/><path d="M0 2h8v3H0z" fill="var(--blk-8b)"/></symbol>
+  <symbol id="b-plank" viewBox="0 0 8 8"><path d="M0 0h8v8H0z" fill="var(--blk-2c)"/><path d="M0 2h8v1H0zM0 5h8v1H0z" fill="var(--blk-2b)"/><path d="M3 0h1v2H3zM6 3h1v2H6zM2 6h1v2H2z" fill="var(--blk-2a)"/></symbol>
+  <symbol id="b-glass" viewBox="0 0 8 8"><path d="M0 0h8v8H0z" fill="var(--blk-5b)"/><path d="M0 0h8v1H0zM0 7h8v1H0zM0 0h1v8H0zM7 0h1v8H7z" fill="var(--blk-5c)"/><path d="M1 1h2v1H1z" fill="var(--blk-5c)"/></symbol>
+
+  <!-- pack artwork.  Emblems, not block faces — a different kind of mark, so
+       two pinned rows never read as the same placeholder twice. -->
+  <symbol id="p-bed" viewBox="0 0 8 8"><path d="M0 0h8v8H0z" fill="var(--blk-6b)"/><path d="M1 3h6v3H1z" fill="var(--blk-4a)"/><path d="M1 3h2v3H1z" fill="var(--blk-6c)"/><path d="M0 6h8v1H0z" fill="var(--blk-2b)"/></symbol>
+  <symbol id="p-atm" viewBox="0 0 8 8"><path d="M0 0h8v8H0z" fill="var(--blk-2b)"/><path d="M1 1h2v2H1zM5 1h2v2H5zM3 3h2v2H3zM1 5h2v2H1zM5 5h2v2H5z" fill="var(--blk-1c)"/></symbol>
+  <symbol id="p-arena" viewBox="0 0 8 8"><path d="M0 0h8v8H0z" fill="var(--blk-6b)"/><path d="M0 3h8v2H0z" fill="var(--blk-6a)"/><path d="M3 0h2v8H3z" fill="var(--blk-6a)"/><path d="M3 3h2v2H3z" fill="var(--blk-8a)"/></symbol>
+
+  <!-- ══ player heads ═══════════════════════════════════════════════════
+       8×8, the way the game stores a face.  head = the account in use,
+       head-b = a signed-in alt, head-c = the flat default an offline
+       profile gets, because there is no skin server to ask. -->
+  <symbol id="head" viewBox="0 0 8 8">
+    <path d="M0 0h8v8H0z" fill="var(--skin-face)"/>
+    <path d="M0 0h8v2H0zM0 2h1v2H0zM7 2h1v2H7z" fill="var(--skin-hair)"/>
+    <path d="M2 3h1v1H2zM5 3h1v1H5z" fill="var(--skin-eye)"/>
+    <path d="M3 5h2v1H3z" fill="var(--skin-mouth)"/>
+    <path d="M0 6h8v2H0z" fill="var(--skin-shirt)"/>
+    <path d="M6 3h1v2H6z" fill="var(--skin-shade)"/>
+  </symbol>
+  <symbol id="head-b" viewBox="0 0 8 8">
+    <path d="M0 0h8v8H0z" fill="var(--skin-face)"/>
+    <path d="M0 0h8v2H0zM0 2h1v2H0zM7 2h1v2H7z" fill="var(--skin-b-hair)"/>
+    <path d="M2 3h1v1H2zM5 3h1v1H5z" fill="var(--skin-hair)"/>
+    <path d="M3 5h2v1H3z" fill="var(--skin-mouth)"/>
+    <path d="M0 6h8v2H0z" fill="var(--skin-b-shirt)"/>
+    <path d="M1 3h1v2H1z" fill="var(--skin-shade)"/>
+  </symbol>
+  <symbol id="head-c" viewBox="0 0 8 8">
+    <path d="M0 0h8v8H0z" fill="var(--art-3)"/>
+    <path d="M2 3h1v1H2zM5 3h1v1H5z" fill="var(--art-1)"/>
+    <path d="M3 5h2v1H3z" fill="var(--art-2)"/>
+  </symbol>
+</svg>

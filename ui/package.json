@@ -1,0 +1,6 @@
+{
+  "name": "kestrel-ui",
+  "private": true,
+  "type": "module",
+  "description": "ui/scripts/*.js are ES modules. Declared so the main process can import brand.js for the product name rather than restating it."
+}

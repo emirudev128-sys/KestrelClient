@@ -1,0 +1,106 @@
+{
+  "bar": {
+    "name": "Linear desktop app",
+    "why": "Hardest reachable bar for restraint and density. Cropped to pure app chrome so the blind A/B is app-vs-app with no marketing page to give it away. Cloning it counts as a loss, not a win.",
+    "shots": [
+      "ref/BAR-app.png (the blind target, 1270x695 pure app UI)",
+      "ref/linear-app-01.png",
+      "ref/linear-home.png",
+      "ref/linear-plan.png"
+    ],
+    "lockedAt": "round 0"
+  },
+  "structuralRefs": [
+    "ref/modrinth-app.png",
+    "ref/lunar-home.png",
+    "ref/prism.png"
+  ],
+  "loopCap": 50,
+  "loopsUsed": 10,
+  "pieces": [
+    {
+      "id": "play",
+      "name": "Shell + Play screen",
+      "status": "judging",
+      "rounds": 8,
+      "verdict": "Won; A+C clean",
+      "gap": "The window does not fill vertically: the list is a fixed ten-row slice, so at 2560x1600 a void of 39.5% of the window sits under \"All 23 instances\"."
+    },
+    {
+      "id": "instances",
+      "name": "Instances list",
+      "status": "judging",
+      "rounds": 2,
+      "verdict": "Beat the bar",
+      "gap": "Squint 1.38 -> 2.42. Remaining: 87% of horizontal growth lands in three empty gutters, and the list does not fill vertically."
+    },
+    {
+      "id": "instance",
+      "name": "Instance detail",
+      "status": "building",
+      "rounds": 0,
+      "verdict": null,
+      "gap": "Never judged on its own."
+    },
+    {
+      "id": "settings",
+      "name": "Settings",
+      "status": "judging",
+      "rounds": 2,
+      "verdict": "Judged in system pass",
+      "gap": "Still the worst screen: 3.09% ink vs 7.80% on Modules, 27.5% dead area, squint 1.49, no page title, and 750-873px of gutter between every label and its control."
+    },
+    {
+      "id": "accounts",
+      "name": "Accounts",
+      "status": "building",
+      "rounds": 0,
+      "verdict": null,
+      "gap": "Never judged on its own."
+    },
+    {
+      "id": "states",
+      "name": "Empty / downloading / error",
+      "status": "building",
+      "rounds": 0,
+      "verdict": null,
+      "gap": "Own routes under #states. Never judged on its own."
+    },
+    {
+      "id": "modules",
+      "name": "Tweaks list + settings",
+      "status": "judging",
+      "rounds": 3,
+      "verdict": "Beat the bar - loss reversed",
+      "gap": "The HUD card grid fixed the loss. Remaining: five container recipes, four of them on this screen alone."
+    },
+    {
+      "id": "hud",
+      "name": "HUD layout editor",
+      "status": "judging",
+      "rounds": 2,
+      "verdict": "Beat the bar (via Tweaks)",
+      "gap": "Judged as part of the Tweaks screen. No round of its own yet."
+    },
+    {
+      "id": "theming",
+      "name": "Light theme + palettes",
+      "status": "judging",
+      "rounds": 2,
+      "verdict": "Focal point fixed",
+      "gap": "Accent re-derived to 4.71:1 and light now leads with the same element as dark. Remaining: light has no state layer - the selected nav chip is 6x weaker and vanishes under blur."
+    }
+  ],
+  "note": "Tokens, icons, motion and copy are cross-cutting: judged inside every screen rather than as their own round.",
+  "decisions": {
+    "name": "Kestrel, placeholder. Note: collides with ASP.NET's web server.",
+    "serverHosting": "No, not now.",
+    "themes": "Dark + light + configurable palettes.",
+    "accounts": "Microsoft sign-in plus offline profiles.",
+    "modLoading": "Neutral. No allowlist, no server-facing disclosure, no anticheat."
+  },
+  "exitCondition": "Beat the bar on the blind design A/B, AND carry zero present items from standard.md sections A/C/F. The 'which is AI-generated' verdict is NO LONGER a gate - measured 2/2 false-positive rate on pairs of real products. See docs/detection-is-not-calibrated.md",
+  "record": "20 design wins, 1 loss (Tweaks loss reversed in round 10)",
+  "gate": "Beat the bar on the blind design A/B, AND carry zero items present from standard.md sections A, C and F, AND hold up as a system: consistent across screens, responsive to window size, and as designed in light as in dark. The system pass is new and is where the work now is.",
+  "build": "variants/c8"
+}

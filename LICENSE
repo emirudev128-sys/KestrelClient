@@ -1,0 +1,35 @@
+Kestrel — All Rights Reserved
+
+Copyright (c) 2026 emirudev128-sys. All rights reserved.
+
+This source code is made available for inspection only.
+
+You MAY:
+  · read this source code;
+  · run it locally, unmodified, for the purpose of evaluating it;
+  · quote short excerpts when discussing or reporting issues with it.
+
+You MAY NOT, without prior written permission from the copyright holder:
+  · copy, redistribute, publish, host or mirror this code or any part of it;
+  · modify it, or create derivative or adapted works from it;
+  · use it, in whole or in part, in another product, whether free or paid;
+  · rebrand, repackage or redistribute it under another name;
+  · use it for any commercial purpose.
+
+No licence is granted by implication, estoppel or otherwise. No trademark
+rights are granted in the name "Kestrel" or in any associated branding.
+
+This code is published so that its behaviour can be independently verified —
+that it contains no advertising, no analytics or telemetry, and no
+server-facing surface. Publication for that purpose is not a grant of any
+right to reuse it.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Minecraft is a trademark of Mojang AB. This project is not affiliated with,
+endorsed by, or associated with Mojang AB or Microsoft.

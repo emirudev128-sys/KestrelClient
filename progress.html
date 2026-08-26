@@ -1,0 +1,181 @@
+<title>Kestrel Gauntlet</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;450;500;600&display=swap">
+<style>
+  :root {
+    --ground: #0a0a0c;
+    --panel: #0f0f12;
+    --panel-2: #131317;
+    --line: #1e1e24;
+    --line-soft: #17171c;
+    --ink: #e8e8ec;
+    --ink-2: #9a9aa5;
+    --ink-3: #63636e;
+    --amber: #c9a227;
+    --green: #6aa84f;
+    --rust: #b5563f;
+    --blue: #6b8fc9;
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 28px 80px; }
+
+  header { border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 28px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-3); margin: 0 0 10px;
+  }
+  h1 { font-size: 22px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 6px; }
+  .sub { color: var(--ink-2); margin: 0; max-width: 62ch; }
+
+  .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1px; background: var(--line-soft); border: 1px solid var(--line); margin-bottom: 32px; }
+  .meta > div { background: var(--panel); padding: 14px 16px; }
+  .meta dt { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 5px; }
+  .meta dd { margin: 0; font-size: 13.5px; }
+  .meta dd .n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  h2 { font-size: 12px; font-family: var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; margin: 0 0 12px; }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; min-width: 780px; }
+  th {
+    text-align: left; font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 500; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel-2);
+  }
+  td { padding: 11px 14px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+
+  .c-state { white-space: nowrap; width: 128px; }
+  .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); margin-right: 8px; vertical-align: middle; }
+  .state-label { font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); }
+  .is-building .dot, .is-judging .dot { background: var(--amber); }
+  .is-building .state-label, .is-judging .state-label { color: var(--amber); }
+  .is-won .dot { background: var(--green); }
+  .is-won .state-label { color: var(--green); }
+  .is-lost .dot { background: var(--rust); }
+  .is-lost .state-label { color: var(--rust); }
+
+  .c-name { font-weight: 450; width: 200px; }
+  .c-rounds { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink-2); width: 72px; }
+  .c-verdict { color: var(--ink-2); width: 150px; }
+  .c-gap { color: var(--ink-2); }
+  .nil { color: var(--ink-3); }
+
+  .barbox { border: 1px solid var(--line); background: var(--panel); padding: 18px 20px; margin-bottom: 32px; }
+  .barbox .name { font-size: 15px; font-weight: 550; margin: 0 0 6px; }
+  .barbox .why { color: var(--ink-2); margin: 0 0 14px; max-width: 66ch; }
+  .shots { display: flex; flex-wrap: wrap; gap: 6px; }
+  .shots span { font-family: var(--mono); font-size: 11px; color: var(--ink-3); border: 1px solid var(--line); padding: 3px 7px; }
+
+  footer { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--ink-3); font-family: var(--mono); font-size: 11.5px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Gauntlet loop · build log</p>
+    <h1>Kestrel launcher shell</h1>
+    <p class="sub">A Minecraft client launcher UI, built piece by piece against a locked reference. Each piece gets a builder and a separate critic; the critic compares blind and sends it back until ours wins.</p>
+  </header>
+
+  <dl class="meta">
+    <div><dt>Loops used</dt><dd><span class="n">10</span> <span class="nil">/ 50 cap</span></dd></div>
+    <div><dt>Pieces won</dt><dd><span class="n">0</span> <span class="nil">/ 9</span></dd></div>
+    <div><dt>Bar</dt><dd>Linear desktop app</dd></div>
+    <div><dt>Design record</dt><dd>20 design wins, 1 loss (Tweaks loss reversed in round 10)</dd></div>
+    <div><dt>Current build</dt><dd><span class="n">variants/c8</span></dd></div>
+  </dl>
+
+  <h2>The gate</h2>
+  <div class="barbox"><p class="why">Beat the bar on the blind design A/B, AND carry zero items present from standard.md sections A, C and F, AND hold up as a system: consistent across screens, responsive to window size, and as designed in light as in dark. The system pass is new and is where the work now is.</p></div>
+
+  <h2>The bar</h2>
+  <div class="barbox">
+    <p class="name">Linear desktop app</p>
+    <p class="why">Hardest reachable bar for restraint and density. Cropped to pure app chrome so the blind A/B is app-vs-app with no marketing page to give it away. Cloning it counts as a loss, not a win.</p>
+    <div class="shots"><span>ref/BAR-app.png (the blind target, 1270x695 pure app UI)</span><span>ref/linear-app-01.png</span><span>ref/linear-home.png</span><span>ref/linear-plan.png</span></div>
+  </div>
+
+  <h2>Pieces</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>State</th><th>Piece</th><th>Rounds</th><th>Last verdict</th><th>Biggest remaining gap</th></tr></thead>
+      <tbody>
+      <tr class="row is-judging">
+        <td class="c-state"><span class="dot"></span><span class="state-label">Judging</span></td>
+        <td class="c-name">Shell + Play screen</td>
+        <td class="c-rounds">8</td>
+        <td class="c-verdict">Won; A+C clean</td>
+        <td class="c-gap">The window does not fill vertically: the list is a fixed ten-row slice, so at 2560x1600 a void of 39.5% of the window sits under &quot;All 23 instances&quot;.</td>
+      </tr>
+      <tr class="row is-judging">
+        <td class="c-state"><span class="dot"></span><span class="state-label">Judging</span></td>
+        <td class="c-name">Instances list</td>
+        <td class="c-rounds">2</td>
+        <td class="c-verdict">Beat the bar</td>
+        <td class="c-gap">Squint 1.38 -&gt; 2.42. Remaining: 87% of horizontal growth lands in three empty gutters, and the list does not fill vertically.</td>
+      </tr>
+      <tr class="row is-building">
+        <td class="c-state"><span class="dot"></span><span class="state-label">Building</span></td>
+        <td class="c-name">Instance detail</td>
+        <td class="c-rounds">—</td>
+        <td class="c-verdict"><span class="nil">not yet judged</span></td>
+        <td class="c-gap">Never judged on its own.</td>
+      </tr>
+      <tr class="row is-judging">
+        <td class="c-state"><span class="dot"></span><span class="state-label">Judging</span></td>
+        <td class="c-name">Settings</td>
+        <td class="c-rounds">2</td>
+        <td class="c-verdict">Judged in system pass</td>
+        <td class="c-gap">Still the worst screen: 3.09% ink vs 7.80% on Modules, 27.5% dead area, squint 1.49, no page title, and 750-873px of gutter between every label and its control.</td>
+      </tr>
+      <tr class="row is-building">
+        <td class="c-state"><span class="dot"></span><span class="state-label">Building</span></td>
+        <td class="c-name">Accounts</td>
+        <td class="c-rounds">—</td>
+        <td class="c-verdict"><span class="nil">not yet judged</span></td>
+        <td class="c-gap">Never judged on its own.</td>
+      </tr>
+      <tr class="row is-building">
+        <td class="c-state"><span class="dot"></span><span class="state-label">Building</span></td>
+        <td class="c-name">Empty / downloading / error</td>
+        <td class="c-rounds">—</td>
+        <td class="c-verdict"><span class="nil">not yet judged</span></td>
+        <td class="c-gap">Own routes under #states. Never judged on its own.</td>
+      </tr>
+      <tr class="row is-judging">
+        <td class="c-state"><span class="dot"></span><span class="state-label">Judging</span></td>
+        <td class="c-name">Tweaks list + settings</td>
+        <td class="c-rounds">3</td>
+        <td class="c-verdict">Beat the bar - loss reversed</td>
+        <td class="c-gap">The HUD card grid fixed the loss. Remaining: five container recipes, four of them on this screen alone.</td>
+      </tr>
+      <tr class="row is-judging">
+        <td class="c-state"><span class="dot"></span><span class="state-label">Judging</span></td>
+        <td class="c-name">HUD layout editor</td>
+        <td class="c-rounds">2</td>
+        <td class="c-verdict">Beat the bar (via Tweaks)</td>
+        <td class="c-gap">Judged as part of the Tweaks screen. No round of its own yet.</td>
+      </tr>
+      <tr class="row is-judging">
+        <td class="c-state"><span class="dot"></span><span class="state-label">Judging</span></td>
+        <td class="c-name">Light theme + palettes</td>
+        <td class="c-rounds">2</td>
+        <td class="c-verdict">Focal point fixed</td>
+        <td class="c-gap">Accent re-derived to 4.71:1 and light now leads with the same element as dark. Remaining: light has no state layer - the selected nav chip is 6x weaker and vanishes under blur.</td>
+      </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>Exit is the gate above, not a round count. Hard stop at 50 loops. "Building" means the screen exists and is shot but has not had its own blind round.</footer>
+</div>

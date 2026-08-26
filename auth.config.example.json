@@ -1,0 +1,8 @@
+{
+  "_1": "Your own Azure application (client) id goes in clientId, below.",
+  "_2": "Register it yourself at portal.azure.com: personal Microsoft accounts only, public client flows ON, no client secret. Then ask Mojang to approve that application for the Minecraft scopes - until they do, the Minecraft half of the chain will refuse the token.",
+  "_3": "Do not paste in a client id belonging to another launcher. See auth-config.js for the whole of it.",
+  "_4": "KESTREL_MSA_CLIENT_ID in the environment overrides this file, and a copy of this file in %APPDATA%/Kestrel overrides the one in the source tree.",
+  "_5": "Left as it ships, the launcher runs its device-code screen against a local stub and says on screen that nothing was really signed in.",
+  "clientId": "REPLACE-WITH-YOUR-AZURE-APPLICATION-CLIENT-ID"
+}
