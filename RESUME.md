@@ -12,7 +12,8 @@ build step. **It downloads and launches Minecraft, installs mod loaders, and ins
 | **Vanilla launch** | 1.8.9 — 770 files, 146 MB, 19.8 s to running. Second launch: 0 bytes, 0.8 s. |
 | **Fabric** | 1.16.5 launched — `Loading Minecraft 1.16.5 with Fabric Loader 0.19.3` |
 | **Forge (legacy)** | 1.8.9 launched — `Forge Mod Loader version 11.15.1.2318 loading` |
-| **NeoForge** | 1.21.1 installed and merge-verified; not launched (needs Java 21) |
+| **NeoForge** | 1.21.1 **launched** — processors run, patched jar built, loaded into a world on Java 21 |
+| **Forge (modern)** | 1.20.1 47.4.23 installed — 6 processors run, 2 output digests verified |
 | **Mods** | Sodium installed through the UI, launched, `- sodium 0.2.0+build.4` in the log |
 | **Dependencies** | REI planned 3 and installed 3, each hash-checked |
 | **Disable** | `.jar.disabled` — next launch logged 56 mods instead of 57 |
@@ -27,7 +28,8 @@ build step. **It downloads and launches Minecraft, installs mod loaders, and ins
     msauth.js      the six-request Microsoft chain, main process only
     accounts.js    accounts.json, credential half sealed with safeStorage
     auth-config.js client id resolution + the Azure/Mojang procedure
-    mc/            paths, net, unzip, version, install, java, launch, loaders, content
+    mc/            paths, net, unzip, version, install, java, launch, loaders, content,
+                   processors (the Forge/NeoForge installer processors)
     ui/            the renderer - index.html, styles/, scripts/, icons/
     electron-builder.yml  what ships, as an allow-list, and the NSIS options
     build/         icon.ico and icon.png, generated from the mark in the icon set
@@ -43,6 +45,7 @@ and no token on a command line (the launcher refuses rather than leaking on Java
     node tools/audit.mjs ui       the design standard
     node tools/phase3check.mjs    download/launch security assertions (33)
     node tools/phase4check.mjs    loader merge rules (60)
+    node tools/phase4check.mjs modern   ... and really install + launch NeoForge 1.21.1 (83)
     node tools/phase5check.mjs    content install
     node tools/packcheck.mjs      what the packaged build actually contains (47)
     bash  tools/scan.sh           Electronegativity + semgrep + npm audit + token containment
@@ -52,9 +55,6 @@ and nothing else.
 
 ## Not finished
 
-- **Modern Forge (1.13+) and NeoForge** need the installer's processors run — a JVM per processor
-  and a JDK, not a JRE. Installs return `partial: true` and `play()` refuses with
-  `LOADER_INCOMPLETE` rather than crashing. Reasoning in `mc/loaders.js`, "THE FORGE PROBLEM".
 - **Modpacks** are not installable. `kindOf('modpack')` throws with the reason.
 - **Update checking reports but does not apply** — installing the newer version replaces the file.
 - **Mojang has not approved the Azure application** for the Minecraft scopes, so the final token
@@ -85,6 +85,27 @@ places is tolerable.
 is excluded from `files:`, so an installer built from this repo cannot leak it. To sign in from an
 installed copy, put `auth.config.json` in `%APPDATA%\Kestrel\` — `auth-config.js` looks there
 first, which is what that ordering was always for.
+
+**Modern Forge and NeoForge work now.** `mc/processors.js` runs the installer's processors — a JVM
+per processor, in order, with the `data` block resolved for the client side. NeoForge 1.21.1 was
+installed and **launched into a world**; Forge 1.20.1 installs and its declared output digests are
+verified. Three things worth knowing before touching it:
+
+- **The ordering is load-bearing.** The processors patch the vanilla client jar, so they cannot run
+  in `installLoader` — that is called *before* the vanilla install, because the profile is what
+  names the libraries to fetch. They run at the end of `Game.install()`. `pwarn` is cleared only if
+  a processor actually ran, and `pjar` on the record is how a later session finds the installer.
+- **NeoForge publishes no output digests at all** — zero across its ten processors, where Forge
+  1.20.1 declares two. So for NeoForge the six JVMs exit 0 and nothing has verified they wrote
+  anything. `runProcessors` therefore checks the `PATCHED` artefact exists and is non-empty
+  regardless, and the log says which case it is in rather than implying verification happened.
+- **`-DignoreList` had to be corrected at launch.** Modern Forge/NeoForge run through
+  BootstrapLauncher, which moves everything on the classpath to the MODULE path except the
+  filenames in that list. Their profiles write `${name}.jar`, guessing the launcher names the game
+  jar after the version being launched. This one does not — `jar` means the client jar is the
+  PARENT's, so `1.21.1.jar` went on the classpath, was not ignored, and collided with the patched
+  `minecraft` module: `ResolutionException: Modules _1._21._1 and minecraft export package
+  net.minecraft.data`. `mc/launch.js` appends the real basename to the list.
 
 **The User-Agent is fixed.** It used to send `Kestrel/1.0 (+https://github.com/kestrel-launcher)` —
 an organisation that does not exist, and a version the product had not been on for months. It now
@@ -122,12 +143,10 @@ has been caught five times and is written up in `docs/rubric.md`.
    but nothing draws it yet. That is a Fabric mod, a separate Java project, and it is the piece
    that makes this a *client* rather than a launcher. Needs a JDK; this machine has a Java 8 JRE
    and no `javac`.
-2. **Modern Forge / NeoForge** — needs the installer processors run (a JVM per processor, and a
-   JDK not a JRE). See "THE FORGE PROBLEM" in `mc/loaders.js`.
-3. **Modpack install** — `.mrpack` first: it is a zip holding an index of hashed URLs, which is
+2. **Modpack install** — `.mrpack` first: it is a zip holding an index of hashed URLs, which is
    exactly the shape `mc/net.js` and the host allow-list already handle. CurseForge second; it
    needs an API key and has a different shape.
-4. **Code signing** — SmartScreen warns on every first run until the binary is signed by a
+3. **Code signing** — SmartScreen warns on every first run until the binary is signed by a
    certificate with reputation behind it. That is a purchase, not a config change.
 
 ## How to work on this

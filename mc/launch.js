@@ -152,6 +152,41 @@ function buildArgs(o) {
     jvm.push('-Djava.library.path=' + map.natives_directory);
   }
 
+  /* ── -DignoreList HAS TO NAME THE JAR WE ACTUALLY PUT THERE ──────────────
+     Modern Forge and NeoForge launch through BootstrapLauncher, which reads
+     the classpath and moves everything on it to the MODULE path except the
+     filenames listed in -DignoreList.  Their profiles write that list as
+     "client-extra,${version_name}.jar" — a guess that the launcher names the
+     game jar after the version being launched.
+
+     This one does not, and neither does Mojang's: `jar` in the version format
+     means the client jar belongs to the PARENT, so what goes on the classpath
+     is 1.21.1.jar while ${version_name} expands to neoforge-21.1.248.  The
+     jar is therefore not ignored, lands on the module path beside the patched
+     one, and the JVM refuses to start:
+
+       java.lang.module.ResolutionException: Modules _1._21._1 and minecraft
+       export package net.minecraft.data to module mixin_synthetic
+
+     Two modules exporting the same package is a hard error, and the message
+     names an automatic module derived from a FILENAME, which is not something
+     anyone can act on.  So the basename of the jar this build really appended
+     is added to the list.  It is not second-guessing the profile — the list
+     is a list of filenames, and this is the filename.                      */
+  const clientJarName = path.basename(cp[cp.length - 1] || '');
+  if (clientJarName) {
+    for (let i = 0; i < jvm.length; i++) {
+      const a = String(jvm[i]);
+      if (a.indexOf('-DignoreList=') !== 0) continue;
+      const listed = a.slice('-DignoreList='.length).split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+      if (listed.indexOf(clientJarName) < 0) {
+        listed.push(clientJarName);
+        jvm[i] = '-DignoreList=' + listed.join(',');
+      }
+      break;
+    }
+  }
+
   const main = String(vjson.mainClass || 'net.minecraft.client.main.Main');
 
   let game;

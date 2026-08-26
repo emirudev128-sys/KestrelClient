@@ -94,7 +94,9 @@ class Game {
     });
     const warn = r.partial ? r.notes.join(' ') : '';
     this.store.update(instanceId, {
-      loader: r.loader, lver: String(loaderVersion || ''), prof: r.id, pwarn: warn
+      loader: r.loader, lver: String(loaderVersion || ''), prof: r.id, pwarn: warn,
+      /* which installer the processors will come out of, if there are any */
+      pjar: String(r.installer || '')
     });
     return { id: r.id, loader: r.loader, mc: r.mc, partial: !!r.partial, notes: r.notes, mainClass: r.json.mainClass || '' };
   }
@@ -166,10 +168,89 @@ class Game {
     this.jobs.set(instanceId, signal);
     try {
       const s = await this.installer.install(id, { onProgress: this._reporter(instanceId), signal: signal });
+      /* THE SECOND HALF OF A MODERN FORGE INSTALL, and it has to be here.
+         The processors patch the vanilla client jar, so they cannot run in
+         installLoader — that is called before this, because the profile is
+         what names the libraries this fetches.  Now the jar is on disk. */
+      const done = await this._runProcessors(instanceId, id, inst);
+      if (done) { s.processors = done; inst = this.store.get(instanceId); }
       s.loader = inst.loader || '';
       s.lver = inst.lver || '';
       return s;
     } finally { this.jobs.delete(instanceId); }
+  }
+
+  /* Runs the installer processors for a partial modern-Forge install, then
+     clears the flag that was keeping Play from starting it.  A no-op for
+     every other loader and for an install that has already had them run —
+     `pwarn` being empty is what says so. */
+  async _runProcessors(instanceId, versionId, inst) {
+    if (!String(inst.pwarn || '').trim()) return null;
+    let jar = String(inst.pjar || '').trim();
+
+    /* A RECORD WRITTEN BEFORE `pjar` EXISTED still says "incomplete" and has
+       no way to say which installer would complete it.  Rather than leave it
+       stuck on a warning it can never clear, the loader install is asked
+       again — the installer is cached and hash-verified, so this is a file
+       read — and the answer is only accepted if it names the SAME profile
+       that is already on disk.  A loader version that has moved on since is
+       a different install, and quietly patching the instance to it would be
+       changing what the user chose. */
+    if (!jar) {
+      const k = String(inst.loader || '').toLowerCase();
+      if (k !== 'forge' && k !== 'neoforge') return null;
+      const again = await loaders.installLoader({
+        layout: this.L, log: this.log, loader: inst.loader, mc: inst.ver, loaderVersion: inst.lver
+      }).catch(() => null);
+      if (!again || !again.installer || again.id !== inst.prof) {
+        this.log('processors: this instance predates the record of which installer built it, and '
+          + (again ? 'the loader has moved on to ' + again.id + ' since' : 'the installer could not be re-read')
+          + ' — reinstall the loader to complete it');
+        return null;
+      }
+      jar = again.installer;
+      this.store.update(instanceId, { pjar: jar });
+    }
+
+    const report = this._reporter(instanceId);
+    report({ phase: 'preparing', done: 0, total: 0, bytes: 0, totalBytes: 0, file: 'patching the client jar' });
+
+    const vjson = await this.installer.resolve(versionId, 0);
+    const mcJar = this.L.versionJar(String(vjson.jar || inst.ver || versionId));
+    const jr = await java.pick(String(inst.ver || ''), V.javaMajorFor(vjson));
+    if (!jr.runtime) {
+      /* THE PROCESSORS NEED A JVM, and it is the same one the game needs.
+         Saying which is missing beats "install failed": this is the one step
+         where a launcher can be asked to run Java before it runs Minecraft. */
+      const e = new Error('Java ' + jr.want + ' is needed to run ' + inst.loader
+        + "'s installer processors, and no runtime that new was found. The profile is installed; it cannot be patched without one.");
+      e.code = 'NO_JAVA_FOR_PROCESSORS';
+      throw e;
+    }
+
+    const r = await loaders.completeModern({
+      layout: this.L,
+      installerName: jar,
+      mcJar: mcJar,
+      javaExe: jr.runtime.path,
+      log: this.log,
+      onStep: function (st) {
+        report({
+          phase: 'preparing', done: st.index, total: st.total, bytes: 0, totalBytes: 0,
+          file: 'running ' + st.label + (st.task ? ' ' + st.task : '')
+        });
+      }
+    });
+
+    /* IT IS ONLY COMPLETE IF SOMETHING RAN.  A profile that declared
+       processors and then ran none of them is still partial, and clearing the
+       warning would turn an honest refusal into a ClassNotFoundException. */
+    if (r && r.ran > 0) {
+      this.store.update(instanceId, { pwarn: '' });
+      this.log('processors: ' + inst.loader + ' is complete — ' + r.ran + ' ran, '
+        + r.checked + ' outputs verified' + (r.produced.length ? ', produced ' + r.produced.join(', ') : ''));
+    }
+    return r;
   }
 
   cancel(instanceId) {
