@@ -19,6 +19,7 @@ build step. **It downloads and launches Minecraft, installs mod loaders, and ins
 | **Disable** | `.jar.disabled` — next launch logged 56 mods instead of 57 |
 | **Accounts** | Microsoft device-code flow, real client id, tokens never leave the main process |
 | **Client mod** | `kestrel-hud` builds and loads in 1.21.4 Fabric — `Kestrel HUD: 2 element(s) configured` |
+| **HUD wiring** | The screen's layout persists and reaches the mod: 11 elements, 6 anchors, scales intact |
 | **Modpacks** | Fabulously Optimized (.mrpack) planned and installed — 50 files sha1-checked, 55 overrides |
 | **Packaging** | `Kestrel-0.5.0-Setup.exe`, 106 MB. The packaged app launches and runs out of its own asar. |
 
@@ -62,11 +63,10 @@ and nothing else.
 - **Update checking reports but does not apply** — installing the newer version replaces the file.
 - **Mojang has not approved the Azure application** for the Minecraft scopes, so the final token
   exchange will 403 until they do. Form: https://aka.ms/mce-reviewappid
-- The HUD screen's state is still not PERSISTED. `mc/hud.js` writes the config on every launch
-  from `settings.hud`, and validates it properly — but the renderer never saves its layout there,
-  so `settings.hud` is empty and the mod falls back to its own defaults. The remaining work is one
-  `host.settings.set({hud})` in the HUD screen's save path.
-- Only two HUD elements are drawn (fps, coords). The screen models eleven.
+- Only two HUD elements are DRAWN (fps, coords). The screen arranges eleven and the launcher now
+  writes all eleven to the config; the mod ignores the other nine. That is the next piece and it is
+  Java.
+- The HUD has still not been seen on screen. It draws only in a world.
 - The HUD has not been seen ON SCREEN. It draws only in a world, and nothing can drive Minecraft
   into one unattended — what is proved is that it loads, parses its config and registers its
   render callback without crashing.

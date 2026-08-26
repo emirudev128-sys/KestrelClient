@@ -1033,6 +1033,9 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     setVal(k, 'on', 'on', on);
     applyList();
     if (modSel && modSel.dataset.k === k) paintPane();
+    /* a module carries HUD elements with it — "Armor status" owns five — so
+       switching one is a change the client mod has to hear about too */
+    saveHud();
     say('<b>' + esc(k) + '</b> ' + (on ? 'on' : 'off') +
         (MODSCOPE === 'inst' ? ' for 1.21.4 Fabric only.' : ' everywhere.') +
         (from ? '' : ''));
@@ -1301,10 +1304,51 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     flashSaved();
   }
   function flashSaved() {
+    /* the indicator is optional; the save is not, so persistence happens
+       before the early return rather than after it */
+    saveHud();
     if (!hudSaved) return;
     hudSaved.textContent = 'Saving';
     clearTimeout(flashSaved.t);
     flashSaved.t = setTimeout(function () { hudSaved.textContent = 'Saved'; }, 420);
+  }
+
+  /* ── THE LAYOUT, PERSISTED ────────────────────────────────────────────────
+     "Saved" was a word on the screen and nothing else: ST is undo state and
+     died with the screen, so the HUD editor arranged a HUD that no longer
+     existed the moment you navigated away — and mc/hud.js, which writes the
+     config the client mod reads, had nothing to write.
+
+     THE MODULE STATE IS READ OFF THE SWITCHES rather than out of MODG. The
+     modules screen keys its state by its own row keys and the launcher keys
+     visibility by module NAME, and the switches already carry the name in
+     their aria-label — which is the label a screen reader reads out, so it
+     is a string that has to stay correct anyway. Reading it here means the
+     two representations cannot drift, and tools/hudcheck.mjs asserts the
+     names still match mc/hud.js's table.
+
+     ONLY CALLED FROM USER ACTIONS. Every caller of flashSaved() is a drag, a
+     nudge, an undo or a reset, and toggleMod is a click; none run during the
+     initial paint. That matters more than it looks: a save firing while ST
+     was still empty would overwrite a saved layout with {} on every start. */
+  var saveHudT = null;
+  function hudModules() {
+    var out = {};
+    var sw = document.querySelectorAll('#screen-modules [role="switch"][aria-label]');
+    for (var i = 0; i < sw.length; i++) {
+      var label = sw[i].getAttribute('aria-label') || '';
+      if (!/ enabled$/.test(label)) continue;
+      out[label.replace(/ enabled$/, '')] = sw[i].getAttribute('aria-checked') === 'true';
+    }
+    return out;
+  }
+  function saveHud() {
+    if (!host || !host.settings) return;   /* the browser build has nowhere to put it */
+    clearTimeout(saveHudT);
+    saveHudT = setTimeout(function () {
+      host.settings.set({ hud: { elements: JSON.parse(snapshot()), modules: hudModules() } })
+        .catch(function (err) { say('The HUD layout could not be saved. ' + esc(err.message)); });
+    }, 350);
   }
 
   function place(el) {
