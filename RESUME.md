@@ -5,6 +5,55 @@ build step. **It downloads and launches Minecraft, installs mod loaders, and ins
 
     npm start
 
+## READ THIS FIRST — how the last session actually went wrong
+
+**Your shell and the user's app do not share `%APPDATA%.`** The project folder IS shared — code
+edits reach them instantly, `git pull` says "already up to date" because it is the same working
+tree — but `%APPDATA%/Kestrel` is not. Instances you create with a script go into YOUR data folder
+and the user never sees them. An hour went into "why can't I see the HUD Test instance"; the answer
+was that it was never on their machine.
+
+So: **never say "verified on your machine" about anything under `%APPDATA%`.** Code checks are real.
+Instances, worlds, mods, HUD config and launches are not, unless you inspected the user's own
+running app over a debug port they started.
+
+**When a prototype is being made real, grep the SYMPTOM, not the action.** Six "Open folder" controls
+existed. Grepping for the handler found one; grepping for the placeholder string `"Would open"`
+found five, plus one with no `data-act` at all that could not even reach a handler. The same class
+of bug hit the launch buttons: `currentInstance()` answered "the row marked current, or failing that
+the FIRST row", so every card launched 1.21.4 Fabric.
+
+**The user is right more often than the theory is.** Three times a reported bug was explained away
+as a stale window or a misclick, and three times it was real.
+
+## The client mod
+
+    cd client-mod && gradle build      # JDK 21 + Gradle 8; loom 1.9.2 (1.17 needs Gradle 9.5)
+    -> build/libs/kestrel-hud-0.1.0.jar
+
+Install by copying that jar into `<instance>/minecraft/mods/`. Fabric API installs itself now
+(mc/deps.js reads what the jars declare). Verified on 1.21.4: builds, loads, draws.
+
+**The contract** is one file, `<instance>/config/kestrel-hud.json`, written by `mc/hud.js` on every
+launch from `settings.hud` and read by `HudConfig.java`. `tools/hudcheck.mjs` asserts the three
+languages agree — markup, JS, Java. Positions are percentages against nine anchors, plus a scale;
+visibility is resolved launcher-side from the seven MODULES (Armor status owns five elements).
+
+## Phase 2, the next piece of work
+
+The user asked for an in-game menu on **Right Shift**, inspired by Lunar Client and mod menus:
+element list with toggles, free dragging with **magnet snapping**, and the config controls
+(corners, font, compass, anchors). Phase 1 — sharp/rounded, two fonts, compass, and collision
+stacking — is done and pushed.
+
+**The design decision that is still open, and must be settled before writing the menu.** The mod
+currently only READS the config; the launcher rewrites it on every launch from `settings.hud`. The
+moment the in-game menu saves a dragged layout, the next launch clobbers it. The proposed answer,
+which the user has not yet approved: the launcher READS the file back into `settings.hud` first,
+then writes — so in-game edits flow back to the HUD screen and the two stay in sync. Ask before
+building on it.
+
+
 ## What works, verified end to end on this machine
 
 | | proof |
@@ -18,7 +67,7 @@ build step. **It downloads and launches Minecraft, installs mod loaders, and ins
 | **Dependencies** | REI planned 3 and installed 3, each hash-checked |
 | **Disable** | `.jar.disabled` — next launch logged 56 mods instead of 57 |
 | **Accounts** | Microsoft device-code flow, real client id, tokens never leave the main process |
-| **Client mod** | `kestrel-hud` builds and loads in 1.21.4 Fabric — `Kestrel HUD: 2 element(s) configured` |
+| **Client mod** | `kestrel-hud` **draws in-game**, confirmed on screen by the user: fps and coords on a plate |
 | **HUD wiring** | The screen's layout persists and reaches the mod: 11 elements, 6 anchors, scales intact |
 | **Modpacks** | Fabulously Optimized (.mrpack) planned and installed — 50 files sha1-checked, 55 overrides |
 | **Packaging** | `Kestrel-0.5.0-Setup.exe`, 106 MB. The packaged app launches and runs out of its own asar. |
@@ -73,7 +122,7 @@ and nothing else.
 
 ## Where things stand (last session)
 
-**Packaging is done.** `npm run icon && npm run dist` produces `dist/Kestrel-0.4.2-Setup.exe`, 106 MB,
+**Packaging is done.** `npm run icon && npm run dist` produces `dist/Kestrel-0.5.0-Setup.exe`, 106 MB,
 per-user NSIS, unsigned. `electron-builder.yml` holds the whole configuration and the reasoning.
 The packaged build was launched and inspected live over CDP rather than assumed: the renderer loads
 from `app.asar/ui/index.html`, `brand.js` imports as an ES module from *inside* the archive (the
@@ -164,6 +213,19 @@ holds the three README images.
 `1.8.9 Forge`, `All the Mods 10`, …). They are deliberately repetitive — the `1.20.1` pair is
 identical but for the name. Do not make each one demonstrate a different feature; that failure mode
 has been caught five times and is written up in `docs/rubric.md`.
+
+## Also true right now
+
+- `dist/` holds a 0.5.0 installer built BEFORE the modpack work, the HUD wiring and every fix since.
+  Rebuild with `npm run dist && npm run packcheck` before giving it to anyone.
+- The Azure app was re-registered. The new client id is in `auth.config.json` (gitignored) and
+  **nowhere else** — the user asked explicitly that it never be pushed. The old one is dead but
+  still readable in history at `a46edfd`; `RESUME.md` no longer names any id.
+- Mojang approval has to be requested again for the new app, with the repo URL rather than
+  `localhost`.
+- The instance detail screen (`#screen-instance`) shows its identity and launches correctly now,
+  but its mod list, session history and sizes are still the prototype fixture describing some other
+  instance. A screen that shows wrong data confidently.
 
 ## Sensible next steps
 
