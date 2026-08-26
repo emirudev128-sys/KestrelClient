@@ -2120,7 +2120,7 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
       if (k === 'Escape' || k === 'ArrowUp') { e.preventDefault(); card.focus(); }
       return;
     }
-    if (k === 'Enter' || k === ' ') { e.preventDefault(); location.hash = '#instance'; return; }
+    if (k === 'Enter' || k === ' ') { e.preventDefault(); openInstance(card.closest('[data-id]') || card); return; }
     if (k === 'ArrowDown') {
       var go = card.querySelector('.card-go');
       if (go) { e.preventDefault(); go.focus(); }
@@ -2138,8 +2138,37 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
   document.addEventListener('click', function (e) {
     var t = e.target.closest ? e.target.closest('.card-art, .card-id') : null;
     if (!t || (e.target.closest && e.target.closest('.card-acts'))) return;
-    location.hash = '#instance';
+    openInstance(t.closest('[data-id]'));
   });
+
+  /* ── OPENING AN INSTANCE MEANS OPENING THAT INSTANCE ──────────────────────
+     #screen-instance is prototype markup describing one particular instance,
+     and until now nothing told it which one had been clicked. So every card
+     opened a screen headed "1.21.4 Fabric" whose Play button fell through to
+     currentInstance() and launched 1.21.4 Fabric — whatever you had clicked.
+
+     The screen is stamped with the id and its IDENTITY is repainted: the
+     title, the name field and the version. The rest of it — the mod list, the
+     session history, the sizes — is still the fixture, and that is the honest
+     state of this screen rather than something this change pretends to fix.
+     What matters here is that it can no longer say one name and launch
+     another. */
+  function openInstance(holder) {
+    var screen = document.getElementById('screen-instance');
+    if (screen && holder && holder.getAttribute('data-id')) {
+      var name = ((holder.querySelector('.card-name') || holder.querySelector('.td-name') || {}).textContent || '')
+        .trim().split('\n')[0];
+      screen.setAttribute('data-id', holder.getAttribute('data-id'));
+      if (name) {
+        screen.setAttribute('aria-label', name);
+        var title = screen.querySelector('.pane-title');
+        if (title) title.textContent = name;
+        var field = screen.querySelector('#instName');
+        if (field) field.value = name;
+      }
+    }
+    location.hash = '#instance';
+  }
 
   /* ── the Recent strip's scroll controls ────────────────────────────────── */
   var stripBox = document.getElementById('playStrip');
