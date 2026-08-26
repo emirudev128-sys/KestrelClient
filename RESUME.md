@@ -57,3 +57,42 @@ and nothing else.
   exchange will 403 until they do. Form: https://aka.ms/mce-reviewappid
 - The client mod (the Lunar-style in-game tweaks) does not exist. The Tweaks and HUD screens
   configure it; something has to draw it. That is a Fabric mod, a separate Java project.
+
+## Where things stand (last session)
+
+**Repo:** https://github.com/emirudev128-sys/KestrelClient — pushed, one commit, `main`.
+**Licence:** all rights reserved, source-available for verification only. NOT open source.
+Do not reintroduce MIT. The history was deliberately squashed so no MIT commit exists.
+
+**Azure client id** `c71ceea0-f906-468f-bad6-962ccbf3e835` is in `auth.config.json`, which is
+**gitignored**. `auth.config.example.json` ships with a placeholder. Sign-in reaches Microsoft and
+Xbox Live but the final Minecraft exchange will 403 until Mojang approves the app at
+https://aka.ms/mce-reviewappid — the review form was submitted with `localhost` first and should be
+resubmitted with the repo URL.
+
+**Never commit:** the real `auth.config.json`, anything under `%APPDATA%/Kestrel`, the user's
+Minecraft username (fixture data says `Player`), or local paths containing the Windows username.
+`shots/`, `ref/`, `variants/` and `kestrel.html` are gitignored; `docs/screenshots/` is not, and
+holds the three README images.
+
+**Demo data:** nine instances named by version and mod setup (`1.21.4 Fabric`, `1.20.1 Fabric copy`,
+`1.8.9 Forge`, `All the Mods 10`, …). They are deliberately repetitive — the `1.20.1` pair is
+identical but for the name. Do not make each one demonstrate a different feature; that failure mode
+has been caught five times and is written up in `docs/rubric.md`.
+
+## Sensible next steps
+
+1. **The client mod** — the Lunar-style in-game tweaks. The Tweaks and HUD screens configure it,
+   but nothing draws it yet. That is a Fabric mod, a separate Java project, and it is the piece
+   that makes this a *client* rather than a launcher.
+2. **Modern Forge / NeoForge** — needs the installer processors run (a JVM per processor, and a
+   JDK not a JRE). See "THE FORGE PROBLEM" in `mc/loaders.js`.
+3. **Packaging** — electron-builder for an installer to distribute from a website.
+4. **Modpack install** — `.mrpack` and CurseForge zips.
+
+## How to work on this
+
+Small change: build it, run `node tools/clicktest.mjs`, fix, re-test. ~15-20 min.
+Anything touching the design system, a new component, or multiple window sizes: 40 min, say so up
+front. Do not attach a judging pass unless asked. Always run `bash tools/scan.sh` after touching
+`main.js`, `preload.js` or anything in `mc/`.
