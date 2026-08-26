@@ -24,6 +24,7 @@
 
 const path = require('node:path');
 const crypto = require('node:crypto');
+const fsp = require('node:fs/promises');
 const { Layout } = require('./paths');
 const net = require('./net');
 const { Installer } = require('./install');
@@ -32,6 +33,7 @@ const launcher = require('./launch');
 const V = require('./version');
 const loaders = require('./loaders');
 const { ContentStore } = require('./content');
+const modpack = require('./modpack');
 
 /* the offline UUID every launcher agrees on: a version-3 (MD5) UUID over
    "OfflinePlayer:<name>", which is what the vanilla server computes too, so
@@ -67,6 +69,7 @@ class Game {
     this.content = new ContentStore(this.L, this.log);
     this.sessions = new Map();     /* sessionId -> Session */
     this.jobs = new Map();         /* instanceId -> {signal} */
+    this.packs = new Map();        /* planId -> {at, plan, buf} for a .mrpack */
   }
 
   /* ── versions ───────────────────────────────────────────────────────── */
@@ -414,6 +417,78 @@ class Game {
     const inst = this.store.get(instanceId);
     if (!inst) throw new Error('no such instance');
     return await this.content.plan(instanceId, projectId, kind, inst);
+  }
+
+  /* ── modpacks ───────────────────────────────────────────────────────────
+     A .mrpack becomes a NEW INSTANCE, which is why this is not a contentPlan
+     with a different kind: the pack names its own Minecraft version and its
+     own loader, so it decides what the instance is rather than being
+     installed into one that already exists.
+
+     THE RENDERER NAMES A PLAN, NOT A FILE — the same rule as content.js.
+     packPlan reads a .mrpack off disk and returns what is in it; packInstall
+     takes the id it was given back and nothing else, so there is no path
+     where the page hands the main process a url or a path to write to. */
+  async packPlan(file) {
+    const buf = await fsp.readFile(String(file));
+    const plan = modpack.plan(buf);
+    const id = crypto.randomBytes(16).toString('hex');
+    /* the zip is held with the plan: install needs it again for the
+       overrides tree, and re-reading the file later would mean installing
+       something other than what was planned if it changed underneath */
+    this.packs.set(id, { at: Date.now(), plan: plan, buf: buf });
+    for (const [k, v] of this.packs) if (Date.now() - v.at > 10 * 60 * 1000) this.packs.delete(k);
+    this.log('modpack: ' + plan.name + ' ' + plan.versionId + ' — Minecraft ' + plan.mc
+      + (plan.loader ? ', ' + plan.loader + ' ' + plan.loaderVersion : ', no loader')
+      + ', ' + plan.files.length + ' files, ' + plan.overrides + ' overrides');
+    return {
+      id: id, name: plan.name, versionId: plan.versionId, summary: plan.summary,
+      mc: plan.mc, loader: plan.loader, loaderVersion: plan.loaderVersion,
+      files: plan.files.length, overrides: plan.overrides,
+      bytes: plan.bytes, skipped: plan.skipped
+    };
+  }
+
+  async packInstall(planId, name) {
+    const held = this.packs.get(String(planId || ''));
+    if (!held) throw new Error('that pack plan has expired; open the file again and confirm the list');
+    const p = held.plan;
+
+    /* the instance first, so there is somewhere for the files to go */
+    const rec = this.store.create({
+      name: String(name || p.name).slice(0, 64),
+      ver: p.mc,
+      loader: p.loader ? loaders.NAMES[p.loader] : '',
+      lver: p.loaderVersion || ''
+    });
+    const report = this._reporter(rec.id);
+    try {
+      /* the loader, then vanilla + its libraries, then the pack's own files.
+         install() is what runs the modern-Forge processors, so a NeoForge
+         pack gets its patched jar here without this knowing about any of it. */
+      if (p.loader) {
+        report({ phase: 'preparing', done: 0, total: 0, bytes: 0, totalBytes: 0, file: 'installing ' + p.loader });
+        await this.installLoader(rec.id, loaders.NAMES[p.loader], p.loaderVersion || '');
+      }
+      await this.install(rec.id, '');
+      const r = await modpack.install({
+        plan: p, buf: held.buf, gameDir: this.L.gameDir(rec.id),
+        log: this.log,
+        onProgress: (s) => report({ phase: 'installing', done: s.done, total: s.total, bytes: 0, totalBytes: 0, file: s.file })
+      });
+      this.store.update(rec.id, { mods: r.files });
+      this.packs.delete(String(planId));
+      this.log('modpack: ' + p.name + ' installed as ' + rec.id + ' — ' + r.files + ' files, ' + r.overrides + ' overrides');
+      return Object.assign({ instance: rec.id, name: rec.name }, r);
+    } catch (e) {
+      /* A HALF-WRITTEN INSTANCE IS WORSE THAN NONE.  The pack decides what
+         the instance is, so if it could not be built there is nothing here
+         the user chose to keep — unlike a failed content install, where the
+         instance existed before and still does. */
+      this.store.remove(rec.id);
+      this.log('modpack: ' + p.name + ' failed, and the half-built instance was removed — ' + e.message);
+      throw e;
+    }
   }
   /* the same coalesced reporter the installer uses, so a mod download draws
      on the same progress bar a version download does */

@@ -113,7 +113,12 @@ patched client jar they build is what gets launched. NeoForge 1.21.1 has been in
 on this machine. `mc/processors.js` is honest at the top about what running somebody else's jars
 costs, and about the one processor that reaches the network on its own.
 
-Not finished: modpacks are not installable. See `RESUME.md`.
+Modrinth modpacks install: open a `.mrpack` and it becomes a new instance — the pack's own
+Minecraft version, its loader, every file sha1-checked against the manifest, and its `overrides`
+tree extracted with the same zip-slip guard everything else uses. The download urls in a pack are
+written by its author, so they go through the same exact-match host allow-list as everything else.
+
+Not finished: CurseForge `.zip` packs. See `RESUME.md`.
 
 ## Licence
 

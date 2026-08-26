@@ -101,5 +101,47 @@ catch (e) { check('remove refuses a path', true, e.message); }
 try { await game.contentInstall(INST, 'not-a-plan'); check('unknown plan refused', false); }
 catch (e) { check('unknown plan refused', true, e.message); }
 
+/* ── 9. modpacks ───────────────────────────────────────────────────────────
+   A .mrpack is a manifest of urls and paths written by a pack author, so the
+   assertions that matter are the two that make it safe to read one: the host
+   of every download is on an exact-match list, and every file carries a
+   digest.  The pack is fetched live, like everything else in this file.    */
+console.log('\n9. modpacks');
+const modpack = require('../mc/modpack.js');
+const net = require('../mc/net.js');
+
+check('a foreign host is refused', (function () {
+  try { modpack.hostOk('https://example.com/evil.jar'); return false; } catch (e) { return /not a host/.test(e.message); }
+})());
+check('plain http is refused', (function () {
+  try { modpack.hostOk('http://cdn.modrinth.com/a.jar'); return false; } catch (e) { return true; }
+})());
+check('the CDN is allowed', modpack.hostOk('https://cdn.modrinth.com/a.jar') === 'https://cdn.modrinth.com/a.jar');
+
+const packVersions = await net.getJSON('https://api.modrinth.com/v2/project/fabulously-optimized/version');
+const packFile = packVersions[0].files.find((f) => f.primary) || packVersions[0].files[0];
+const packBuf = await net.getBuffer(packFile.url, 64 * 1024 * 1024);
+const p = modpack.plan(packBuf);
+console.log('   ' + p.name + ' ' + p.versionId + ' — Minecraft ' + p.mc + ', ' + p.loader + ' ' + p.loaderVersion);
+check('the pack names a Minecraft version', !!p.mc, p.mc);
+check('and exactly one loader this build installs', !!p.loader, p.loader + ' ' + p.loaderVersion);
+check('every file carries a sha1', p.files.length > 0 && p.files.every((f) => /^[0-9a-f]{40}$/.test(f.sha1)),
+  p.files.length + ' files');
+check('every download is on the allow-listed CDN',
+  p.files.every((f) => new URL(f.url).hostname === 'cdn.modrinth.com'));
+check('the overrides tree is counted before anything is written', p.overrides > 0, p.overrides + ' files');
+/* THE BUG THAT FOUND THE SPACE GUARD.  unzip.js refused every entry with a
+   space in its name while reporting it as a null byte, so this pack would
+   not install at all.  Asserted properly rather than as `check(..., true)`:
+   the entry is located in the archive first, so the check fails if the pack
+   ever stops containing one — a test that cannot fail proves nothing. */
+const { safeJoin } = require('../mc/unzip.js');
+const spacedEntry = modpack.readIndex(packBuf).zip
+  .filter((e) => !e.name.endsWith('/') && e.name.startsWith('overrides/') && e.name.includes(' '))
+  .map((e) => e.name)[0];
+check('the pack really does contain an override with a space in its name',
+  !!spacedEntry, spacedEntry || 'none found — this assertion is now vacuous');
+check('and safeJoin accepts it', !!spacedEntry && !!safeJoin('C:\\k', spacedEntry));
+
 console.log('\n' + (fails ? fails + ' FAILURES' : 'all checks passed'));
 process.exit(fails ? 1 : 0);

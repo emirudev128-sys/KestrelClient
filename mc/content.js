@@ -65,7 +65,13 @@ const KINDS = {
 };
 function kindOf(k) {
   const s = String(k || 'mod').toLowerCase().trim();
-  if (s === 'modpack') throw new Error('modpacks are not installed by this build: a .mrpack carries its own download list and an overrides tree, and half an implementation of that is worse than none');
+  /* A MODPACK IS NOT CONTENT, and this is not a "not yet".  A .mrpack names
+     its own Minecraft version and its own loader, so it decides what an
+     instance IS; installing one into an instance that already exists would
+     mean either overwriting the version the user chose or ignoring the one
+     the pack requires. It goes through Game.packPlan / packInstall, which
+     makes a new instance from it. See mc/modpack.js. */
+  if (s === 'modpack') throw new Error('a modpack makes an instance rather than going into one — open the .mrpack from Import and it will be installed as a new instance');
   if (!Object.prototype.hasOwnProperty.call(KINDS, s)) throw new Error('not a content type this build installs: ' + s.slice(0, 32));
   return s;
 }
