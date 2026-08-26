@@ -37,6 +37,7 @@ const net = require('./net');
 const V = require('./version');
 const { entries, readEntry } = require('./unzip');
 const { isVersionId } = require('./paths');
+const processors = require('./processors');
 
 /* ── the allow-list this file adds ────────────────────────────────────────
    Named, exact, and no wildcards.  install.js unions this into its own.   */
@@ -267,6 +268,7 @@ async function installLoader(o) {
   let json = null;
   let partial = false;
   let extraFiles = [];
+  let installerName = '';
 
   if (k === 'fabric' || k === 'quilt') {
     const base = k === 'fabric' ? FABRIC_META : QUILT_META;
@@ -323,10 +325,19 @@ async function installLoader(o) {
          executing Java, which this build does not do. */
       const procs = (inst.install && Array.isArray(inst.install.processors)) ? inst.install.processors.length : 0;
       if (procs) {
+        /* STILL PARTIAL AT THIS POINT, and not as a hedge.  The processors
+           patch the vanilla client jar, so they cannot run until it is on
+           disk — and installLoader is called BEFORE the vanilla install,
+           because the profile is what names the libraries the install has to
+           fetch.  So the honest state on leaving here is "profile written,
+           not yet launchable", exactly as before; what changed is that it is
+           now temporary.  mc/processors.js runs them at the end of the
+           install and the flag is cleared there.  installerName is how a
+           later session finds the jar they come out of. */
         partial = true;
+        installerName = path.basename(dest);
         notes.push(NAMES[k] + ' ' + key + ' ships ' + procs + ' installer processors that binary-patch the client jar. '
-          + 'This build reads the profile and fetches its libraries but does not execute them, so the merged version json '
-          + 'and classpath are correct and the instance is NOT launchable yet.');
+          + 'They run once the vanilla files are down, because that is what they patch.');
       }
     } else if (inst.install && inst.install.versionInfo) {
       /* LEGACY FORGE: 1.12.2 and older.  install_profile.json carries a whole
@@ -365,11 +376,52 @@ async function installLoader(o) {
   await fsp.mkdir(path.dirname(file), { recursive: true });
   await fsp.writeFile(file, JSON.stringify(json, null, 2));
   log('loader: wrote ' + id + '.json (' + (json.libraries || []).length + ' libraries)');
-  return { id: id, json: json, notes: notes, partial: partial, files: extraFiles, loader: NAMES[k], mc: mc };
+  return { id: id, json: json, notes: notes, partial: partial, files: extraFiles, loader: NAMES[k], mc: mc, installer: installerName };
+}
+
+/* ── THE SECOND HALF OF A MODERN FORGE INSTALL ─────────────────────────────
+   installLoader stops with the profile written and `partial` set, because the
+   processors patch the vanilla client jar and at that point there is no
+   vanilla client jar.  This is what runs once there is one.
+
+   It takes the installer by NAME rather than by path: it always lives in
+   cache/loaders, the caller got the name from the instance record, and a
+   record that stored absolute paths would be carrying somebody's user folder
+   around in it.  The jar is re-verified against the repository's published
+   digest before it is opened, because "it was verified when we downloaded it"
+   is a statement about a file that may have been sitting on disk since a
+   previous session.                                                        */
+async function completeModern(o) {
+  const L = o.layout;
+  const log = typeof o.log === 'function' ? o.log : function () {};
+  const name = path.basename(String(o.installerName || ''));
+  if (!name) throw new Error('there is no record of which installer this profile came from');
+
+  const dest = require('./paths').inside(L.cache, 'loaders', name);
+  const buf = await fsp.readFile(dest).catch(function () { return null; });
+  if (!buf) throw new Error('the installer this profile came from is no longer in the cache: ' + name);
+  if (buf.length > INSTALLER_CAP) throw new Error('that installer is implausibly large');
+
+  const inst = readInstaller(buf);
+  if (!inst.install || !Array.isArray(inst.install.processors) || !inst.install.processors.length) {
+    return { ran: 0, skipped: 0, checked: 0, unchecked: 0, produced: [] };
+  }
+  log('processors: ' + name + ' declares ' + inst.install.processors.length + ' of them');
+  return await processors.runProcessors({
+    layout: L,
+    profile: inst.install,
+    installerBuf: buf,
+    installerPath: dest,
+    mcJar: o.mcJar,
+    javaExe: o.javaExe,
+    side: 'client',
+    log: log,
+    onStep: o.onStep
+  });
 }
 
 module.exports = {
-  LOADER_HOSTS, NAMES, normalise, versionsFor, installLoader,
+  LOADER_HOSTS, NAMES, normalise, versionsFor, installLoader, completeModern,
   mavenVersions, mavenSha1, readInstaller, neoPrefix, byVersionDesc
 };
 

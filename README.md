@@ -108,9 +108,12 @@ about what came out — including that the developer's own Azure client id appea
 the archive or the executable, searched byte by byte. The installer has not itself been put through
 a clean install on a fresh machine.
 
-Not finished: modern Forge and NeoForge need their installer processors run (a JVM per processor);
-those installs are marked partial and refuse to launch rather than crashing. Modpacks are not
-installable. See `RESUME.md`.
+Modern Forge and NeoForge work: the installer's processors are run, a JVM per processor, and the
+patched client jar they build is what gets launched. NeoForge 1.21.1 has been installed and played
+on this machine. `mc/processors.js` is honest at the top about what running somebody else's jars
+costs, and about the one processor that reaches the network on its own.
+
+Not finished: modpacks are not installable. See `RESUME.md`.
 
 ## Licence
 

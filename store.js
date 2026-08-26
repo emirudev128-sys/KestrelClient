@@ -61,10 +61,19 @@ function clean(raw, id) {
        never by the renderer, and it still goes through the same version-id
        pattern in paths.js before it becomes a folder name.
        `pwarn` is non-empty when the loader install is known to be incomplete
-       — modern Forge's processors — so Play can refuse with the reason
-       rather than with a stack trace. */
+       — modern Forge's processors have not been run yet — so Play can refuse
+       with the reason rather than with a stack trace.  It is cleared when
+       they do run.
+       `pjar` is the FILE NAME, not the path, of the installer that produced
+       the profile: modern Forge's processors run after the vanilla install
+       rather than during installLoader (they patch the client jar, so it has
+       to exist first), and this is how a later run finds the installer they
+       came out of.  A name and not a path on purpose — it always lives in
+       cache/loaders, and a record that stored absolute paths would carry this
+       machine's user folder around inside it. */
     prof: str(r.prof, 64),
     pwarn: str(r.pwarn, 400),
+    pjar: str(r.pjar, 160),
     author: str(r.author, 64),
     mods: int(r.mods, 0, 100000),
     size: str(r.size, 32) || '327 MB',

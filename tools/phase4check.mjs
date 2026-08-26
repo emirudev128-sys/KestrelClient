@@ -212,7 +212,7 @@ if (want('install')) {
 }
 
 if (mode === 'modern') {
-  console.log('\nneoforge 1.21.1 — install only (Java 17/21 is not on this machine, so it is NOT launched)');
+  console.log('\nneoforge 1.21.1 — the profile, before the processors have run');
   const rec = await makeInstance('p4-neo-1211', 'P4 Neo 1211', '1.21.1', 'NeoForge');
   const game = new Game({ store: store, emit: () => {}, log: (l) => console.log('      · ' + l) });
   const li = await game.installLoader(rec.id, 'NeoForge', '');
@@ -226,13 +226,118 @@ if (mode === 'modern') {
     merged.libraries.length + ' libraries');
   ok('the parent asset index survived', !!(merged.assetIndex && merged.assetIndex.id), merged.assetIndex && merged.assetIndex.id);
   ok('java 21 is what it asks for', V.javaMajorFor(merged) === 21, String(V.javaMajorFor(merged)));
-  ok('it is honestly marked incomplete', li.partial === true && !!store.get(rec.id).pwarn);
+  ok('it is honestly marked incomplete before the processors run', li.partial === true && !!store.get(rec.id).pwarn);
+  ok('and it remembers which installer they come out of', !!store.get(rec.id).pjar, store.get(rec.id).pjar);
   const built = buildArgs({
     vjson: merged, layout: L, id: li.id, gameDir: L.gameDir(rec.id),
     session: { name: 'KestrelTest', uuid: '0'.repeat(8) + '-0000-0000-0000-' + '0'.repeat(12), accessToken: '0', userType: 'legacy' }
   });
   console.log('      classpath: ' + built.classpath.length + ' entries; jvm args: ' + built.jvm.length);
   ok('every classpath entry is inside the data root', built.classpath.every((c) => c.startsWith(path.resolve(root) + path.sep)));
+
+  /* ── THE PROCESSORS, ACTUALLY RUN ───────────────────────────────────────
+     This is the whole point of the phase: the profile above has been correct
+     for a while, and the instance still could not launch, because the file
+     its classpath names had never been built.  install() downloads vanilla
+     and then runs them. */
+  console.log('\nneoforge 1.21.1 — the installer processors');
+  const summary = await game.install(rec.id, '');
+  process.stdout.write('\n');
+  console.log('      install: ' + summary.total + ' files, ' + summary.skipped + ' verified, ' + summary.fetched
+    + ' fetched, ' + summary.bytes + ' bytes, ' + summary.ms + 'ms');
+  const pr = summary.processors;
+  ok('the processors ran', !!pr && pr.ran > 0, pr ? pr.ran + ' ran, ' + pr.skipped + ' server-side skipped' : 'none reported');
+  /* NOT "outputs were verified".  NeoForge 21.1.248 declares no `outputs`
+     digest on any processor, so there is nothing to check them against and
+     saying otherwise would be a test that asserts a fiction.  What is
+     asserted is that the count is honest about which case it is in. */
+  ok('the output digest count is honest about what was checkable',
+    !!pr && (pr.checked > 0 || (pr.checked === 0 && pr.unchecked > 0)),
+    pr ? pr.checked + ' digest-checked, ' + pr.unchecked + ' with no digest published' : '');
+  /* THE ARTEFACT ITSELF, on disk, and not via the processors' own report —
+     the report is derived from the same run that would be lying. */
+  const patchedJar = L.library('net/neoforged/neoforge/21.1.248/neoforge-21.1.248-client.jar');
+  const pst = fs.existsSync(patchedJar) ? fs.statSync(patchedJar) : null;
+  ok('the patched client jar is on disk and not empty', !!pst && pst.size > 0,
+    pst ? (pst.size / 1048576).toFixed(1) + ' MB' : 'absent');
+  ok('and the run reported producing it', !!pr && pr.produced.some((f) => /neoforge-.*-client\.jar$/.test(f)),
+    pr ? pr.produced.join(' ') : '');
+  ok('the instance is no longer marked incomplete', !store.get(rec.id).pwarn);
+
+  /* the claim that actually matters: every file the launch command names now
+     exists.  That is the difference between "the profile is right" and "it
+     will start". */
+  const after = buildArgs({
+    vjson: await inst.resolve(li.id, 0), layout: L, id: li.id, gameDir: L.gameDir(rec.id),
+    session: { name: 'KestrelTest', uuid: '0'.repeat(8) + '-0000-0000-0000-' + '0'.repeat(12), accessToken: '0', userType: 'legacy' }
+  });
+  const missing = after.classpath.filter((c) => !fs.existsSync(c));
+  ok('every entry on the launch classpath now exists', missing.length === 0,
+    missing.length ? missing.length + ' missing, e.g. ' + path.basename(missing[0]) : after.classpath.length + ' entries');
+
+  /* ── AND THEN IT ACTUALLY RUNS ──────────────────────────────────────────
+     Every assertion above is about files being present and correct, and a
+     launcher can pass all of them and still not start the game.  This is the
+     one that cannot be satisfied by a well-formed profile: NeoForge's own
+     ModLauncher has to come up on the patched jar the processors built. */
+  console.log('\nneoforge 1.21.1 — launch');
+  const nlines = [];
+  let nstarted = null;
+  const g3 = new Game({
+    store: store, log: (l) => console.log('      · ' + l),
+    emit: (ch, p) => {
+      if (ch === 'game:log') { nlines.push(p.line); if (nlines.length < 200) console.log('      | ' + p.line.slice(0, 150)); }
+      if (ch === 'game:started') nstarted = p;
+    }
+  });
+  const t3 = Date.now();
+  const nr = await g3.play(rec.id, { offline: true, username: 'KestrelTest', maxMemMb: 2048 });
+  console.log('      launched pid ' + nr.pid + ' on Java ' + nr.java.version + ' in ' + (Date.now() - t3) + 'ms');
+  await new Promise((res) => setTimeout(res, 60000));
+  const nall = nlines.join('\n');
+  ok('Play no longer refuses with LOADER_INCOMPLETE', !!nr.pid);
+  ok('the process started', !!nstarted && !!nr.pid);
+  ok('NeoForge loaded', /ModLauncher|neoforge|FML|Loading Minecraft/i.test(nall),
+    (nall.match(/(ModLauncher[^\n]*|Loading Minecraft[^\n]*)/i) || [''])[0].slice(0, 110));
+  ok('the game reached its own startup',
+    /Setting user:|LWJGL Version|Backend library|OpenAL initialized|Narrator library|Reloading ResourceManager/i.test(nall),
+    (nall.match(/(Setting user:|LWJGL Version[^\n]*|Backend library[^\n]*)/i) || [''])[0].slice(0, 90));
+  ok('no ClassNotFound / NoSuchMethod on the patched jar',
+    !/ClassNotFoundException|NoSuchMethodError|NoClassDefFoundError/.test(nall));
+  console.log('      ' + nlines.length + ' log lines in 60s');
+  g3.killAll();
+  await new Promise((res) => setTimeout(res, 1500));
+}
+
+if (mode === 'modern') {
+  /* THE OTHER HALF OF THE PHASE.  NeoForge and modern Forge take the same
+     road but they are not the same file: Forge 1.20.1 declares `outputs` on
+     two of its ten processors and NeoForge declares none on any of its, so
+     this is the case that actually exercises the digest check, and running
+     only NeoForge would leave that code never having verified anything. */
+  console.log('\nforge 1.20.1 — modern path, and the one that publishes output digests');
+  const rec = await makeInstance('p4-forge-1201', 'P4 Forge 1201', '1.20.1', 'Forge');
+  const game = new Game({ store: store, emit: () => {}, log: (l) => console.log('      · ' + l) });
+  const li = await game.installLoader(rec.id, 'Forge', '');
+  console.log('      profile: ' + li.id + '   mainClass ' + li.mainClass + '   partial=' + li.partial);
+  ok('modern Forge is marked incomplete until the processors run', li.partial === true);
+  const summary = await game.install(rec.id, '');
+  process.stdout.write('\n');
+  console.log('      install: ' + summary.total + ' files, ' + summary.fetched + ' fetched, ' + summary.ms + 'ms');
+  const pr = summary.processors;
+  ok('its processors ran', !!pr && pr.ran > 0, pr ? pr.ran + ' ran, ' + pr.skipped + ' server-side skipped' : 'none');
+  ok('and here the declared output digests DID get checked', !!pr && pr.checked > 0,
+    pr ? pr.checked + ' digest-checked, ' + pr.unchecked + ' without one' : '');
+  ok('the patched client jar is on disk', !!pr && !!pr.patched && fs.existsSync(pr.patched),
+    pr && pr.patched ? path.basename(pr.patched) : 'absent');
+  ok('the instance is no longer marked incomplete', !store.get(rec.id).pwarn);
+  const built1201 = buildArgs({
+    vjson: await new Installer(L, () => {}).resolve(li.id, 0), layout: L, id: li.id, gameDir: L.gameDir(rec.id),
+    session: { name: 'KestrelTest', uuid: '0'.repeat(8) + '-0000-0000-0000-' + '0'.repeat(12), accessToken: '0', userType: 'legacy' }
+  });
+  const gone = built1201.classpath.filter((c) => !fs.existsSync(c));
+  ok('every entry on its launch classpath exists', gone.length === 0,
+    gone.length ? gone.length + ' missing, e.g. ' + path.basename(gone[0]) : built1201.classpath.length + ' entries');
 }
 
 if (mode === 'modern') {
