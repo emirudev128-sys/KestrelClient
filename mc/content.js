@@ -51,7 +51,6 @@ const { CONTENT_FOLDERS } = require('./paths');
 const CONTENT_HOSTS = ['api.modrinth.com', 'cdn.modrinth.com'];
 
 const API = 'https://api.modrinth.com/v2';
-const UA = net.UA;
 const FILE_CAP = 512 * 1024 * 1024;   /* the largest thing on Modrinth is a fat modpack jar; this is slack */
 const MAX_DEPS = 64;                  /* a dependency graph deeper than this is a bug or an attack */
 const PLAN_TTL = 10 * 60 * 1000;
