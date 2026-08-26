@@ -18,6 +18,12 @@ package dev.kestrel.hud;
  * <p><b>ARGB, NOT RGB.</b> Minecraft's fill and text calls take the alpha in
  * the top byte, and forgetting it is how you get an invisible element and a
  * confusing half hour. The constants below carry theirs.
+ *
+ * <p><b>THE MENU USES THE SAME NAMES AS THE HUD.</b> Right Shift opens a
+ * screen that configures these plates, and it is drawn out of this same file
+ * rather than a second palette beside it — a configuration screen in a
+ * different grey from the thing it configures is the exact failure this class
+ * exists to prevent, one level up.
  */
 final class Paint {
 
@@ -48,4 +54,53 @@ final class Paint {
        gap inside a plate separates words, this one separates objects, and
        reading them as the same distance makes two plates look like one. */
     static final int STACK_GAP = 2;
+
+    /* ══ THE MENU ═════════════════════════════════════════════════════════
+       Right Shift opens a screen over the world. Three references were read
+       before any of this was drawn — Lunar Client's mod list, Sodium's
+       settings, NoRisk's Host World dialog — and NoRisk's is the one this
+       follows, because its square-cornered panel with thin borders and
+       generous line height is already how Kestrel's own screens look. See
+       docs/hud-menu-design.md, and the screenshots it points at. */
+
+    /* THE PANEL IS NEARLY OPAQUE where the HUD plate is not. A plate has to
+       let the world through — it sits on top of the game you are playing. A
+       menu has stopped the game being the thing you are looking at, and a
+       translucent menu over a moving world is a menu you have to squint at.
+       --s-pane #12151B at 95%. */
+    static final int PANEL = 0xF212151B;
+    /* --s-well #040609 at 55%: enough to push the world back without hiding
+       the HUD elements drawn around the panel, which are the things being
+       configured and have to stay visible. Lunar blurs instead; blur is a
+       shader pass whose API has moved in every recent Minecraft version, and
+       a fill that works is worth more than a blur that compiles today. */
+    static final int SCRIM = 0x8C040609;
+
+    static final int RAISE = 0xFF1B1F25;   /* --s-raise: a control ON the panel */
+    static final int HOVER = 0xFF25292E;   /* --s-hover */
+    static final int ACTIVE = 0xFF2F3339;  /* --s-active, the pressed state */
+    static final int REGION = 0xFF2D3137;  /* --line-region: divides sections */
+    static final int DEFINE = 0xFF474B51;  /* --line-define: outlines a control */
+    static final int BODY = 0xFFCDCFD3;    /* --body: a row's label */
+    static final int MUTE = 0xFF646669;    /* --mute: a row that cannot act */
+    static final int FAINT = 0xFF484A4D;   /* --faint: a disabled outline */
+    static final int ON_GO = 0xFF0A0E13;   /* --on-go: ink ON the accent */
+    static final int GO_HI = 0xFFF5C64E;   /* --go-hi: the accent, hovered */
+
+    /* ── the layout editor ────────────────────────────────────────────────
+       A snap guide is the accent at low alpha: it appears for as long as a
+       drag is held against a line and has to read as a hint rather than as
+       part of the HUD. The selection outline is the accent at full strength,
+       because exactly one thing is selected and it should be obvious which. */
+    static final int GUIDE = 0x99E3B439;
+    static final int SELECT = 0xFFE3B439;
+    static final int GRABBED = 0x33E3B439;  /* a wash over the box being moved */
+
+    /* ── menu metrics ─────────────────────────────────────────────────────
+       Stated once here rather than as numbers inside the screens: two screens
+       draw rows and both have to agree what a row is, or the layout editor's
+       hint bar sits at a different rhythm from the menu above it. */
+    static final int ROW = 14;             /* a row of the list */
+    static final int PANEL_PAD = 8;        /* panel edge to its content */
+    static final int SECTION_GAP = 7;      /* above a section heading */
 }
