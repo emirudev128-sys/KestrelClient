@@ -18,6 +18,7 @@ build step. **It downloads and launches Minecraft, installs mod loaders, and ins
 | **Dependencies** | REI planned 3 and installed 3, each hash-checked |
 | **Disable** | `.jar.disabled` — next launch logged 56 mods instead of 57 |
 | **Accounts** | Microsoft device-code flow, real client id, tokens never leave the main process |
+| **Client mod** | `kestrel-hud` builds and loads in 1.21.4 Fabric — `Kestrel HUD: 2 element(s) configured` |
 | **Modpacks** | Fabulously Optimized (.mrpack) planned and installed — 50 files sha1-checked, 55 overrides |
 | **Packaging** | `Kestrel-0.5.0-Setup.exe`, 106 MB. The packaged app launches and runs out of its own asar. |
 
@@ -32,6 +33,7 @@ build step. **It downloads and launches Minecraft, installs mod loaders, and ins
     mc/            paths, net, unzip, version, install, java, launch, loaders, content,
                    processors (Forge/NeoForge installer processors), modpack (.mrpack)
     ui/            the renderer - index.html, styles/, scripts/, icons/
+    client-mod/    the Fabric mod: reads config/kestrel-hud.json, draws the HUD
     electron-builder.yml  what ships, as an allow-list, and the NSIS options
     build/         icon.ico and icon.png, generated from the mark in the icon set
 
@@ -59,8 +61,13 @@ and nothing else.
 - **Update checking reports but does not apply** — installing the newer version replaces the file.
 - **Mojang has not approved the Azure application** for the Minecraft scopes, so the final token
   exchange will 403 until they do. Form: https://aka.ms/mce-reviewappid
-- The client mod (the Lunar-style in-game tweaks) does not exist. The Tweaks and HUD screens
-  configure it; something has to draw it. That is a Fabric mod, a separate Java project.
+- The client mod EXISTS but the launcher does not feed it yet. `client-mod/` builds a Fabric mod
+  that reads `<instance>/config/kestrel-hud.json` and draws from it; nothing writes that file, so
+  the HUD screen still controls nothing. That is the next piece and it is launcher-side JS.
+- Only two HUD elements are drawn (fps, coords). The HUD screen models twelve.
+- The HUD has not been seen ON SCREEN. It draws only in a world, and nothing can drive Minecraft
+  into one unattended — what is proved is that it loads, parses its config and registers its
+  render callback without crashing.
 
 ## Where things stand (last session)
 
@@ -147,10 +154,9 @@ has been caught five times and is written up in `docs/rubric.md`.
 
 ## Sensible next steps
 
-1. **The client mod** — the Lunar-style in-game tweaks. The Tweaks and HUD screens configure it,
-   but nothing draws it yet. That is a Fabric mod, a separate Java project, and it is the piece
-   that makes this a *client* rather than a launcher. Needs a JDK; this machine has a Java 8 JRE
-   and no `javac`.
+1. **Feed the client mod.** `client-mod/` exists and works; the launcher has to write
+   `<instance>/config/kestrel-hud.json` from the HUD screen's state, which today lives only in the
+   renderer as undo state and is persisted nowhere. Then the remaining ten elements.
 2. **CurseForge packs** — `.mrpack` is done; their `.zip` export is a different manifest, needs an
    API key, and has a redistribution story worth reading before it is written.
 3. **Code signing** — SmartScreen warns on every first run until the binary is signed by a
