@@ -1,9 +1,12 @@
 # The in-game menu — what the references actually showed
 
-Written from three screenshots the user supplied as inspiration for the Right Shift menu. The
-images themselves live in `ref/hud-menu/`, which is **gitignored** — they are other people's
-product screenshots and do not belong in a public repository. This file is the part that survives,
-and it is what Phase 2 should be built against.
+**LOOK AT THE SCREENSHOTS, NOT AT THIS FILE.** They are in **`hud-inspos/`** at the repository root
+— gitignored, because they are other people's product UI and do not belong in a public repo, but
+present on the machine. Open them first; this file is a reading of them, and a reading is not the
+thing. Where the two disagree, the images win.
+
+What follows is what was taken from each, so the reasoning behind Phase 2 is recoverable if the
+folder is ever empty.
 
 The brief was: *"inspired by mod menus and Lunar Client"*, *"open, close, configure them in game"*,
 *"HUD moving elements freely"*, *"don't forget magnet while moving"*.
@@ -40,7 +43,10 @@ A left rail of sections (`General`, `Quality`, `Performance`, `Advanced`) and a 
   `3x`, a checkbox, `Unlimited`. No sliders competing with numbers.
 - Sections are headed inline (`◆ General`, `◆ Quality`) inside the scrolling pane rather than being
   separate screens.
-- `Apply` and `Done` sit bottom-right, with **Apply disabled until something changes.**
+- `Apply` and `Done` sit bottom-right, with **Apply greyed out until something changes.**
+- The left rail groups by MOD, not by section: `Sodium 0.8.2` with General/Quality/Performance/
+  Advanced under it, then `Iris 1.10.4` with Shader Packs/Settings under that. Each mod brings its
+  own sections. A search field spans the top.
 
 **What to take:** the label-left / value-right row, which is exactly what Kestrel's own settings
 screens already do; and disabling a commit button until there is something to commit.

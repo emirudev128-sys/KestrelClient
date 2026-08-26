@@ -46,10 +46,10 @@ element list with toggles, free dragging with **magnet snapping**, and the confi
 (corners, font, compass, anchors). Phase 1 — sharp/rounded, two fonts, compass, and collision
 stacking — is done and pushed.
 
-**Read `docs/hud-menu-design.md` first.** It is the written analysis of the three screenshots the
-user gave as inspiration — Lunar Client's mod list, Sodium's settings, NoRisk's Host World dialog —
-and what to take from each. The images themselves are in `ref/hud-menu/`, which is gitignored,
-because they are other people's product screenshots.
+**Look at `hud-inspos/` first** — the three reference screenshots the user supplied: Lunar Client's
+mod list, Sodium's settings, NoRisk's Host World dialog. The folder is gitignored (other people's
+product UI) but is on the machine. `docs/hud-menu-design.md` is a written reading of them and what
+to take from each; the images are the source, the notes are not.
 
 **The design decision that is still open, and must be settled before writing the menu.** The mod
 currently only READS the config; the launcher rewrites it on every launch from `settings.hud`. The

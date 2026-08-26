@@ -28,3 +28,6 @@ desktop.ini
 
 # packaged output
 dist/
+
+# in-game menu reference screenshots — other people's product UI
+hud-inspos/
