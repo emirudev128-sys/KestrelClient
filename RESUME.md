@@ -17,6 +17,7 @@ build step. **It downloads and launches Minecraft, installs mod loaders, and ins
 | **Dependencies** | REI planned 3 and installed 3, each hash-checked |
 | **Disable** | `.jar.disabled` — next launch logged 56 mods instead of 57 |
 | **Accounts** | Microsoft device-code flow, real client id, tokens never leave the main process |
+| **Packaging** | `Kestrel-0.4.2-Setup.exe`, 106 MB. The packaged app launches and runs out of its own asar. |
 
 ## Architecture
 
@@ -28,6 +29,8 @@ build step. **It downloads and launches Minecraft, installs mod loaders, and ins
     auth-config.js client id resolution + the Azure/Mojang procedure
     mc/            paths, net, unzip, version, install, java, launch, loaders, content
     ui/            the renderer - index.html, styles/, scripts/, icons/
+    electron-builder.yml  what ships, as an allow-list, and the NSIS options
+    build/         icon.ico and icon.png, generated from the mark in the icon set
 
 **Security posture.** `contextIsolation`, `nodeIntegration: false`, `sandbox: true`, a CSP with no
 inline script and no eval, all permissions denied, an exact-match download host allow-list, SHA
@@ -41,6 +44,7 @@ and no token on a command line (the launcher refuses rather than leaking on Java
     node tools/phase3check.mjs    download/launch security assertions (24)
     node tools/phase4check.mjs    loader merge rules (60)
     node tools/phase5check.mjs    content install
+    node tools/packcheck.mjs      what the packaged build actually contains (47)
     bash  tools/scan.sh           Electronegativity + semgrep + npm audit + token containment
 
 Stronger than any of those: run it with **Wireshark** open. It talks to Microsoft, Mojang, Modrinth
@@ -59,6 +63,28 @@ and nothing else.
   configure it; something has to draw it. That is a Fabric mod, a separate Java project.
 
 ## Where things stand (last session)
+
+**Packaging is done.** `npm run icon && npm run dist` produces `dist/Kestrel-0.4.2-Setup.exe`, 106 MB,
+per-user NSIS, unsigned. `electron-builder.yml` holds the whole configuration and the reasoning.
+The packaged build was launched and inspected live over CDP rather than assumed: the renderer loads
+from `app.asar/ui/index.html`, `brand.js` imports as an ES module from *inside* the archive (the
+`readFileSync` fallback in `main.js` was never reached), 969 CSS rules resolve, and the instance
+list renders from the real store. What was NOT done: the installer has not been run through a clean
+install on a fresh machine, and nothing is code signed.
+
+**`package.json` was wrong on three counts** and is fixed. It declared `"license": "ISC"` against an
+all-rights-reserved LICENSE, it was still named `mc-launcher`, and it carried Playwright as a
+*runtime* dependency — which would have put the whole browser automation stack inside the
+installer. There are now **zero runtime dependencies**, and `packcheck` asserts it.
+
+**The version is in two places now** — `package.json` (electron-builder reads it) and `BRAND.version`
+(the UI reads it). Bump both. `packcheck` fails if they diverge, which is the only reason two
+places is tolerable.
+
+**A packaged build deliberately carries no client id** and starts in demo mode. `auth.config.json`
+is excluded from `files:`, so an installer built from this repo cannot leak it. To sign in from an
+installed copy, put `auth.config.json` in `%APPDATA%\Kestrel\` — `auth-config.js` looks there
+first, which is what that ordering was always for.
 
 **Repo:** https://github.com/emirudev128-sys/KestrelClient — pushed, one commit, `main`.
 **Licence:** all rights reserved, source-available for verification only. NOT open source.
@@ -84,11 +110,21 @@ has been caught five times and is written up in `docs/rubric.md`.
 
 1. **The client mod** — the Lunar-style in-game tweaks. The Tweaks and HUD screens configure it,
    but nothing draws it yet. That is a Fabric mod, a separate Java project, and it is the piece
-   that makes this a *client* rather than a launcher.
+   that makes this a *client* rather than a launcher. Needs a JDK; this machine has a Java 8 JRE
+   and no `javac`.
 2. **Modern Forge / NeoForge** — needs the installer processors run (a JVM per processor, and a
    JDK not a JRE). See "THE FORGE PROBLEM" in `mc/loaders.js`.
-3. **Packaging** — electron-builder for an installer to distribute from a website.
-4. **Modpack install** — `.mrpack` and CurseForge zips.
+3. **Modpack install** — `.mrpack` first: it is a zip holding an index of hashed URLs, which is
+   exactly the shape `mc/net.js` and the host allow-list already handle. CurseForge second; it
+   needs an API key and has a different shape.
+4. **The User-Agent is wrong, and shipping makes it matter.** `mc/net.js:32` sends
+   `Kestrel/1.0 (+https://github.com/kestrel-launcher)`. That org does not exist, and `1.0` is not
+   `0.4.2`. `BRAND.repo` derives to `github.com/kestrel-launcher/kestrel`, also not real — the repo
+   is `github.com/emirudev128-sys/KestrelClient`. Modrinth asks clients to identify themselves with
+   a working URL, and now that there is an installer, every installed copy sends this on every
+   request. Left alone deliberately: which URL to publish is a decision, not a rename to derive.
+5. **Code signing** — SmartScreen warns on every first run until the binary is signed by a
+   certificate with reputation behind it. That is a purchase, not a config change.
 
 ## How to work on this
 

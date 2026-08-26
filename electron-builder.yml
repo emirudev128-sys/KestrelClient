@@ -1,0 +1,95 @@
+# =============================================================================
+# THE PACKAGED BUILD.
+#
+#   npm run icon    build/icon.ico from the brand mark in ui/icons/symbols.svg
+#   npm run pack    dist/win-unpacked/Kestrel.exe  — no installer, seconds
+#   npm run dist    dist/Kestrel-<version>-Setup.exe
+#   npm run packcheck   assert about what actually came out
+#
+# WHAT GOES IN IS NAMED, ONE BY ONE.  `files` below is an allow-list, not
+# "everything except the scratch".  It is the same argument mc/loaders.js
+# makes about download hosts: a deny-list is a list of the mistakes you have
+# already thought of, and the cost of forgetting one here is shipping a file
+# to strangers.  A new source directory must be added here or it will not be
+# in the build — that is the failure this shape is chosen for, because a
+# missing file is loud and an extra one is silent.
+#
+# THE THREE THAT MUST NOT SHIP, and why each is more than tidiness:
+#   auth.config.json   the real Azure application id.  Gitignored for the
+#                      same reason, and an installer is a wider distribution
+#                      than a repository.  A packaged build reads its client
+#                      id from %APPDATA%/Kestrel/auth.config.json instead —
+#                      see auth-config.js, which already prefers that path.
+#   tools/             the harness drives the app with Playwright.  It has no
+#                      business in a user's install, and it would drag a
+#                      browser automation stack in behind it.
+#   ref/ shots/ variants/ kestrel.html   build history, screenshots and a
+#                      generated single-file dump.  Megabytes of nothing.
+# =============================================================================
+
+appId: io.github.emirudev128sys.kestrel
+productName: Kestrel
+copyright: Copyright (c) 2026 emirudev128-sys. All rights reserved.
+
+directories:
+  output: dist
+  buildResources: build
+
+# One archive, so the install is a file count of 1 rather than 800.  Nothing
+# here needs to be on disk as a real file: no native module, no child process
+# spawned out of the app directory.  Java is found on the system (mc/java.js)
+# and the game runs out of %APPDATA%, both outside the asar entirely.
+asar: true
+
+files:
+  # the main process and everything it requires
+  - main.js
+  - preload.js
+  - store.js
+  - accounts.js
+  - msauth.js
+  - auth-config.js
+  - mc/**/*
+  # the renderer
+  - ui/**/*
+  # shipped so a user can configure their own client id; the placeholder one
+  - auth.config.example.json
+  - LICENSE
+  # belt and braces.  The allow-list above already fails to match these, but
+  # the one that matters is stated rather than left to be inferred.
+  - '!auth.config.json'
+  - '!**/.tmp-*'
+
+# Nothing to unpack: there are no runtime dependencies at all.  `npm run
+# packcheck` asserts that, because "zero dependencies" is a claim this
+# project makes and a claim is worth an assertion.
+
+win:
+  icon: build/icon.ico
+  artifactName: ${productName}-${version}-Setup.${ext}
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  # A real installer with a visible directory choice, not a one-click that
+  # decides for the user.  perMachine stays false: installing per-user needs
+  # no administrator, and a launcher has no reason to ask for one.
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Kestrel
+  uninstallDisplayName: Kestrel ${version}
+  # THE LINE TO NOT GET WRONG.  %APPDATA%/Kestrel is where instances live:
+  # the downloaded game, the mods, the worlds.  It is named for the product,
+  # so the uninstaller's "clean up app data" would match it exactly and take
+  # a user's saves with it.  An uninstall removes the launcher.  It does not
+  # remove the game.
+  deleteAppDataOnUninstall: false
+
+# No release upload.  A build is a file on this machine until somebody
+# deliberately puts it somewhere.
+publish: null

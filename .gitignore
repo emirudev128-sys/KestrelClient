@@ -25,3 +25,6 @@ desktop.ini
 
 # scratch
 .tmp-*
+
+# packaged output
+dist/
