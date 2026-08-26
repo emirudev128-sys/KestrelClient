@@ -29,7 +29,32 @@ const crypto = require('node:crypto');
 const { pipeline } = require('node:stream/promises');
 const { Readable } = require('node:stream');
 
-const UA = 'Kestrel/1.0 (+https://github.com/kestrel-launcher)';
+/* ── WHAT THIS CLIENT CALLS ITSELF ────────────────────────────────────────
+   Modrinth asks clients to identify themselves with a contact URL that
+   works, and Mojang and the loader mavens see this header too.  The real
+   string is built in ui/scripts/brand.js from the product name, the version
+   and the repository, and handed here by main.js through Game — so the
+   version cannot go stale the way `Kestrel/1.0` did while the product was on
+   0.4.2, and there is one place to change if the repository moves.
+
+   THE FALLBACK IS DEPLOYED, not decorative: tools/phase3check.mjs and the
+   other harness scripts require this module directly, with no Electron and
+   no brand to hand it one.  It names the repository (the only line here that
+   duplicates brand.js, and the reason setUserAgent exists is to keep that
+   duplication down to a URL) and deliberately carries NO version, because a
+   version written twice is a version that will disagree with itself.      */
+const FALLBACK_UA = 'Kestrel (+https://github.com/emirudev128-sys/KestrelClient)';
+let UA = FALLBACK_UA;
+
+/* Called once, from Game's constructor.  Anything that is not a non-empty
+   string leaves the fallback in place rather than sending "undefined". */
+function setUserAgent(ua) {
+  const s = String(ua == null ? '' : ua).trim();
+  if (s) UA = s;
+  return UA;
+}
+function userAgent() { return UA; }
+
 const JSON_CAP = 32 * 1024 * 1024;   /* the 1.21 asset index is ~400 KB; this is slack, not a target */
 
 function httpsOnly(url) {
@@ -196,4 +221,4 @@ async function pool(items, limit, worker, signal) {
   if (failed) throw failed;
 }
 
-module.exports = { getJSON, getBuffer, download, verified, fileSha1, sha1Of, pool, httpsOnly, UA };
+module.exports = { getJSON, getBuffer, download, verified, fileSha1, sha1Of, pool, httpsOnly, setUserAgent, userAgent };

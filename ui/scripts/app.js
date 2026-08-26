@@ -3736,7 +3736,7 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
      ═══════════════════════════════════════════════════════════════════════ */
 
   var MR = 'https://api.modrinth.com/v2';
-  var BROWSE_UA = BRAND.name + '/' + BRAND.version + ' (' + BRAND.repo + ')';
+  var BROWSE_UA = BRAND.userAgent;   /* built in brand.js; mc/net.js is handed the same string */
   var BROWSE_TIMEOUT = 6000;
 
   /* the five things Modrinth carries: facet, label, noun, and the folder

@@ -25,6 +25,7 @@
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { Layout } = require('./paths');
+const net = require('./net');
 const { Installer } = require('./install');
 const java = require('./java');
 const launcher = require('./launch');
@@ -55,6 +56,12 @@ class Game {
     this.emit = typeof o.emit === 'function' ? o.emit : function () {};
     this.log = typeof o.log === 'function' ? o.log : function () {};
     this.accounts = o.accounts || null;
+    /* WHAT WE CALL OURSELVES ON THE WIRE.  main.js has the brand — it is the
+       only thing that has read brand.js — so it hands the string down here
+       rather than mc/ growing a second opinion about the product name.  A
+       missing or empty value leaves net.js on its fallback; see the header
+       there. */
+    net.setUserAgent(o.userAgent);
     this.L = new Layout(o.store.root).ensure();
     this.installer = new Installer(this.L, this.log);
     this.content = new ContentStore(this.L, this.log);

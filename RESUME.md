@@ -41,7 +41,7 @@ and no token on a command line (the launcher refuses rather than leaking on Java
 
     node tools/clicktest.mjs      every control, does it respond
     node tools/audit.mjs ui       the design standard
-    node tools/phase3check.mjs    download/launch security assertions (24)
+    node tools/phase3check.mjs    download/launch security assertions (33)
     node tools/phase4check.mjs    loader merge rules (60)
     node tools/phase5check.mjs    content install
     node tools/packcheck.mjs      what the packaged build actually contains (47)
@@ -86,6 +86,16 @@ is excluded from `files:`, so an installer built from this repo cannot leak it. 
 installed copy, put `auth.config.json` in `%APPDATA%\Kestrel\` — `auth-config.js` looks there
 first, which is what that ordering was always for.
 
+**The User-Agent is fixed.** It used to send `Kestrel/1.0 (+https://github.com/kestrel-launcher)` —
+an organisation that does not exist, and a version the product had not been on for months. It now
+sends `Kestrel/0.4.2 (+https://github.com/emirudev128-sys/KestrelClient)`, built once by
+`BRAND.userAgent` in `brand.js` and handed to `mc/net.js` through `Game` at startup, so the version
+cannot drift again. `BRAND.repo` still derives its repository half from the product name — the
+rename-is-one-edit property survives — but the OWNER is written out, because a GitHub account is not
+a product name and deriving it is what produced a plausible URL nobody could visit. `net.js` keeps a
+versionless fallback for the harness scripts, which require it with no Electron and no brand.
+Nine assertions in `phase3check` cover it, including the wiring, not just the pieces.
+
 **Repo:** https://github.com/emirudev128-sys/KestrelClient — pushed, one commit, `main`.
 **Licence:** all rights reserved, source-available for verification only. NOT open source.
 Do not reintroduce MIT. The history was deliberately squashed so no MIT commit exists.
@@ -117,13 +127,7 @@ has been caught five times and is written up in `docs/rubric.md`.
 3. **Modpack install** — `.mrpack` first: it is a zip holding an index of hashed URLs, which is
    exactly the shape `mc/net.js` and the host allow-list already handle. CurseForge second; it
    needs an API key and has a different shape.
-4. **The User-Agent is wrong, and shipping makes it matter.** `mc/net.js:32` sends
-   `Kestrel/1.0 (+https://github.com/kestrel-launcher)`. That org does not exist, and `1.0` is not
-   `0.4.2`. `BRAND.repo` derives to `github.com/kestrel-launcher/kestrel`, also not real — the repo
-   is `github.com/emirudev128-sys/KestrelClient`. Modrinth asks clients to identify themselves with
-   a working URL, and now that there is an installer, every installed copy sends this on every
-   request. Left alone deliberately: which URL to publish is a decision, not a rename to derive.
-5. **Code signing** — SmartScreen warns on every first run until the binary is signed by a
+4. **Code signing** — SmartScreen warns on every first run until the binary is signed by a
    certificate with reputation behind it. That is a purchase, not a config change.
 
 ## How to work on this

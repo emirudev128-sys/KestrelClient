@@ -30,8 +30,22 @@ export const BRAND = {
   /* the repository slug and the Windows Credential Manager entry both carry
      the name, and both are visible in the UI, so both derive from it */
   get slug() { return this.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'); },
-  get repo() { return 'github.com/' + this.slug + '-launcher/' + this.slug; },
-  get credential() { return this.name + '/msa'; }
+  /* THE OWNER IS THE ONE HALF THAT CANNOT DERIVE.  It is a GitHub account
+     name, and an account does not rename when a product does — so it is
+     written out, and only the repository half derives from the name.  The
+     earlier form built the whole thing out of the name and produced
+     github.com/kestrel-launcher/kestrel, which reads plausibly and does not
+     exist; it went out as a User-Agent on every request for as long as it
+     was wrong.  A derived value that nobody can visit is worse than a typed
+     one, because it looks maintained. */
+  get repo() { return 'github.com/emirudev128-sys/' + this.name.replace(/[^A-Za-z0-9]+/g, '') + 'Client'; },
+  get credential() { return this.name + '/msa'; },
+  /* WHAT THIS CLIENT CALLS ITSELF ON THE WIRE, in one place, because it is
+     the same three values every time and they must not drift apart.  Modrinth
+     asks clients to identify themselves with a contact URL that works; Mojang
+     and the loader mavens see this too.  mc/net.js is handed this string at
+     startup rather than keeping its own copy. */
+  get userAgent() { return this.name + '/' + this.version + ' (+https://' + this.repo + ')'; }
 };
 
 /* A Windows user profile path, built rather than typed. -------------------- */
