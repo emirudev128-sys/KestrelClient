@@ -2168,8 +2168,16 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
   function openFolderFrom(anchor, which, fallbackPath) {
     var holder = anchor && anchor.closest ? anchor.closest('[data-id]') : null;
     var open = document.getElementById('screen-instance');
+    /* THREE PLACES TO ASK, IN ORDER OF HOW SPECIFIC THEY ARE: the control's
+       own row or card, the instance screen that is open, and failing both the
+       current instance. The last one matters more than it looks — arriving at
+       a screen any way other than clicking a card leaves no id anywhere, and
+       without it every one of these buttons silently fell back to describing
+       itself, which is exactly what the user kept hitting. */
+    var cur = currentInstance();
     var id = (holder && holder.getAttribute('data-id'))
-      || (open && open.getAttribute('data-id')) || '';
+      || (open && open.getAttribute('data-id'))
+      || (cur && cur.id) || '';
     if (host && host.openInstanceFolder && id) {
       host.openInstanceFolder(id, which || '').then(function (opened) {
         say('Opened ' + fig(opened) + '.');
@@ -5490,8 +5498,10 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
          they fall back to the instance that was opened — which is what
          "the mods folder" means when you are looking at that instance. */
       var openScreen = document.getElementById('screen-instance');
+      var curInst = currentInstance();
       var instId = (holder && holder.getAttribute('data-id'))
         || (openScreen && openScreen.getAttribute('data-id'))
+        || (curInst && curInst.id)
         || '';
       var folder = sub ? sub.replace(/^\\/, '') : '';
       if (host && host.openInstanceFolder && instId) {
