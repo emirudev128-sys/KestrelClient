@@ -152,7 +152,11 @@ public class KestrelHudClient implements ClientModInitializer {
 
         int x = Paint.PAD_X;
         for (Run r : runs) {
-            ctx.drawTextWithShadow(client.textRenderer, r.text, x, Paint.PAD_Y, r.colour);
+            /* NO SHADOW. A drop shadow exists to hold text apart from
+               whatever is behind it, and the plate already does that — over a
+               plate the shadow is just a smeared second copy of every glyph,
+               which at this size reads as blur rather than depth. */
+            ctx.drawText(client.textRenderer, r.text, x, Paint.PAD_Y, r.colour, false);
             x += client.textRenderer.getWidth(r.text) + Paint.GAP;
         }
         ctx.getMatrices().pop();

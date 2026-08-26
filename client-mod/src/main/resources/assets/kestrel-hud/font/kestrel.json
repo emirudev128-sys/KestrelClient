@@ -2,7 +2,7 @@
   "providers": [
     {
       "type": "ttf",
-      "file": "kestrel-hud:azeret-mono.ttf",
+      "file": "kestrel-hud:azeret-mono-bold.ttf",
       "shift": [0.0, 1.0],
       "size": 9.0,
       "oversample": 4.0,

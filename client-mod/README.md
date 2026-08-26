@@ -70,8 +70,18 @@ already states the rule — *"figure columns: mono, per the tabular rule; the
 face belongs to the column"* — and a HUD is nothing but machine values. The
 same rule that governs a column of numbers in the launcher governs these.
 
+**Weight.** The jar ships a static **Bold (700)** instance, cut from the
+variable font with `fontTools.varLib.instancer`. This matters more than it
+sounds: the variable file's default instance is **Thin (100)**, so a TTF
+provider pointed straight at it renders the lightest weight in the family —
+which is what the first build did. Minecraft's own `withBold` is synthetic, a
+second copy of each glyph offset by a pixel, and at 9px that reads as blur
+rather than weight. A real 700 cut is sharper and smaller.
+
 **Licence.** Azeret Mono is under the SIL Open Font License 1.1, and `OFL.txt`
-travels with it inside the jar as that licence requires. It is third-party and
+travels with it inside the jar as that licence requires. Its copyright line
+declares no Reserved Font Name, so instancing it is a permitted modification
+and the result may still be called Azeret Mono. It is third-party and
 keeps its own terms; the rest of this repository is all rights reserved. The
 OFL permits bundling in this way, including in a product that is not itself
 open source, and forbids selling the font on its own — which nothing here
