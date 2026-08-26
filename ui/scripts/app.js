@@ -1887,6 +1887,10 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
       + (d.author ? 'imported pack by ' + d.author : d.lver ? d.loader + ' ' + d.lver : d.loader);
     return ''
       + '<article class="card" role="listitem" tabindex="0" aria-label="' + esc(says) + '"'
+      /* THE CARD CARRIES THE ID, because the card is what gets clicked. Without
+         it every Play button on the grid fell back to whichever row the table
+         had marked current, so clicking any instance launched the first one. */
+      + (d.id ? ' data-id="' + esc(d.id) + '"' : '')
       + (d.current ? ' data-current="true"' : '') + '>'
       +   '<div class="card-art">'
       +     (d.art ? cover(d.art) : '<span class="card-mono mono" aria-hidden="true">' + esc(d.mono) + '</span>')
@@ -2070,6 +2074,7 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
       if (!el.classList.contains('tr')) continue;
 
       var d = readRow(el);
+      d.id = el.getAttribute('data-id') || '';
       all.push(card(d));
       if (d.current) continue;          /* the hero, and the first card */
 
@@ -2372,8 +2377,23 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     apply('failed');
   }
 
-  function startReal(offline) {
-    var inst = currentInstance();
+  /* WHICH INSTANCE A CLICK MEANT.  A Play button on a card or a row means
+     THAT instance; the hero button on #play has nothing under it and means
+     the current one. Resolving from the clicked element is the difference —
+     currentInstance() alone answered "the row marked current, or failing
+     that the first row in the table", so every card on the grid launched
+     whichever instance happened to be first. */
+  function clickedInstance(from) {
+    var el = from && from.closest ? from.closest('[data-id]') : null;
+    if (!el) return null;
+    var id = el.getAttribute('data-id');
+    if (!id) return null;
+    var nameEl = el.querySelector('.card-name') || el.querySelector('.td-name');
+    return { id: id, name: nameEl ? nameEl.textContent.trim().split('\n')[0] : id, ver: '' };
+  }
+
+  function startReal(offline, from) {
+    var inst = clickedInstance(from) || currentInstance();
     if (!inst || !inst.id) { say('This instance is not backed by a folder yet, so there is nothing to launch.'); return; }
     run.instance = inst.id;
     run.version = inst.ver || '';
@@ -2381,7 +2401,13 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     SCENARIOS.preparing.p = 2;
     SCENARIOS.preparing.sub = 'reading the version manifest';
     apply('preparing');
-    host.game.play(inst.id, { offline: true, version: inst.ver }).then(function (r) {
+    /* NO VERSION IS SENT. play() falls back to the version on the instance
+       RECORD, which is the truth; inst.ver came out of the table cell, and a
+       cell can be stale or belong to a different row than the id does. That
+       is not hypothetical — tools/bridgetest caught a launch going out as
+       instance "crystal-pvp" with version "1.8.9" while that instance is on
+       1.21.4, because the id and the version were read from two places. */
+    host.game.play(inst.id, { offline: true }).then(function (r) {
       run.session = r.session;
       SCENARIOS.running.sub = esc(inst.name) + ' · running ' + esc(r.version)
         + (r.offline ? ' <span class="kv-sub">offline</span>' : '');
@@ -2395,11 +2421,11 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     if (run.busy && !run.session) host.game.cancel(run.instance).catch(function () {});
   }
 
-  function onLaunch() {
+  function onLaunch(from) {
     var now = root.dataset.launch;
     var live = !!(host && host.game);
     if (now === 'idle' || now === 'error' || now === 'offline') {
-      if (live) startReal(true); else runSequence();
+      if (live) startReal(true, from); else runSequence();
     } else if (live) { stopReal(); }
     else { clearTimers(); apply('normal'); }
   }
@@ -2585,7 +2611,7 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     var actor = e.target.closest ? e.target.closest('[data-act]') : null;
     if (actor) {
       var act = actor.getAttribute('data-act');
-      if (act === 'launch') { e.preventDefault(); closeMenu(); onLaunch(); return; }
+      if (act === 'launch') { e.preventDefault(); closeMenu(); onLaunch(actor); return; }
       if (act === 'launch-offline') {
         e.preventDefault(); closeMenu();
         if (host && host.game) startReal(true); else apply('offline');
