@@ -55,6 +55,28 @@ so. This one reads a file at startup and draws text. A server cannot tell it is 
 class at load time and is the usual reason a mod breaks on a Minecraft update; nothing here needs
 one yet, and the day something does, that is a decision to take deliberately.
 
+## The typeface
+
+The HUD draws in **Azeret Mono**, shipped inside the jar at
+`assets/kestrel-hud/font/` and declared as a Minecraft TTF font provider.
+
+**Why a font at all.** Minecraft's own is a bitmap: one weight, one size, and
+digits whose width changes with their value — so a frame counter jitters
+sideways while you read it. Monospace fixes that, because `240` and `111` are
+the same width.
+
+**Why this one.** It is the launcher's `--font-mono`. `ui/styles/app.css`
+already states the rule — *"figure columns: mono, per the tabular rule; the
+face belongs to the column"* — and a HUD is nothing but machine values. The
+same rule that governs a column of numbers in the launcher governs these.
+
+**Licence.** Azeret Mono is under the SIL Open Font License 1.1, and `OFL.txt`
+travels with it inside the jar as that licence requires. It is third-party and
+keeps its own terms; the rest of this repository is all rights reserved. The
+OFL permits bundling in this way, including in a product that is not itself
+open source, and forbids selling the font on its own — which nothing here
+does.
+
 ## State
 
 Two elements — `fps` and `coords`. The launcher's HUD screen models twelve.

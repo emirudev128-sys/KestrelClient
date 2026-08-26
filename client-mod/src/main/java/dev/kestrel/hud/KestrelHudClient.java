@@ -6,6 +6,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,6 +32,25 @@ public class KestrelHudClient implements ClientModInitializer {
     public static final String MOD_ID = "kestrel-hud";
     public static final Logger LOG = LoggerFactory.getLogger(MOD_ID);
 
+    /* ── THE FACE ──────────────────────────────────────────────────────────
+       Minecraft's own font is a bitmap: one weight, one size, and digits that
+       change width as they change value, so a frame counter jitters sideways
+       while you read it.
+
+       This ships Azeret Mono, which is the launcher's --font-mono. That is
+       not a preference — ui/styles/app.css states the rule as "figure
+       columns: mono, per the tabular rule; the face belongs to the column",
+       and a HUD is nothing BUT machine values. Monospace also fixes the
+       jitter, because 240 and 111 are the same width.
+
+       Declared in assets/kestrel-hud/font/kestrel.json and applied per run of
+       text; the vanilla font is still there for anything that wants it. */
+    private static final Identifier FONT = Identifier.of(MOD_ID, "kestrel");
+
+    private static Text styled(String s) {
+        return Text.literal(s).styled(function -> function.withFont(FONT));
+    }
+
     private HudConfig config;
 
     @Override
@@ -42,9 +62,9 @@ public class KestrelHudClient implements ClientModInitializer {
 
     /** one run of text in one colour; an element is a few of these in a row */
     private static final class Run {
-        final String text;
+        final Text text;
         final int colour;
-        Run(String text, int colour) { this.text = text; this.colour = colour; }
+        Run(String text, int colour) { this.text = styled(text); this.colour = colour; }
     }
 
     private void draw(DrawContext ctx, Object tickCounter) {
@@ -132,7 +152,7 @@ public class KestrelHudClient implements ClientModInitializer {
 
         int x = Paint.PAD_X;
         for (Run r : runs) {
-            ctx.drawTextWithShadow(client.textRenderer, Text.literal(r.text), x, Paint.PAD_Y, r.colour);
+            ctx.drawTextWithShadow(client.textRenderer, r.text, x, Paint.PAD_Y, r.colour);
             x += client.textRenderer.getWidth(r.text) + Paint.GAP;
         }
         ctx.getMatrices().pop();

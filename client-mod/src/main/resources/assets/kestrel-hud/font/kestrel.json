@@ -1,0 +1,12 @@
+{
+  "providers": [
+    {
+      "type": "ttf",
+      "file": "kestrel-hud:azeret-mono.ttf",
+      "shift": [0.0, 1.0],
+      "size": 9.0,
+      "oversample": 4.0,
+      "skip": ""
+    }
+  ]
+}
