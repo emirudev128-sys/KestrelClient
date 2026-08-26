@@ -50,6 +50,7 @@ and no token on a command line (the launcher refuses rather than leaking on Java
     node tools/phase4check.mjs    loader merge rules (60)
     node tools/phase4check.mjs modern   ... and really install + launch NeoForge 1.21.1 (83)
     node tools/phase5check.mjs    content install
+    node tools/hudcheck.mjs       the HUD contract across markup, JS and Java (31)
     node tools/packcheck.mjs      what the packaged build actually contains (47)
     bash  tools/scan.sh           Electronegativity + semgrep + npm audit + token containment
 
@@ -61,10 +62,11 @@ and nothing else.
 - **Update checking reports but does not apply** — installing the newer version replaces the file.
 - **Mojang has not approved the Azure application** for the Minecraft scopes, so the final token
   exchange will 403 until they do. Form: https://aka.ms/mce-reviewappid
-- The client mod EXISTS but the launcher does not feed it yet. `client-mod/` builds a Fabric mod
-  that reads `<instance>/config/kestrel-hud.json` and draws from it; nothing writes that file, so
-  the HUD screen still controls nothing. That is the next piece and it is launcher-side JS.
-- Only two HUD elements are drawn (fps, coords). The HUD screen models twelve.
+- The HUD screen's state is still not PERSISTED. `mc/hud.js` writes the config on every launch
+  from `settings.hud`, and validates it properly — but the renderer never saves its layout there,
+  so `settings.hud` is empty and the mod falls back to its own defaults. The remaining work is one
+  `host.settings.set({hud})` in the HUD screen's save path.
+- Only two HUD elements are drawn (fps, coords). The screen models eleven.
 - The HUD has not been seen ON SCREEN. It draws only in a world, and nothing can drive Minecraft
   into one unattended — what is proved is that it loads, parses its config and registers its
   render callback without crashing.
@@ -154,9 +156,10 @@ has been caught five times and is written up in `docs/rubric.md`.
 
 ## Sensible next steps
 
-1. **Feed the client mod.** `client-mod/` exists and works; the launcher has to write
-   `<instance>/config/kestrel-hud.json` from the HUD screen's state, which today lives only in the
-   renderer as undo state and is persisted nowhere. Then the remaining ten elements.
+1. **Persist the HUD screen's layout.** Everything downstream is done: `mc/hud.js` validates and
+   writes `config/kestrel-hud.json` on every launch, and the mod reads it. The renderer just never
+   saves — its layout lives in `ST` as undo state and dies with the screen. Then the other nine
+   elements in the mod.
 2. **CurseForge packs** — `.mrpack` is done; their `.zip` export is a different manifest, needs an
    API key, and has a redistribution story worth reading before it is written.
 3. **Code signing** — SmartScreen warns on every first run until the binary is signed by a

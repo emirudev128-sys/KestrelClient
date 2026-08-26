@@ -14,44 +14,80 @@ import java.util.Map;
  * {@code <instance>/config/kestrel-hud.json}, written by the launcher and
  * read by this mod.
  *
- * <p><b>THIS MOD HAS NO SETTINGS SCREEN AND IS NOT GOING TO GET ONE.</b> Two
- * places to change one setting is how they end up disagreeing, and the
- * launcher already has the better screen for it — it can show a preview at a
- * real window size without the game running. So this side reads and never
- * writes.
+ * <pre>
+ * {
+ *   "version": 1,
+ *   "elements": {
+ *     "fps": { "on": true, "anchor": "tl", "x": 2.6, "y": 4.2, "scale": 1 }
+ *   }
+ * }
+ * </pre>
  *
- * <p><b>A MISSING OR BROKEN FILE IS NOT AN ERROR.</b> The mod is installed
- * into instances the launcher has never written a HUD config for, and a mod
- * that crashed the game because a config was absent would be a worse
- * failure than the one it was preventing. Absent means defaults; unparseable
- * means defaults and a line in the log saying so.
+ * <p><b>THE ANCHOR IS NOT DECORATION.</b> An element is placed against one of
+ * nine anchors and offset from it by a percentage. Ignoring the anchor and
+ * treating x/y as an offset from the top-left would put every bottom-right
+ * element in the wrong corner while still looking like a position — which is
+ * the kind of wrong that reads as "the mod is broken" rather than "the mod
+ * ignored a field".
  *
- * <p>Parsed by hand rather than with Gson. The document is a flat map of
- * element names to three values, this needs to read it without dragging a
- * JSON library into a mod jar, and the parser refuses anything it does not
- * recognise instead of guessing — the same posture the launcher takes when
- * it reads somebody else's manifest.
+ * <p><b>PERCENTAGES, NOT PIXELS</b>, because the launcher does not know what
+ * resolution the game will open at.
+ *
+ * <p><b>VISIBILITY ARRIVES ALREADY RESOLVED.</b> The launcher groups elements
+ * into modules — "Armor status" owns five of them — and a player switches the
+ * module. That resolution happens on the launcher side and this file gets a
+ * plain {@code on} per element, so this mod never needs to know what a module
+ * is. It is a renderer; the settings screen is somebody else's job.
+ *
+ * <p><b>THIS MOD HAS NO SETTINGS SCREEN AND IS NOT GETTING ONE.</b> Two places
+ * to change one setting is how they end up disagreeing, and the launcher can
+ * preview a layout at a real window size without the game running.
+ *
+ * <p><b>A MISSING OR BROKEN FILE IS NOT AN ERROR.</b> This gets installed into
+ * instances the launcher has never written a config for, and crashing the
+ * game over an absent file would be a worse failure than the one it prevents.
+ * Absent means defaults; unparseable means defaults and a line in the log.
+ *
+ * <p>Parsed by hand rather than with Gson: the document is a flat map, this
+ * should not drag a JSON library into a mod jar, and the parser refuses what
+ * it does not recognise instead of guessing — the same posture the launcher
+ * takes when it reads somebody else's manifest.
  */
 public final class HudConfig {
 
-    /** One element's state. Position is a percentage of the screen, so a HUD
-     *  arranged at 1280x800 in the launcher lands in the same visual place on
-     *  a 2560x1440 monitor rather than in the top-left eighth of it. */
+    /** Where an element sits: one of nine anchors, a percentage offset from
+     *  it, and a scale. */
     public static final class Element {
         public final boolean on;
+        public final String anchor;
         public final double x;
         public final double y;
+        public final double scale;
 
-        Element(boolean on, double x, double y) {
+        Element(boolean on, String anchor, double x, double y, double scale) {
             this.on = on;
-            this.x = clamp(x);
-            this.y = clamp(y);
+            this.anchor = isAnchor(anchor) ? anchor : "tl";
+            this.x = clampPercent(x);
+            this.y = clampPercent(y);
+            this.scale = clampScale(scale);
         }
 
-        private static double clamp(double v) {
+        private static double clampPercent(double v) {
             if (Double.isNaN(v)) return 0.0;
             return v < 0.0 ? 0.0 : (v > 100.0 ? 100.0 : v);
         }
+
+        private static double clampScale(double v) {
+            if (Double.isNaN(v) || v <= 0.0) return 1.0;
+            return v < 0.25 ? 0.25 : (v > 4.0 ? 4.0 : v);
+        }
+    }
+
+    /** the nine the launcher writes, and nothing else is an anchor */
+    static boolean isAnchor(String a) {
+        if (a == null || a.length() != 2) return false;
+        char v = a.charAt(0), h = a.charAt(1);
+        return (v == 't' || v == 'm' || v == 'b') && (h == 'l' || h == 'c' || h == 'r');
     }
 
     private final Map<String, Element> elements;
@@ -60,33 +96,20 @@ public final class HudConfig {
         this.elements = elements;
     }
 
-    public Element get(String name) {
-        return elements.get(name);
-    }
+    public Element get(String name) { return elements.get(name); }
+    public int count() { return elements.size(); }
 
-    public boolean on(String name) {
-        Element e = elements.get(name);
-        return e != null && e.on;
-    }
-
-    public int count() {
-        return elements.size();
-    }
-
-    /** The defaults, used when there is no file. Deliberately sparse: an
-     *  instance nobody has configured should show the two things that are
-     *  useful without being asked for, not all twelve. */
+    /** The defaults, for an instance nobody has configured. Deliberately the
+     *  two that are useful without being asked for, not all eleven. */
     public static HudConfig defaults() {
         Map<String, Element> m = new LinkedHashMap<>();
-        m.put("fps", new Element(true, 1.0, 1.0));
-        m.put("coords", new Element(true, 1.0, 5.0));
+        m.put("fps", new Element(true, "tl", 2.6, 4.2, 1.0));
+        m.put("coords", new Element(true, "tl", 2.6, 8.4, 1.0));
         return new HudConfig(m);
     }
 
-    /**
-     * Reads {@code config/kestrel-hud.json} out of the run directory.
-     * Never throws: every failure path returns the defaults.
-     */
+    /** Reads {@code config/kestrel-hud.json} out of the run directory. Never
+     *  throws: every failure path returns the defaults. */
     public static HudConfig read(Path runDir) {
         Path file = runDir.resolve("config").resolve("kestrel-hud.json");
         String text;
@@ -101,7 +124,6 @@ public final class HudConfig {
             KestrelHudClient.LOG.warn("could not read kestrel-hud.json ({}); using defaults", e.toString());
             return defaults();
         }
-
         try {
             Map<String, Element> m = parse(text);
             if (m.isEmpty()) return defaults();
@@ -113,9 +135,8 @@ public final class HudConfig {
     }
 
     /* ── the parser ───────────────────────────────────────────────────────
-       Looks for  "name": { "on": true, "x": 1.0, "y": 5.0 }  and takes
-       nothing else out of the document. Anything it does not understand is
-       skipped rather than guessed at. */
+       Looks for  "name": { "on": .., "anchor": "..", "x": .., "y": .., "scale": .. }
+       and takes nothing else out of the document. */
     private static Map<String, Element> parse(String text) {
         Map<String, Element> out = new LinkedHashMap<>();
         int at = text.indexOf("\"elements\"");
@@ -124,11 +145,9 @@ public final class HudConfig {
         if (brace < 0) return out;
 
         int i = brace + 1;
-        int depth = 1;
-        while (i < text.length() && depth > 0) {
+        while (i < text.length()) {
             char c = text.charAt(i);
-            if (c == '}') { depth--; i++; continue; }
-            if (c == '{') { depth++; i++; continue; }
+            if (c == '}') break;
             if (c != '"') { i++; continue; }
 
             int nameEnd = text.indexOf('"', i + 1);
@@ -143,8 +162,10 @@ public final class HudConfig {
             if (isPlainName(name)) {
                 out.put(name, new Element(
                     boolOf(body, "on"),
-                    numOf(body, "x"),
-                    numOf(body, "y")));
+                    strOf(body, "anchor"),
+                    numOf(body, "x", 0.0),
+                    numOf(body, "y", 0.0),
+                    numOf(body, "scale", 1.0)));
             }
             i = close + 1;
         }
@@ -163,19 +184,21 @@ public final class HudConfig {
     }
 
     private static boolean boolOf(String body, String key) {
-        int k = body.indexOf('"' + key + '"');
-        if (k < 0) return false;
-        int colon = body.indexOf(':', k);
-        if (colon < 0) return false;
-        return body.regionMatches(true, skipSpace(body, colon + 1), "true", 0, 4);
+        int s = valueStart(body, key);
+        if (s < 0) return false;
+        return body.regionMatches(true, s, "true", 0, 4);
     }
 
-    private static double numOf(String body, String key) {
-        int k = body.indexOf('"' + key + '"');
-        if (k < 0) return 0.0;
-        int colon = body.indexOf(':', k);
-        if (colon < 0) return 0.0;
-        int s = skipSpace(body, colon + 1);
+    private static String strOf(String body, String key) {
+        int s = valueStart(body, key);
+        if (s < 0 || s >= body.length() || body.charAt(s) != '"') return "";
+        int e = body.indexOf('"', s + 1);
+        return e < 0 ? "" : body.substring(s + 1, e);
+    }
+
+    private static double numOf(String body, String key, double fallback) {
+        int s = valueStart(body, key);
+        if (s < 0) return fallback;
         int e = s;
         while (e < body.length()) {
             char c = body.charAt(e);
@@ -183,11 +206,16 @@ public final class HudConfig {
             else break;
         }
         try { return Double.parseDouble(body.substring(s, e)); }
-        catch (Exception ex) { return 0.0; }
+        catch (Exception ex) { return fallback; }
     }
 
-    private static int skipSpace(String s, int i) {
-        while (i < s.length() && Character.isWhitespace(s.charAt(i))) i++;
+    private static int valueStart(String body, String key) {
+        int k = body.indexOf('"' + key + '"');
+        if (k < 0) return -1;
+        int colon = body.indexOf(':', k);
+        if (colon < 0) return -1;
+        int i = colon + 1;
+        while (i < body.length() && Character.isWhitespace(body.charAt(i))) i++;
         return i;
     }
 }

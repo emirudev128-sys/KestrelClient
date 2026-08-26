@@ -34,6 +34,7 @@ const V = require('./version');
 const loaders = require('./loaders');
 const { ContentStore } = require('./content');
 const modpack = require('./modpack');
+const hud = require('./hud');
 
 /* the offline UUID every launcher agrees on: a version-3 (MD5) UUID over
    "OfflinePlayer:<name>", which is what the vanilla server computes too, so
@@ -289,6 +290,21 @@ class Game {
     /* 1. files */
     const summary = await this.install(instanceId, o.version ? mcVersion : '');
     const versionId = summary.id;
+
+    /* 1b. THE HUD CONFIG, for the client mod if it is installed.
+       Written on every launch rather than when the HUD screen changes: the
+       alternative is tracking which instances hold a stale copy, and there is
+       no version of that simpler than writing 300 bytes before a process that
+       takes twenty seconds to start. Costs nothing when the mod is absent —
+       an unread file in config/ is what every other mod's config also is. */
+    try {
+      await hud.write(this.L.gameDir(instanceId), this.store.readSettings().hud, this.log);
+    } catch (e) {
+      /* A HUD IS NOT A REASON NOT TO PLAY. If this cannot be written the mod
+         falls back to its own defaults, which is a worse HUD and not a
+         broken game, so it is logged and stepped over rather than thrown. */
+      this.log('hud: could not write the config (' + e.message + '); the mod will use its defaults');
+    }
 
     /* 2. java.  The merged profile inherits the parent's javaVersion, and the
        fallback table is asked about the Minecraft version rather than about
