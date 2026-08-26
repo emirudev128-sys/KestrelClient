@@ -44,4 +44,8 @@ final class Paint {
     static final int PAD_Y = 3;
     static final int LINE = 9;             /* the vanilla font's line height */
     static final int GAP = 3;              /* between a value and its label */
+    /* between two elements that would otherwise overlap. Wider than GAP: the
+       gap inside a plate separates words, this one separates objects, and
+       reading them as the same distance makes two plates look like one. */
+    static final int STACK_GAP = 2;
 }

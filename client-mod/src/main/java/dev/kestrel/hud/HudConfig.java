@@ -63,13 +63,16 @@ public final class HudConfig {
         public final double x;
         public final double y;
         public final double scale;
+        /** coords only; meaningless and ignored on every other element */
+        public final boolean compass;
 
-        Element(boolean on, String anchor, double x, double y, double scale) {
+        Element(boolean on, String anchor, double x, double y, double scale, boolean compass) {
             this.on = on;
             this.anchor = isAnchor(anchor) ? anchor : "tl";
             this.x = clampPercent(x);
             this.y = clampPercent(y);
             this.scale = clampScale(scale);
+            this.compass = compass;
         }
 
         private static double clampPercent(double v) {
@@ -90,10 +93,21 @@ public final class HudConfig {
         return (v == 't' || v == 'm' || v == 'b') && (h == 'l' || h == 'c' || h == 'r');
     }
 
+    /* ── THE TWO WHOLE-HUD CHOICES ────────────────────────────────────────
+       Corners and typeface apply to every element or to none: three sharp
+       plates and one rounded one is not a configuration, it is a mistake.
+       Both default to what the GAME already looks like — square corners and
+       the vanilla font — so an unconfigured HUD reads as part of Minecraft
+       rather than as something bolted on. */
+    public final boolean rounded;
+    public final boolean kestrelFont;
+
     private final Map<String, Element> elements;
 
-    private HudConfig(Map<String, Element> elements) {
+    private HudConfig(Map<String, Element> elements, boolean rounded, boolean kestrelFont) {
         this.elements = elements;
+        this.rounded = rounded;
+        this.kestrelFont = kestrelFont;
     }
 
     public Element get(String name) { return elements.get(name); }
@@ -103,9 +117,9 @@ public final class HudConfig {
      *  two that are useful without being asked for, not all eleven. */
     public static HudConfig defaults() {
         Map<String, Element> m = new LinkedHashMap<>();
-        m.put("fps", new Element(true, "tl", 2.6, 4.2, 1.0));
-        m.put("coords", new Element(true, "tl", 2.6, 8.4, 1.0));
-        return new HudConfig(m);
+        m.put("fps", new Element(true, "tl", 2.6, 4.2, 1.0, false));
+        m.put("coords", new Element(true, "tl", 2.6, 8.4, 1.0, false));
+        return new HudConfig(m, false, false);
     }
 
     /** Reads {@code config/kestrel-hud.json} out of the run directory. Never
@@ -127,7 +141,7 @@ public final class HudConfig {
         try {
             Map<String, Element> m = parse(text);
             if (m.isEmpty()) return defaults();
-            return new HudConfig(m);
+            return new HudConfig(m, styleIs(text, "corners", "rounded"), styleIs(text, "font", "kestrel"));
         } catch (Exception e) {
             KestrelHudClient.LOG.warn("kestrel-hud.json is not readable ({}); using defaults", e.getMessage());
             return defaults();
@@ -165,11 +179,24 @@ public final class HudConfig {
                     strOf(body, "anchor"),
                     numOf(body, "x", 0.0),
                     numOf(body, "y", 0.0),
-                    numOf(body, "scale", 1.0)));
+                    numOf(body, "scale", 1.0),
+                    boolOf(body, "compass")));
             }
             i = close + 1;
         }
         return out;
+    }
+
+    /* Reads one key out of the "style" object. Anything unreadable means the
+       default, which is the vanilla-looking one — a HUD that cannot parse its
+       own styling should look like the game, not like a guess. */
+    private static boolean styleIs(String text, String key, String wanted) {
+        int at = text.indexOf("\"style\"");
+        if (at < 0) return false;
+        int open = text.indexOf('{', at);
+        int close = open < 0 ? -1 : text.indexOf('}', open);
+        if (open < 0 || close < 0) return false;
+        return wanted.equals(strOf(text.substring(open + 1, close), key));
     }
 
     /** an element name is an identifier, and nothing else gets to be one */

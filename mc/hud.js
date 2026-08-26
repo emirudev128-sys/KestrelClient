@@ -73,6 +73,22 @@ const ELEMENTS = Object.keys(ELEMENT_MODULE);
 /* the nine the screen offers, and nothing else is an anchor */
 const ANCHORS = ['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br'];
 
+/* ── STYLE: THE TWO CHOICES THAT APPLY TO THE WHOLE HUD ───────────────────
+   Corners and typeface are not per-element. A HUD with three sharp plates
+   and one rounded one is not a configuration, it is a mistake, so these sit
+   at the top of the document and every element obeys them.
+
+   SHARP IS THE DEFAULT. Minecraft's own interface is square — every vanilla
+   panel, tooltip and inventory slot has a hard corner — so a square plate is
+   the one that looks like it belongs there. Rounded is offered because it is
+   what most external clients do and some people want it.
+
+   THE VANILLA FONT IS THE DEFAULT for the same reason: it is what the game
+   already looks like, and a HUD that matches costs a new player nothing to
+   read. Kestrel's own face is the deliberate choice, not the imposed one. */
+const CORNERS = ['sharp', 'rounded'];
+const FONTS = ['minecraft', 'kestrel'];
+
 /* A scale under a quarter is invisible and over four is a full-screen
    number; neither is a layout, so the range is stated rather than trusted. */
 const SCALE_MIN = 0.25;
@@ -102,6 +118,13 @@ function build(hud) {
   const src = (h.elements && typeof h.elements === 'object') ? h.elements : {};
   const mods = (h.modules && typeof h.modules === 'object') ? h.modules : {};
 
+  /* the whole-HUD choices, defaulted rather than assumed present */
+  const st = (h.style && typeof h.style === 'object') ? h.style : {};
+  const style = {
+    corners: CORNERS.indexOf(String(st.corners)) >= 0 ? String(st.corners) : 'sharp',
+    font: FONTS.indexOf(String(st.font)) >= 0 ? String(st.font) : 'minecraft'
+  };
+
   const elements = {};
   let dropped = 0;
 
@@ -121,10 +144,14 @@ function build(hud) {
       y: clampPercent(e.y),
       scale: clampScale(e.s)
     };
+    /* COMPASS IS COORDS' OWN OPTION, and only coords'. A flag that means
+       something on one element and nothing on the other ten belongs to that
+       element rather than to the document. */
+    if (name === 'coords') elements[name].compass = e.compass === true;
   }
 
   const on = Object.keys(elements).filter(function (k) { return elements[k].on; }).length;
-  return { doc: { version: 1, elements: elements }, dropped: dropped, count: Object.keys(elements).length, on: on };
+  return { doc: { version: 2, style: style, elements: elements }, dropped: dropped, count: Object.keys(elements).length, on: on };
 }
 
 /* Writes the file into an instance's game directory. gameDir comes from
@@ -144,4 +171,4 @@ async function write(gameDir, hud, log) {
   return built;
 }
 
-module.exports = { write, build, ELEMENTS, ELEMENT_MODULE, ANCHORS, FILE, SCALE_MIN, SCALE_MAX };
+module.exports = { write, build, ELEMENTS, ELEMENT_MODULE, ANCHORS, CORNERS, FONTS, FILE, SCALE_MIN, SCALE_MAX };

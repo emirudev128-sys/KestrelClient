@@ -128,7 +128,40 @@ ok('a module switched off turns its element off',
   built.doc.elements.boots.on === false, 'boots is owned by Armor status');
 ok('a module nobody has an opinion about counts as on',
   built.doc.elements.fps.on === true);
-ok('the document carries a version', built.doc.version === 1);
+ok('the document carries a version', built.doc.version === 2);
+
+
+/* the whole-HUD style choices */
+console.log('');
+console.log('the two style choices default to what the game already looks like');
+const plain = hud.build({ elements: { fps: { a: 'tl', x: 1, y: 1, s: 1 } } });
+ok('corners default to sharp', plain.doc.style.corners === 'sharp', plain.doc.style.corners);
+ok('the font defaults to Minecraft', plain.doc.style.font === 'minecraft', plain.doc.style.font);
+const chosen = hud.build({ style: { corners: 'rounded', font: 'kestrel' }, elements: {} });
+ok('rounded can be asked for', chosen.doc.style.corners === 'rounded');
+ok('and so can the Kestrel face', chosen.doc.style.font === 'kestrel');
+const junk = hud.build({ style: { corners: 'triangle', font: 'comic' }, elements: {} });
+ok('a corner shape that does not exist falls back to sharp', junk.doc.style.corners === 'sharp', junk.doc.style.corners);
+ok('a font that does not exist falls back to Minecraft', junk.doc.style.font === 'minecraft', junk.doc.style.font);
+
+console.log('');
+console.log('compass belongs to coords and to nothing else');
+const comp = hud.build({ elements: { coords: { a: 'tl', x: 1, y: 1, s: 1, compass: true },
+                                     fps: { a: 'tl', x: 1, y: 1, s: 1, compass: true } } });
+ok('coords carries it', comp.doc.elements.coords.compass === true);
+ok('fps does not, even when asked', comp.doc.elements.fps.compass === undefined);
+ok('and it is a strict boolean',
+  hud.build({ elements: { coords: { a: 'tl', x: 0, y: 0, s: 1, compass: 'yes' } } })
+     .doc.elements.coords.compass === false);
+
+if (fs.existsSync(javaFile)) {
+  const styleJava = fs.readFileSync(javaFile, 'utf8');
+  console.log('');
+  console.log('the mod reads the same style words the launcher writes');
+  for (const w of ['style', 'corners', 'rounded', 'font', 'kestrel', 'compass']) {
+    ok('HudConfig looks for the word ' + w, styleJava.indexOf('"' + w + '"') >= 0);
+  }
+}
 
 console.log('\n' + (fails ? fails + ' FAILURES' : 'all checks passed') + '\n');
 process.exitCode = fails ? 1 : 0;

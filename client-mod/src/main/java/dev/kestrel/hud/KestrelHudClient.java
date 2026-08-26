@@ -7,6 +7,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
+import net.minecraft.util.math.MathHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,54 +18,56 @@ import java.util.List;
  * THE IN-GAME HALF OF KESTREL.
  *
  * <p>Reads {@code <instance>/config/kestrel-hud.json} — written by the
- * launcher — and draws the elements it turns on, in the launcher's own
- * palette so the two halves look like one product.
+ * launcher — and draws the elements it turns on.
  *
  * <p><b>NO NETWORK, AND NOTHING TOLD TO A SERVER.</b> Kestrel's claim is that
  * it never talks to a game server and has nothing to disclose. A client mod
  * is exactly where that could quietly stop being true — mods register plugin
  * channels routinely and a HUD has no business doing so. This one opens no
- * channel, registers no packet handler and makes no request. It reads a file
- * at startup and draws text.
+ * channel, registers no packet handler and makes no request.
  */
 public class KestrelHudClient implements ClientModInitializer {
 
     public static final String MOD_ID = "kestrel-hud";
     public static final Logger LOG = LoggerFactory.getLogger(MOD_ID);
 
-    /* ── THE FACE ──────────────────────────────────────────────────────────
-       Minecraft's own font is a bitmap: one weight, one size, and digits that
-       change width as they change value, so a frame counter jitters sideways
-       while you read it.
-
-       This ships Azeret Mono, which is the launcher's --font-mono. That is
-       not a preference — ui/styles/app.css states the rule as "figure
-       columns: mono, per the tabular rule; the face belongs to the column",
-       and a HUD is nothing BUT machine values. Monospace also fixes the
-       jitter, because 240 and 111 are the same width.
-
-       Declared in assets/kestrel-hud/font/kestrel.json and applied per run of
-       text; the vanilla font is still there for anything that wants it. */
+    /* Kestrel's own face, used only when the config asks for it. The default
+       is Minecraft's, because a HUD that looks like the game costs a new
+       player nothing to read; ours is the deliberate choice, not the imposed
+       one. See assets/kestrel-hud/font/kestrel.json. */
     private static final Identifier FONT = Identifier.of(MOD_ID, "kestrel");
-
-    private static Text styled(String s) {
-        return Text.literal(s).styled(function -> function.withFont(FONT));
-    }
 
     private HudConfig config;
 
     @Override
     public void onInitializeClient() {
         config = HudConfig.read(FabricLoader.getInstance().getGameDir());
-        LOG.info("Kestrel HUD: {} element(s) configured", config.count());
+        LOG.info("Kestrel HUD: {} element(s) configured, {} corners, {} font",
+            config.count(), config.rounded ? "rounded" : "sharp",
+            config.kestrelFont ? "Kestrel" : "Minecraft");
         HudRenderCallback.EVENT.register(this::draw);
     }
 
+    private Text face(String s) {
+        return config.kestrelFont
+            ? Text.literal(s).styled(st -> st.withFont(FONT))
+            : Text.literal(s);
+    }
+
     /** one run of text in one colour; an element is a few of these in a row */
-    private static final class Run {
+    private final class Run {
         final Text text;
         final int colour;
-        Run(String text, int colour) { this.text = styled(text); this.colour = colour; }
+        Run(String text, int colour) { this.text = face(text); this.colour = colour; }
+    }
+
+    /** a placed element, kept so the next one can avoid sitting on it */
+    private static final class Box {
+        final double x, y, w, h;
+        Box(double x, double y, double w, double h) { this.x = x; this.y = y; this.w = w; this.h = h; }
+        boolean hits(Box o) {
+            return x < o.x + o.w && x + w > o.x && y < o.y + o.h && y + h > o.y;
+        }
     }
 
     private void draw(DrawContext ctx, Object tickCounter) {
@@ -74,20 +77,18 @@ public class KestrelHudClient implements ClientModInitializer {
         if (client.player == null || client.currentScreen != null) return;
         if (client.options != null && client.options.hudHidden) return;
 
-        /* ── fps ──────────────────────────────────────────────────────────
-           The number first and large-looking, the unit after it in the muted
-           tone. "240 FPS" reads as a measurement; "FPS 240" reads as a label
-           somebody forgot to align. */
-        int fps = MinecraftClient.getInstance().getCurrentFps();
-        List<Run> fpsRuns = new ArrayList<>();
-        fpsRuns.add(new Run(Integer.toString(fps), fpsColour(fps)));
-        fpsRuns.add(new Run("FPS", Paint.LABEL));
-        element(ctx, client, "fps", fpsRuns);
+        /* WHAT IS ALREADY ON SCREEN, so nothing lands on top of anything.
+           Rebuilt every frame: the elements move, and a stale rectangle would
+           push this frame's element out of the way of last frame's. */
+        List<Box> placed = new ArrayList<>();
 
-        /* ── coords ───────────────────────────────────────────────────────
-           Axis letters in the muted tone, numbers in the bright one, so the
-           eye lands on the digits and the letters stay available when you
-           need to know which is which. */
+        int fps = MinecraftClient.getInstance().getCurrentFps();
+        List<Run> f = new ArrayList<>();
+        f.add(new Run(Integer.toString(fps), fpsColour(fps)));
+        f.add(new Run("FPS", Paint.LABEL));
+        element(ctx, client, "fps", f, placed);
+
+        HudConfig.Element co = config.get("coords");
         List<Run> pos = new ArrayList<>();
         pos.add(new Run("X", Paint.LABEL));
         pos.add(new Run(fixed(client.player.getX()), Paint.VALUE));
@@ -95,15 +96,21 @@ public class KestrelHudClient implements ClientModInitializer {
         pos.add(new Run(fixed(client.player.getY()), Paint.VALUE));
         pos.add(new Run("Z", Paint.LABEL));
         pos.add(new Run(fixed(client.player.getZ()), Paint.VALUE));
-        element(ctx, client, "coords", pos);
+        /* THE COMPASS, when asked for. Vanilla puts the facing in F3 and
+           nowhere else, so a coordinate readout without it means opening the
+           debug screen to answer "which way is north" — which is usually the
+           question the coordinates were being read to settle. */
+        if (co != null && co.compass) {
+            pos.add(new Run(cardinal(client.player.getYaw()), Paint.ACCENT));
+        }
+        element(ctx, client, "coords", pos, placed);
     }
 
     /* GREEN IS NOT A COLOUR THIS PALETTE HAS, and inventing one for "good
-       fps" would put a hue on screen that appears nowhere in the launcher.
-       So the accent — the one warm thing in Kestrel — marks the case worth
-       noticing, which is fps low enough to feel, and everything healthy stays
-       in the ordinary ink. A HUD that lights up when nothing is wrong is a
-       HUD you stop reading. */
+       fps" would put a hue on screen that appears nowhere in the launcher. So
+       the accent marks the case worth noticing — fps low enough to feel — and
+       everything healthy stays in the ordinary ink. A HUD that lights up when
+       nothing is wrong is a HUD you stop reading. */
     private static int fpsColour(int fps) {
         return fps > 0 && fps < 30 ? Paint.ACCENT : Paint.VALUE;
     }
@@ -112,8 +119,16 @@ public class KestrelHudClient implements ClientModInitializer {
         return String.format("%.1f", v);
     }
 
-    /* ── one element: a plate, then its runs ───────────────────────────── */
-    private void element(DrawContext ctx, MinecraftClient client, String name, List<Run> runs) {
+    /* Minecraft's yaw is 0 at SOUTH and grows clockwise, which is why mapping
+       it naively onto compass points puts north where south is. Wrapped to
+       -180..180 first, then shifted and rounded into eight 45-degree sectors. */
+    private static String cardinal(float yaw) {
+        int i = MathHelper.floor((MathHelper.wrapDegrees(yaw) + 180.0f) / 45.0f + 0.5f) & 7;
+        return new String[] { "N", "NE", "E", "SE", "S", "SW", "W", "NW" }[i];
+    }
+
+    /* ── one element: place it, avoid what is already there, then draw ──── */
+    private void element(DrawContext ctx, MinecraftClient client, String name, List<Run> runs, List<Box> placed) {
         HudConfig.Element el = config.get(name);
         if (el == null || !el.on || runs.isEmpty()) return;
 
@@ -130,10 +145,9 @@ public class KestrelHudClient implements ClientModInitializer {
         double bw = w * el.scale;
         double bh = h * el.scale;
 
-        /* the anchor decides what x and y mean; the offset runs inward from
+        /* the anchor decides what x and y mean: the offset runs inward from
            the edge it names, and the element's own size comes off a right or
-           bottom anchor so the box stays on screen rather than starting at
-           the edge and running past it */
+           bottom anchor so the box stays on screen */
         double ox = sw * el.x / 100.0;
         double oy = sh * el.y / 100.0;
         char vert = el.anchor.charAt(0);
@@ -141,21 +155,40 @@ public class KestrelHudClient implements ClientModInitializer {
 
         double px = horiz == 'l' ? ox : horiz == 'r' ? sw - ox - bw : (sw - bw) / 2.0 + ox;
         double py = vert == 't' ? oy : vert == 'b' ? sh - oy - bh : (sh - bh) / 2.0 + oy;
-        px = Math.max(0, Math.min(px, sw - bw));
-        py = Math.max(0, Math.min(py, sh - bh));
+
+        /* ── NOTHING SITS ON TOP OF ANYTHING ──────────────────────────────
+           Two elements sent to the same corner used to overlap into an
+           unreadable smear. The second one now moves clear of the first —
+           downward, because a HUD reads as a column and pushing sideways
+           would walk it off a right-hand anchor.
+
+           A BOTTOM ANCHOR PUSHES UPWARD instead: at the bottom of the screen
+           "underneath the last one" means further from the edge, not off it.
+           The guard bounds the search so a pathological config cannot spin. */
+        final boolean upward = vert == 'b';
+        Box box = new Box(px, py, bw, bh);
+        for (int guard = 0; guard < 16; guard++) {
+            Box clash = null;
+            for (Box o : placed) { if (box.hits(o)) { clash = o; break; } }
+            if (clash == null) break;
+            double ny = upward ? clash.y - bh - Paint.STACK_GAP : clash.y + clash.h + Paint.STACK_GAP;
+            box = new Box(px, ny, bw, bh);
+        }
+        px = Math.max(0, Math.min(box.x, sw - bw));
+        py = Math.max(0, Math.min(box.y, sh - bh));
+        placed.add(new Box(px, py, bw, bh));
 
         ctx.getMatrices().push();
         ctx.getMatrices().translate(px, py, 0);
         if (el.scale != 1.0) ctx.getMatrices().scale((float) el.scale, (float) el.scale, 1.0f);
 
-        plate(ctx, w, h);
+        plate(ctx, w, h, config.rounded);
 
         int x = Paint.PAD_X;
         for (Run r : runs) {
-            /* NO SHADOW. A drop shadow exists to hold text apart from
-               whatever is behind it, and the plate already does that — over a
-               plate the shadow is just a smeared second copy of every glyph,
-               which at this size reads as blur rather than depth. */
+            /* NO SHADOW: the plate already holds the text apart from the
+               world, and over a plate a shadow is a smeared second copy of
+               every glyph — blur pretending to be depth. */
             ctx.drawText(client.textRenderer, r.text, x, Paint.PAD_Y, r.colour, false);
             x += client.textRenderer.getWidth(r.text) + Paint.GAP;
         }
@@ -163,21 +196,30 @@ public class KestrelHudClient implements ClientModInitializer {
     }
 
     /* ── the plate ─────────────────────────────────────────────────────────
-       Minecraft has no rounded rectangle, and faking one with a texture would
-       mean shipping an asset for a 1px corner. Chamfering instead — the fill
-       is drawn as three rectangles so the four corner pixels are simply
-       absent — costs nothing and reads as a rounded chip at every scale.
+       SHARP IS THE DEFAULT, because Minecraft's own interface is square:
+       every vanilla panel, tooltip and inventory slot has a hard corner, so a
+       square plate is the one that looks like it belongs on that screen.
 
-       The border is drawn as four 1px fills for the same reason, and inset by
-       the same pixel so the corners stay clipped. */
-    private static void plate(DrawContext ctx, int w, int h) {
-        ctx.fill(1, 0, w - 1, 1, Paint.PLATE);          /* top strip, corners cut */
-        ctx.fill(0, 1, w, h - 1, Paint.PLATE);          /* the body, full width  */
-        ctx.fill(1, h - 1, w - 1, h, Paint.PLATE);      /* bottom strip          */
+       ROUNDED is the same rectangle with its four corner pixels omitted,
+       drawn as three fills instead of one. Minecraft has no rounded-rectangle
+       primitive, and faking one with a texture would mean shipping an asset
+       for a single pixel. */
+    private static void plate(DrawContext ctx, int w, int h, boolean rounded) {
+        if (!rounded) {
+            ctx.fill(0, 0, w, h, Paint.PLATE);
+            ctx.fill(0, 0, w, 1, Paint.EDGE);
+            ctx.fill(0, h - 1, w, h, Paint.EDGE);
+            ctx.fill(0, 1, 1, h - 1, Paint.EDGE);
+            ctx.fill(w - 1, 1, w, h - 1, Paint.EDGE);
+            return;
+        }
+        ctx.fill(1, 0, w - 1, 1, Paint.PLATE);
+        ctx.fill(0, 1, w, h - 1, Paint.PLATE);
+        ctx.fill(1, h - 1, w - 1, h, Paint.PLATE);
 
-        ctx.fill(1, 0, w - 1, 1, Paint.EDGE);           /* top    */
-        ctx.fill(1, h - 1, w - 1, h, Paint.EDGE);       /* bottom */
-        ctx.fill(0, 1, 1, h - 1, Paint.EDGE);           /* left   */
-        ctx.fill(w - 1, 1, w, h - 1, Paint.EDGE);       /* right  */
+        ctx.fill(1, 0, w - 1, 1, Paint.EDGE);
+        ctx.fill(1, h - 1, w - 1, h, Paint.EDGE);
+        ctx.fill(0, 1, 1, h - 1, Paint.EDGE);
+        ctx.fill(w - 1, 1, w, h - 1, Paint.EDGE);
     }
 }
