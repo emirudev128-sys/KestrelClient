@@ -5452,6 +5452,28 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
       var sub = what.indexOf('folder') !== -1 && what !== 'the instance folder'
         ? '\\' + what.replace('the ', '').replace(' folder', '')
         : '';
+      /* IT OPENS THE FOLDER NOW. This printed "Would open ..." and did
+         nothing for as long as the screen has existed — a button that
+         narrates itself instead of working. The id comes from the screen or
+         the row the button is in; the main process turns it into a path,
+         because the page does not get to name one. */
+      var holder = a.closest ? a.closest('[data-id]') : null;
+      /* #screen-mods and the other sub-screens carry no id of their own, so
+         they fall back to the instance that was opened — which is what
+         "the mods folder" means when you are looking at that instance. */
+      var openScreen = document.getElementById('screen-instance');
+      var instId = (holder && holder.getAttribute('data-id'))
+        || (openScreen && openScreen.getAttribute('data-id'))
+        || '';
+      var folder = sub ? sub.replace(/^\\/, '') : '';
+      if (host && host.openInstanceFolder && instId) {
+        host.openInstanceFolder(instId, folder).then(function (opened) {
+          say('Opened ' + fig(opened) + '.');
+        }, function (err) {
+          say('That folder could not be opened. ' + esc(err.message));
+        });
+        return;
+      }
       say('Would open ' + fig(instancePath(a.getAttribute('data-slug') || '1-21-4-fabric', 'full') + sub) + ' in Explorer.');
       return;
     }

@@ -217,6 +217,32 @@ function wireIpc() {
 
   ipcMain.handle('shell:open-root', ok(() => { shell.openPath(store.root); return store.root; }));
 
+  /* ── OPEN A FOLDER INSIDE AN INSTANCE ────────────────────────────────────
+     The renderer names an instance and one of a FIXED LIST of subfolders. It
+     does not name a path, for the same reason it cannot name a url: what
+     comes back over the bridge is an id, and this side turns that into a
+     location. `inside()` proves containment even though both halves were
+     built here, because the id came off the page.
+
+     The button existed on the instance screen for a long time and only ever
+     printed "Would open ..." to the status bar — there was no handler behind
+     it at all. */
+  const OPENABLE = ['', 'mods', 'config', 'logs', 'saves', 'resourcepacks', 'shaderpacks', 'screenshots'];
+  ipcMain.handle('shell:open-instance', okAsync(async (_e, id, which) => {
+    const rec = store.get(String(id || ''));
+    if (!rec) throw new Error('no such instance');
+    const sub = String(which || '').toLowerCase().trim();
+    if (OPENABLE.indexOf(sub) < 0) throw new Error('not a folder this opens: ' + sub.slice(0, 24));
+    const base = game.L.gameDir(rec.id);
+    const dir = sub ? require('./mc/paths').inside(base, sub) : base;
+    /* a folder that has never been written to is not an error — the game
+       makes most of these on first run, so it is created rather than refused */
+    await require('node:fs/promises').mkdir(dir, { recursive: true });
+    const problem = await shell.openPath(dir);
+    if (problem) throw new Error(problem);
+    return dir;
+  }));
+
   /* ── sign-in ────────────────────────────────────────────────────────────
      FOUR CALLS AND ONE EVENT, and not one of them can return a token: the
      only account shape that crosses here is AccountStore.publicOf(), the

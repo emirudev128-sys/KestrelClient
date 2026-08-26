@@ -58,6 +58,9 @@
                                                 path: the dialog is opened in the
                                                 main process.
      .pack.install(planId, name)             -> {instance, files, overrides}
+     .openInstanceFolder(id, which)          -> opens <instance>/minecraft/<which>
+                                                in Explorer; `which` is one of a
+                                                fixed list, never a path
 
    WHY THERE IS NO .game.launchCommand().  The command line, the classpath,
    the argument file and the session are all main-process facts and none of
@@ -199,5 +202,11 @@ contextBridge.exposeInMainWorld('kestrel', {
     install(planId, name) { return call('pack:install', String(planId || ''), String(name || '')); }
   },
 
-  openDataFolder() { return call('shell:open-root'); }
+  openDataFolder() { return call('shell:open-root'); },
+
+  /* An instance id and one of a fixed list of subfolder names. Not a path:
+     the page does not get to say where on disk anything is. */
+  openInstanceFolder(instanceId, which) {
+    return call('shell:open-instance', String(instanceId || ''), String(which || ''));
+  }
 });
