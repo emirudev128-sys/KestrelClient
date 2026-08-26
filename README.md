@@ -14,6 +14,16 @@ shell, plain HTML/CSS/JS renderer, no framework, no build step.
     npm install
     npm start
 
+Or build a Windows installer:
+
+    npm run icon        build/icon.ico, drawn from the brand mark in the icon set
+    npm run dist        dist/Kestrel-0.4.2-Setup.exe
+
+It installs per-user, so it never asks for an administrator, and uninstalling leaves
+`%APPDATA%\Kestrel` — your instances, mods and worlds — where it is. It is not code signed, so
+SmartScreen will warn the first time. What goes into the build is an allow-list in
+`electron-builder.yml`, and `npm run packcheck` reads the result back and proves it.
+
 ## Screenshots
 
 ![The Play screen: one instance, one button, and the sessions it has recorded for it.](docs/screenshots/play.png)
@@ -59,6 +69,7 @@ Do not take any of it on trust:
     node tools/phase3check.mjs    download + launch security assertions
     node tools/phase4check.mjs    loader merge rules
     node tools/phase5check.mjs    content install
+    node tools/packcheck.mjs      what actually shipped in the packaged build
     bash  tools/scan.sh           Electronegativity + semgrep + npm audit + token containment
 
 Stronger than any of those, and requiring no code reading at all: **run it with Wireshark open.**
@@ -90,6 +101,12 @@ nothing was really signed in. Everything else — instances, mods, loaders, laun
 
 Working: vanilla launch, Fabric, legacy Forge, mod install with dependency resolution and hash
 verification, enable/disable, resource packs and shader packs.
+
+Packaged: `npm run dist` produces an unsigned NSIS installer. The packaged application has been
+launched and confirmed to run out of its own asar, and `tools/packcheck.mjs` makes 47 assertions
+about what came out — including that the developer's own Azure client id appears nowhere in either
+the archive or the executable, searched byte by byte. The installer has not itself been put through
+a clean install on a fresh machine.
 
 Not finished: modern Forge and NeoForge need their installer processors run (a JVM per processor);
 those installs are marked partial and refuse to launch rather than crashing. Modpacks are not

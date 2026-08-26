@@ -7,7 +7,6 @@
 A single self-contained file. Double-click it, or open it in any browser. Everything works:
 routing, both themes, all four palettes, the HUD editor, the tweak settings, create and import,
 and the Modrinth browser (live results locally; a bundled set when the page cannot reach the net).
-routing, the palette switcher, both themes, the HUD editor, the tweak settings.
 
 ## The real source
 
@@ -55,7 +54,8 @@ Electron, no bundler and no build step — the same `ui/` files the browser gets
     msauth.js       the Microsoft sign-in chain, all six requests, main process only
     accounts.js     %APPDATA%/Kestrel/accounts.json, the credential half sealed by safeStorage
     auth-config.js  the one place the Azure client id comes from
-    auth.config.json  the placeholder it ships with
+    auth.config.example.json  the placeholder it ships with; copy it to auth.config.json
+                    (gitignored, and excluded from a packaged build) and put your own id in
 
 `contextIsolation` is on and `nodeIntegration` is off, so the page has no `require`, no `fs` and
 no `ipcRenderer`. Everything privileged happens in the main process, and every record and id
@@ -90,6 +90,39 @@ procedure. The same screen then drives the real handshake with no code change.
 `ui/` still runs over plain http exactly as above. `window.kestrel` is absent there, the bridge
 layer in `app.js` returns early, and the library stays the fixture in the markup — which is what
 `kestrel.html` and `tools/clicktest.mjs` exercise.
+
+## Packaging it
+
+    npm run icon        build/icon.ico, drawn from the brand mark in ui/icons/symbols.svg
+    npm run pack        dist/win-unpacked/Kestrel.exe - no installer, about a minute
+    npm run dist        dist/Kestrel-0.4.2-Setup.exe
+    npm run packcheck   assert what actually came out
+
+`electron-builder.yml` is the whole configuration and it is commented. Three things in it are
+decisions rather than defaults:
+
+**What ships is an allow-list**, not everything-minus-the-scratch. A new source directory has to be
+added to `files:` or it will not be in the build. That is the intended failure: a missing file is
+loud and an extra one is silent, and the extra one here would be `auth.config.json`.
+
+**The packaged build carries no Azure client id.** It is excluded deliberately, so a build straight
+off this repository runs in demo mode and says so. To sign in from an installed copy, put your own
+`auth.config.json` in `%APPDATA%\Kestrel\` - `auth-config.js` looks there before it looks beside
+itself, for exactly this reason.
+
+**The uninstaller does not touch `%APPDATA%\Kestrel`.** That folder is the downloaded game, the
+mods and the worlds, and it is named after the product, so NSIS's "clean up application data" would
+have matched it exactly. `deleteAppDataOnUninstall: false` is load-bearing.
+
+It installs per-user and so never asks for an administrator. It is **not code signed**: SmartScreen
+will warn on first run and will keep warning until the binary is signed by a certificate that has
+built up reputation. That is a certificate purchase, not a configuration change.
+
+`npm run packcheck` reads the built archive and the executable back and asserts about them - that
+every file in `mc/` and `ui/` made it in, that the harness and the build history did not, that the
+version in `package.json` and the one in `brand.js` agree, that the icon bytes in the `.exe` are
+the ones `npm run icon` produced, and that the client id configured on this machine appears nowhere
+in either the archive or the 233 MB executable, searched byte by byte rather than by filename.
 
 ## Tools
 
