@@ -34,6 +34,7 @@ const V = require('./version');
 const loaders = require('./loaders');
 const { ContentStore } = require('./content');
 const modpack = require('./modpack');
+const deps = require('./deps');
 const hud = require('./hud');
 
 /* the offline UUID every launcher agrees on: a version-3 (MD5) UUID over
@@ -184,6 +185,41 @@ class Game {
     } finally { this.jobs.delete(instanceId); }
   }
 
+  /* ── FILL IN WHAT THE INSTALLED MODS DECLARE ──────────────────────────────
+     Reads every jar's fabric.mod.json, works out which declared dependencies
+     nothing in the folder provides, and installs the ones this build knows by
+     name — through contentPlan/contentInstall, so they are planned, hashed
+     and fetched from the same allow-listed CDN as anything else.
+
+     A dependency it does not recognise is LOGGED, not searched for. Turning a
+     mod id into a Modrinth project by search would mean installing whatever
+     ranked first for a name a stranger chose, which is the same mistake as
+     trusting a url out of a manifest. See the header of mc/deps.js. */
+  async _fillDependencies(instanceId, report) {
+    const inst = this.store.get(instanceId);
+    const loader = String(inst && inst.loader || '').toLowerCase();
+    /* only the loaders whose mods carry a fabric.mod.json */
+    if (loader !== 'fabric' && loader !== 'quilt') return null;
+
+    const modsDir = this.L.contentDir(instanceId, 'mod');
+    const need = await deps.missing(modsDir);
+    if (!need.installable.length && !need.unknown.length) return null;
+
+    for (const u of need.unknown) {
+      this.log('deps: ' + u.askedBy + ' needs "' + u.id + '", which is not a mod this build knows how to fetch');
+    }
+    for (const m of need.installable) {
+      this.log('deps: ' + m.askedBy + ' needs ' + m.title + ', which is not installed — fetching it');
+      if (typeof report === 'function') {
+        report({ phase: 'preparing', done: 0, total: 0, bytes: 0, totalBytes: 0, file: 'installing ' + m.title });
+      }
+      const plan = await this.contentPlan(instanceId, m.project, 'mod');
+      const r = await this.contentInstall(instanceId, plan.id);
+      this.log('deps: installed ' + r.installed.map(function (d) { return d.filename; }).join(', '));
+    }
+    return need;
+  }
+
   /* Runs the installer processors for a partial modern-Forge install, then
      clears the flag that was keeping Play from starting it.  A no-op for
      every other loader and for an install that has already had them run —
@@ -290,6 +326,22 @@ class Game {
     /* 1. files */
     const summary = await this.install(instanceId, o.version ? mcVersion : '');
     const versionId = summary.id;
+
+    /* 1a. WHAT THE MODS IN THE FOLDER SAY THEY NEED.
+       A mod installed through Browse arrives with its dependencies resolved.
+       One dropped into mods/ by hand does not, and the first anyone hears of
+       it is Fabric refusing to start. The launcher put the jar there, so it
+       can read what the jar asks for and fetch it — through the same plan,
+       hash-check and host allow-list as any other install. */
+    try {
+      await this._fillDependencies(instanceId, report);
+    } catch (e) {
+      /* NOT FATAL. If this cannot run, the loader still stops the launch with
+         a message naming exactly what is missing — which is where we were
+         before this existed. A convenience that breaks launching would be a
+         bad trade. */
+      this.log('deps: could not check what the mods need (' + e.message + ')');
+    }
 
     /* 1b. THE HUD CONFIG, for the client mod if it is installed.
        Written on every launch rather than when the HUD screen changes: the
