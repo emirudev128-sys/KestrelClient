@@ -2153,6 +2153,34 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
      state of this screen rather than something this change pretends to fix.
      What matters here is that it can no longer say one name and launch
      another. */
+
+  /* ── OPENING A FOLDER, FROM ANYWHERE ──────────────────────────────────────
+     Four controls offered to open a folder and all four only described one:
+     the button on the instance screen, the instance popover, the mod
+     popover's "Open the mods folder" and a world's "Open its folder". Three
+     named `1-21-4-fabric` in a string regardless of what was open, which is
+     the same fault as the launch button and would have sent someone into
+     another instance's files.
+
+     The id is resolved from whatever the control sits in, falling back to the
+     instance currently open. `which` is a name from a fixed list; the main
+     process turns it into a path. */
+  function openFolderFrom(anchor, which, fallbackPath) {
+    var holder = anchor && anchor.closest ? anchor.closest('[data-id]') : null;
+    var open = document.getElementById('screen-instance');
+    var id = (holder && holder.getAttribute('data-id'))
+      || (open && open.getAttribute('data-id')) || '';
+    if (host && host.openInstanceFolder && id) {
+      host.openInstanceFolder(id, which || '').then(function (opened) {
+        say('Opened ' + fig(opened) + '.');
+      }, function (err) {
+        say('That folder could not be opened. ' + esc(err.message));
+      });
+      return;
+    }
+    say('Would open ' + fig(fallbackPath) + ' in Explorer.');
+  }
+
   function openInstance(holder) {
     var screen = document.getElementById('screen-instance');
     if (screen && holder && holder.getAttribute('data-id')) {
@@ -3203,9 +3231,9 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
 
   function instanceMenu(btn, name, row) {
     popover.menu(btn, [
-      { label: 'Play', kbd: '↵', run: function () { location.hash = '#play'; onLaunch(); } },
+      { label: 'Play', kbd: '↵', run: function () { onLaunch(btn); } },
       { label: 'Change version…', keep: true, run: function () { versionMenu(btn, name, '1.21.4'); } },
-      { label: 'Open folder', run: function () { say('Would open ' + fig(instancePath(slugOf(name), 'full')) + ' in Explorer.'); } },
+      { label: 'Open folder', run: function () { openFolderFrom(btn, '', instancePath(slugOf(name), 'full')); } },
       '-',
       { label: 'Duplicate…', run: function () {
         location.hash = '#import';
@@ -3346,7 +3374,7 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
         say('Would ask Modrinth whether there is a newer ' + esc(name) + ' for ' + fig('1.21.4') + '.');
       } },
       { label: 'Open the mods folder', run: function () {
-        say('Would open ' + fig(instancePath('1-21-4-fabric', 'full') + '\\mods') + ' in Explorer.');
+        openFolderFrom(btn, 'mods', instancePath('1-21-4-fabric', 'full') + '\\mods');
       } },
       '-',
       { label: 'Remove from instance…', danger: true, keep: true, run: function () {
@@ -3362,7 +3390,7 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
   function worldMenu(btn, name, row) {
     popover.menu(btn, [
       { label: 'Open its folder', run: function () {
-        say('Would open ' + fig(instancePath('1-21-4-fabric', 'full') + '\\saves\\' + name) + ' in Explorer.');
+        openFolderFrom(btn, 'saves', instancePath('1-21-4-fabric', 'full') + '\\saves\\' + name);
       } },
       { label: 'Duplicate', run: function () { say(esc(name) + ' would be copied beside itself as ' + esc(name + ' copy') + '.'); } },
       { label: 'Rename…', keep: true, run: function () {
@@ -5479,7 +5507,9 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     }
     if (act === 'open-log') {
       e.preventDefault();
-      say('Would open ' + fig(instancePath('1-21-4-fabric', 'full') + '\\logs\\latest.log') + ' in the text editor Windows has for it.');
+      /* the log is the first thing anyone wants when a launch goes wrong, so
+         this opens the folder holding it rather than describing where it is */
+      openFolderFrom(a, 'logs', instancePath('1-21-4-fabric', 'full') + '\logs');
       return;
     }
     if (act === 'copy-log') {
