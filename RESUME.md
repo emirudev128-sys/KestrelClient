@@ -18,7 +18,7 @@ build step. **It downloads and launches Minecraft, installs mod loaders, and ins
 | **Dependencies** | REI planned 3 and installed 3, each hash-checked |
 | **Disable** | `.jar.disabled` — next launch logged 56 mods instead of 57 |
 | **Accounts** | Microsoft device-code flow, real client id, tokens never leave the main process |
-| **Packaging** | `Kestrel-0.4.2-Setup.exe`, 106 MB. The packaged app launches and runs out of its own asar. |
+| **Packaging** | `Kestrel-0.5.0-Setup.exe`, 106 MB. The packaged app launches and runs out of its own asar. |
 
 ## Architecture
 

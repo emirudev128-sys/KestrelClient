@@ -20,7 +20,7 @@
 
 export const BRAND = {
   name: 'Kestrel',
-  version: '0.4.2',
+  version: '0.5.0',
   /* The instance folder carries the name too, so it derives from it.  The
      substitution test is what caught this: renaming to "Zzyzx" left
      ...\.kestrel\instances\ intact, which is a rename that is two edits

@@ -17,7 +17,7 @@ shell, plain HTML/CSS/JS renderer, no framework, no build step.
 Or build a Windows installer:
 
     npm run icon        build/icon.ico, drawn from the brand mark in the icon set
-    npm run dist        dist/Kestrel-0.4.2-Setup.exe
+    npm run dist        dist/Kestrel-0.5.0-Setup.exe
 
 It installs per-user, so it never asks for an administrator, and uninstalling leaves
 `%APPDATA%\Kestrel` — your instances, mods and worlds — where it is. It is not code signed, so
