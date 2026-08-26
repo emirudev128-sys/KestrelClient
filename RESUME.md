@@ -18,7 +18,8 @@ build step. **It downloads and launches Minecraft, installs mod loaders, and ins
 | **Dependencies** | REI planned 3 and installed 3, each hash-checked |
 | **Disable** | `.jar.disabled` — next launch logged 56 mods instead of 57 |
 | **Accounts** | Microsoft device-code flow, real client id, tokens never leave the main process |
-| **Packaging** | `Kestrel-0.4.2-Setup.exe`, 106 MB. The packaged app launches and runs out of its own asar. |
+| **Modpacks** | Fabulously Optimized (.mrpack) planned and installed — 50 files sha1-checked, 55 overrides |
+| **Packaging** | `Kestrel-0.5.0-Setup.exe`, 106 MB. The packaged app launches and runs out of its own asar. |
 
 ## Architecture
 
@@ -29,7 +30,7 @@ build step. **It downloads and launches Minecraft, installs mod loaders, and ins
     accounts.js    accounts.json, credential half sealed with safeStorage
     auth-config.js client id resolution + the Azure/Mojang procedure
     mc/            paths, net, unzip, version, install, java, launch, loaders, content,
-                   processors (the Forge/NeoForge installer processors)
+                   processors (Forge/NeoForge installer processors), modpack (.mrpack)
     ui/            the renderer - index.html, styles/, scripts/, icons/
     electron-builder.yml  what ships, as an allow-list, and the NSIS options
     build/         icon.ico and icon.png, generated from the mark in the icon set
@@ -55,7 +56,6 @@ and nothing else.
 
 ## Not finished
 
-- **Modpacks** are not installable. `kindOf('modpack')` throws with the reason.
 - **Update checking reports but does not apply** — installing the newer version replaces the file.
 - **Mojang has not approved the Azure application** for the Minecraft scopes, so the final token
   exchange will 403 until they do. Form: https://aka.ms/mce-reviewappid
@@ -85,6 +85,14 @@ places is tolerable.
 is excluded from `files:`, so an installer built from this repo cannot leak it. To sign in from an
 installed copy, put `auth.config.json` in `%APPDATA%\Kestrel\` — `auth-config.js` looks there
 first, which is what that ordering was always for.
+
+**Modpacks install, and the Import screen is wired to it.** `mc/modpack.js` reads a `.mrpack`,
+plans it, and installs it as a new instance. The picker is opened in the MAIN process — `pack.choose()`
+takes no argument at all, so the renderer cannot name a file to read any more than it can name a url
+to download — and `pack.install()` hands back only the plan id. Verified: Fabulously Optimized
+installed end to end (50 files, 55 overrides), and a bogus plan id round-trips through IPC and comes
+back refused. NOT covered by a test: the `dialog.showOpenDialog` seam itself, which needs a human to
+click. CurseForge `.zip` is a different manifest and is refused by name.
 
 **Modern Forge and NeoForge work now.** `mc/processors.js` runs the installer's processors — a JVM
 per processor, in order, with the `data` block resolved for the client side. NeoForge 1.21.1 was
@@ -143,9 +151,8 @@ has been caught five times and is written up in `docs/rubric.md`.
    but nothing draws it yet. That is a Fabric mod, a separate Java project, and it is the piece
    that makes this a *client* rather than a launcher. Needs a JDK; this machine has a Java 8 JRE
    and no `javac`.
-2. **Modpack install** — `.mrpack` first: it is a zip holding an index of hashed URLs, which is
-   exactly the shape `mc/net.js` and the host allow-list already handle. CurseForge second; it
-   needs an API key and has a different shape.
+2. **CurseForge packs** — `.mrpack` is done; their `.zip` export is a different manifest, needs an
+   API key, and has a redistribution story worth reading before it is written.
 3. **Code signing** — SmartScreen warns on every first run until the binary is signed by a
    certificate with reputation behind it. That is a purchase, not a config change.
 

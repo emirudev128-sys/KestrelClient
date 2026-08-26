@@ -37,7 +37,7 @@ Serve it (the scripts are ES modules, so `file://` will not work for this versio
 
 One edit. `ui/scripts/brand.js`:
 
-    export const BRAND = { name: 'Kestrel', version: '0.4.2' };
+    export const BRAND = { name: 'Kestrel', version: '0.5.0' };
 
 The folder path, the window title, the credential key and every string derive from it. There is a
 substitution test that renames the app and greps all 18 routes to prove nothing hardcodes it.
@@ -56,6 +56,8 @@ Electron, no bundler and no build step — the same `ui/` files the browser gets
     auth-config.js  the one place the Azure client id comes from
     auth.config.example.json  the placeholder it ships with; copy it to auth.config.json
                     (gitignored, and excluded from a packaged build) and put your own id in
+    mc/modpack.js   .mrpack: read the manifest, plan it, install it as a new instance. The
+                    picker is opened HERE, not in the page — pack.choose() takes no argument
 
 `contextIsolation` is on and `nodeIntegration` is off, so the page has no `require`, no `fs` and
 no `ipcRenderer`. Everything privileged happens in the main process, and every record and id
@@ -95,7 +97,7 @@ layer in `app.js` returns early, and the library stays the fixture in the markup
 
     npm run icon        build/icon.ico, drawn from the brand mark in ui/icons/symbols.svg
     npm run pack        dist/win-unpacked/Kestrel.exe - no installer, about a minute
-    npm run dist        dist/Kestrel-0.4.2-Setup.exe
+    npm run dist        dist/Kestrel-0.5.0-Setup.exe
     npm run packcheck   assert what actually came out
 
 `electron-builder.yml` is the whole configuration and it is commented. Three things in it are
@@ -130,7 +132,8 @@ in either the archive or the 233 MB executable, searched byte by byte rather tha
     node tools/phase4check.mjs                     the inheritsFrom merge rules + the four loader services
     node tools/phase4check.mjs install             ... and really install Fabric on 1.16.5
     node tools/phase4check.mjs launch              ... and really launch it
-    node tools/phase4check.mjs modern              ... plus NeoForge 1.21.1 (install only) and Forge 1.8.9
+    node tools/phase4check.mjs modern              ... plus NeoForge 1.21.1 and Forge 1.20.1: run the
+                                                   installer processors and launch the patched jar (88)
     node tools/audit.mjs ui                        static check against the design standard
     UI_ROOT=ui node tools/shootui.mjs out play      screenshot a screen
     UI_ROOT=ui VW=2560 VH=1600 node tools/shootui.mjs big play    at another window size

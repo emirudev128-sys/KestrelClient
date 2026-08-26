@@ -28,6 +28,27 @@ for (const n of ['lwjgl64.dll', 'sub/x.dll', './OpenAL64.dll']) {
   ok('accepts ' + JSON.stringify(n), !!got && got.startsWith(TARGET + path.sep));
 }
 
+/* THE GUARD USED TO REJECT A SPACE AND CALL IT A NULL BYTE.  `indexOf(' ')`
+   was written where `indexOf('\u0000')` was meant, so every legitimate entry
+   with a space in its name was refused and the byte the check is named after
+   was never looked for.  A natives jar has no spaces in it, which is why it
+   sat there; a modpack's overrides tree does — "resourcepacks/Mod Menu
+   Helper.zip" is what found it.  Both halves are asserted here so it cannot
+   silently revert to either mistake. */
+{
+  let spaced = null, threw = '';
+  try { spaced = safeJoin(TARGET, 'resourcepacks/Mod Menu Helper.zip'); } catch (e) { threw = e.message; }
+  ok('a space in an entry name is not a reason to refuse it', !!spaced, threw || spaced);
+  let nul = null;
+  try { nul = safeJoin(TARGET, 'a\u0000b.dll'); } catch (e) { /* expected */ }
+  ok('and a real NUL byte still is', nul === null || nul === undefined, nul || '');
+  /* a trailing space is a different question and stays refused: Win32 strips
+     it before the filesystem sees it, so what was checked is not what lands */
+  let trailing = null;
+  try { trailing = safeJoin(TARGET, 'evil /x.dll'); } catch (e) { /* expected */ }
+  ok('a component with a TRAILING space is still refused', trailing === null || trailing === undefined);
+}
+
 console.log('\ndata-root containment');
 for (const p of [['..', 'etc'], ['..\\..\\Windows'], ['a', '..', '..', 'b']]) {
   let leaked = null; try { leaked = inside('C:\\root', ...p); } catch (e) { /* expected */ }

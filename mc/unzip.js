@@ -103,7 +103,18 @@ function readEntry(buf, e) {
    this file is allowed to build a path.                                    */
 function safeJoin(dir, name) {
   const clean = String(name).replace(/\\/g, '/');
-  if (!clean || clean.indexOf(' ') >= 0) throw new Error('zip entry with a null byte or empty name');
+  /* A NUL, WRITTEN AS AN ESCAPE SO IT STAYS ONE.  This read `indexOf(' ')`
+     — a literal space — while the message beside it said "null byte", so it
+     refused every legitimate entry with a space in its name and never
+     checked for the byte it was named after.  Nothing caught it because a
+     natives jar has no spaces in it; a modpack's overrides tree does, and
+     "overrides/resourcepacks/Mod Menu Helper.zip" is what found it.
+
+     The NUL check still earns its place even though paths.js's inside()
+     also rejects one: this is the guard that knows it is looking at an
+     attacker-authored zip entry, and it should say so itself rather than
+     rely on a check two calls downstream to happen to hold. */
+  if (!clean || clean.indexOf('\u0000') >= 0) throw new Error('zip entry with a null byte or empty name');
   if (clean.startsWith('/') || /^[A-Za-z]:/.test(clean)) throw new Error('zip entry is an absolute path: ' + clean.slice(0, 80));
   const parts = clean.split('/').filter(function (s) { return s.length && s !== '.'; });
   if (!parts.length) throw new Error('zip entry resolves to nothing: ' + clean.slice(0, 80));

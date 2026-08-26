@@ -13,7 +13,7 @@
    moves the data root with it.
    ========================================================================= */
 
-const { app, BrowserWindow, ipcMain, shell, safeStorage, session } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, safeStorage, session, dialog } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { Store } = require('./store');
@@ -258,6 +258,29 @@ function wireIpc() {
   ipcMain.handle('game:cancel', ok((_e, id) => game.cancel(String(id || ''))));
   ipcMain.handle('game:kill', ok((_e, which) => game.kill(String(which || ''))));
   ipcMain.handle('game:running', ok(() => game.running()));
+
+  /* ── modpacks ───────────────────────────────────────────────────────────
+     TWO CALLS, AND NEITHER TAKES A PATH.  The renderer cannot name a file to
+     read any more than it can name a url to download — so the open dialog is
+     opened HERE, by the process that is allowed to touch the disk, and what
+     goes back over the bridge is a plan and an id.  A renderer that has been
+     compromised can ask for the picker to appear; it cannot ask for
+     C:\Users\...\id_rsa to be read, and it never learns where the user
+     clicked.
+
+     `pack:choose` returns null when the dialog is dismissed — a cancel is an
+     answer, not an error, and the UI needs to tell the two apart. */
+  ipcMain.handle('pack:choose', okAsync(async () => {
+    const r = await dialog.showOpenDialog(win, {
+      title: 'Choose a modpack',
+      properties: ['openFile'],
+      filters: [{ name: 'Modrinth modpack', extensions: ['mrpack'] }]
+    });
+    if (r.canceled || !r.filePaths || !r.filePaths.length) return null;
+    return await game.packPlan(r.filePaths[0]);
+  }));
+  ipcMain.handle('pack:install', okAsync((_e, planId, name) =>
+    game.packInstall(String(planId || ''), String(name || ''))));
 
   /* ── content ────────────────────────────────────────────────────────────
      PHASE 5.  SIX CALLS, and the rule is unchanged: an instance id, a content
