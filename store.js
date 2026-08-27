@@ -40,6 +40,8 @@ function num(v, dflt) {
 }
 
 /* A record, rebuilt from scratch. Anything not listed here does not survive. */
+var PERF_STATES = ['pending', 'done', 'off'];
+
 function clean(raw, id) {
   var r = raw && typeof raw === 'object' ? raw : {};
   var pt = r.playtime && typeof r.playtime === 'object' ? r.playtime : {};
@@ -71,6 +73,16 @@ function clean(raw, id) {
        came out of.  A name and not a path on purpose — it always lives in
        cache/loaders, and a record that stored absolute paths would carry this
        machine's user folder around inside it. */
+    /* ── THE PERFORMANCE SET ──────────────────────────────────────────
+       'pending' means "install the performance mods on the first launch";
+       'done' means that has happened; 'off' means never.
+
+       ABSENT MEANS OFF, and that is the whole safety property. Every
+       instance that existed before this field did has no `perf` key, so
+       nothing is ever retro-fitted into a mods folder somebody has already
+       arranged. Only store.create() sets it, and only for instances created
+       from here on. See mc/perf.js. */
+    perf: PERF_STATES.indexOf(str(r.perf, 8)) >= 0 ? str(r.perf, 8) : '',
     prof: str(r.prof, 64),
     pwarn: str(r.pwarn, 400),
     pjar: str(r.pjar, 160),
@@ -162,6 +174,12 @@ class Store {
     if (!String(r.name || '').trim()) throw new Error('an instance needs a name');
     var id = this.freeId(r.name);
     var rec = clean(r, id);
+    /* NEW INSTANCES OPT IN, EXISTING ONES ARE NEVER TOUCHED. The default
+       lives here rather than in clean() on purpose: clean() also runs on
+       every update() and on seed(), and defaulting there would quietly mark
+       instances that already exist. A caller that wants none — a modpack
+       import, which states its own mod list — passes 'off'. */
+    if (!rec.perf) rec.perf = 'pending';
     if (rec.pos === 0) rec.pos = this.nextPos();
     fs.mkdirSync(this.folderOf(id), { recursive: true });
     fs.writeFileSync(this.fileOf(id), JSON.stringify(rec, null, 2));

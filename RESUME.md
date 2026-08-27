@@ -217,12 +217,35 @@ and no token on a command line (the launcher refuses rather than leaking on Java
     node tools/phase4check.mjs    loader merge rules (60)
     node tools/phase4check.mjs modern   ... and really install + launch NeoForge 1.21.1 (83)
     node tools/phase5check.mjs    content install
-    node tools/hudcheck.mjs       the HUD contract across markup, JS and Java (121)
+    node tools/hudcheck.mjs       the HUD contract across markup, JS and Java (147)
+    node tools/perfcheck.mjs      the performance set: ids, gating, the flag (34)
+    node tools/perfcheck.mjs live ... and ask Modrinth whether any of it exists
     node tools/packcheck.mjs      what the packaged build actually contains (47)
     bash  tools/scan.sh           Electronegativity + semgrep + npm audit + token containment
 
 Stronger than any of those: run it with **Wireshark** open. It talks to Microsoft, Mojang, Modrinth
 and nothing else.
+
+## New instances get the performance set
+
+**A new instance is created with `perf: 'pending'`, and its first launch installs Sodium, Lithium,
+FerriteCore and Entity Culling** — pinned Modrinth project ids in `mc/perf.js`, through the same
+hash-checked path as any other mod. That is what makes "more frames" a claim Kestrel can actually
+make: the renderer doing the work is Sodium's, installed by name, visible in the mods list and
+removable like anything else.
+
+**The safety property is that ABSENT MEANS OFF.** Only `store.create()` sets the flag, so every
+instance that existed before this did has no `perf` key and is never touched. Retro-fitting four
+mods into somebody's tuned 1.8.9 setup is the failure that loses trust in a launcher's mods folder
+forever. Modpack imports pass `perf: 'off'` — a pack states its own mod list and this is not invited
+to edit it.
+
+**It degrades rather than failing.** `content.pickVersion` throws `NO_BUILD` when a loader/version
+pair has no build; `perf.fill` catches that, logs the miss and carries on. Verified live: Fabric
+1.21.4 and 1.16.5 resolve 4 of 4, NeoForge 1.21.1 resolves 4 of 4, Forge 1.20.1 resolves 2 of 4
+(Sodium and Lithium are not on Forge), and 1.8.9 resolves 0 — which is a skip, not an error.
+
+The flag is cleared whatever happened, so a launch never retries four downloads forever.
 
 ## Not finished
 

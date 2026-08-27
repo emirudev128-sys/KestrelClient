@@ -36,6 +36,7 @@ const { ContentStore } = require('./content');
 const modpack = require('./modpack');
 const deps = require('./deps');
 const hud = require('./hud');
+const perf = require('./perf');
 
 /* the offline UUID every launcher agrees on: a version-3 (MD5) UUID over
    "OfflinePlayer:<name>", which is what the vanilla server computes too, so
@@ -195,6 +196,27 @@ class Game {
      mod id into a Modrinth project by search would mean installing whatever
      ranked first for a name a stranger chose, which is the same mistake as
      trusting a url out of a manifest. See the header of mc/deps.js. */
+  /* ── THE PERFORMANCE SET ────────────────────────────────────────────────
+     Runs at most once per instance, and only for one created with the flag
+     set. The flag is cleared whatever happened — installed, skipped for want
+     of a build, or failed — because the alternative is a launcher that
+     retries four downloads at the top of every launch forever. Somebody who
+     wants them after a failure can install them by name like any other mod. */
+  async _fillPerformance(instanceId, report) {
+    const inst = this.store.get(instanceId);
+    if (!inst || inst.perf !== perf.PENDING) return null;
+
+    const r = await perf.fill(this, instanceId, inst, report);
+    this.store.update(instanceId, { perf: perf.DONE });
+    await this._syncModCount(instanceId);
+
+    const did = r.installed.map(function (x) { return x.title; });
+    this.log('perf: ' + (did.length ? did.join(', ') + ' installed' : 'nothing installed')
+      + (r.skipped.length ? ' — ' + r.skipped.length + ' skipped' : '')
+      + (r.failed.length ? ', ' + r.failed.length + ' failed' : ''));
+    return r;
+  }
+
   async _fillDependencies(instanceId, report) {
     const inst = this.store.get(instanceId);
     const loader = String(inst && inst.loader || '').toLowerCase();
@@ -333,6 +355,16 @@ class Game {
        it is Fabric refusing to start. The launcher put the jar there, so it
        can read what the jar asks for and fetch it — through the same plan,
        hash-check and host allow-list as any other install. */
+    /* 1a. THE PERFORMANCE SET, once, on an instance created since this
+       existed. Before _fillDependencies rather than after, so anything these
+       four declare a need for is picked up by the same pass that already
+       fills in Fabric API — one dependency walk instead of two. */
+    try {
+      await this._fillPerformance(instanceId, report);
+    } catch (e) {
+      this.log('perf: could not install the performance set (' + e.message + ')');
+    }
+
     try {
       await this._fillDependencies(instanceId, report);
     } catch (e) {
@@ -539,7 +571,11 @@ class Game {
       name: String(name || p.name).slice(0, 64),
       ver: p.mc,
       loader: p.loader ? loaders.NAMES[p.loader] : '',
-      lver: p.loaderVersion || ''
+      lver: p.loaderVersion || '',
+      /* A PACK STATES ITS OWN MOD LIST. Adding four more to it is editing
+         somebody else's curation, and the conflict would surface as a crash
+         the pack author never shipped. */
+      perf: perf.OFF
     });
     const report = this._reporter(rec.id);
     try {
