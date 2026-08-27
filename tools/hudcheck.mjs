@@ -566,6 +566,20 @@ if (layoutJava) {
     layoutJava.indexOf('INSET_X') >= 0 && layoutJava.indexOf('SNAP') >= 0);
 }
 if (menuJava) {
+  /* ── TWO THINGS THE USER SAW IN A SCREENSHOT ─────────────────────────
+     Both were a size computed in one place and not in another, and both are
+     the kind of thing that looks fine until one element is bigger than the
+     rest. A keystroke grid is four rows where everything else is one. */
+  ok('a card preview is bounded by the well HEIGHT as well as its width',
+    /Math\.min\(1\.0, Math\.min\(\(w - 8\.0\) \/ ew, \(double\) h \/ eh\)\)/.test(menuJava),
+    'a four-row element drew out of the recess and over the name under it');
+  const stepW = /int STEP_W = (\d+)/.exec(menuJava);
+  /* the longest value either appearance stepper ever shows is MINECRAFT, 52px
+     in the vanilla font, and it needs the room BETWEEN the two 9px arrows */
+  ok('the appearance stepper is wide enough for its longest value',
+    stepW && Number(stepW[1]) - 18 >= 52,
+    stepW ? Number(stepW[1]) + 'px leaves ' + (Number(stepW[1]) - 18) + 'px for a 52px word' : 'not found');
+
   ok('the menu toggles a module, not an element',
     menuJava.indexOf('flipModule') >= 0);
   ok('and says which rows the mod cannot draw yet',

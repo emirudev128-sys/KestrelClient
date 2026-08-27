@@ -69,7 +69,12 @@ public class HudMenuScreen extends Screen {
 
     private static final int TITLE_H = 22;
     private static final int FOOT_H = 26;
-    private static final int STEP_W = 66;
+    /* WIDE ENOUGH FOR THE LONGEST VALUE IT HAS TO SHOW. At 66 the arrows
+       left 48px between them and "MINECRAFT" is 52 — so the longest of the
+       four values, and the only one anybody sees by default, overran its own
+       arrows. Sized from the text rather than by eye: 52 for the word, 9 per
+       arrow, and 4 so it is not touching them. */
+    private static final int STEP_W = 78;
 
     private final HudConfig config;
     private final Path runDir;
@@ -196,7 +201,12 @@ public class HudMenuScreen extends Screen {
         /* the count, set behind the title: it says the panel is a list of
            things without competing with the name of the screen */
         int titleEnd = px + Paint.PANEL_PAD + this.textRenderer.getWidth("KESTREL HUD") + 7;
-        Ui.left(ctx, this.textRenderer, order.size() + " modules", titleEnd, py + 7, Paint.MUTE);
+        /* BODY, NOT MUTE. Mute is #646669 and the panel is glass over
+           whatever the world happens to be; over a bright sky the count
+           dropped to almost nothing. It is a real piece of information —
+           how many things this list holds — and the label tone is the one
+           for that. */
+        Ui.left(ctx, this.textRenderer, order.size() + " modules", titleEnd, py + 7, Paint.BODY);
         Ui.close(ctx, closeX(), closeY(), 11, Ui.hit(mouseX, mouseY, closeX(), closeY(), 11, 11));
         Ui.rule(ctx, px + 1, py + TITLE_H - 1, panelW - 2);
 
@@ -364,7 +374,13 @@ public class HudMenuScreen extends Screen {
 
         int ew = HudRenderer.width(this.textRenderer, rows);
         int eh = HudRenderer.height(rows);
-        double s = Math.min(1.0, (w - 8.0) / ew);
+        /* BOUNDED BY THE WELL'S HEIGHT AS WELL AS ITS WIDTH. Scaling on width
+           alone was right while every element was one row. A keystroke grid is
+           four rows — 42px against a 25px well — so it drew straight out of
+           the recess and over the module's own name underneath. The options
+           screen already had this bound; the card did not, which is exactly
+           the kind of thing two copies of a calculation produce. */
+        double s = Math.min(1.0, Math.min((w - 8.0) / ew, (double) h / eh));
         HudRenderer.draw(ctx, this.textRenderer, rows,
             x + (w - ew * s) / 2.0, y + (h - eh * s) / 2.0, ew, eh, s, config.rounded, el.style);
     }
