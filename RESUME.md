@@ -355,6 +355,13 @@ has been caught five times and is written up in `docs/rubric.md`.
 
 ## Sensible next steps
 
+0. **`docs/hud-backlog.md` — twenty more HUD features are already asked for**, to be built after the
+   nine below. Read it before designing anything: half of that list is NOT a HUD element (a toggle
+   sprint has no anchor, zoom has a keybind, hitboxes are drawn in the world) and the contract has
+   one noun, `elements`. It also records that the Tweaks screen already names sixteen modules while
+   only seven reach the HUD — four of the backlog items already have a switch on screen wired to
+   nothing, and five more rows are wired to nothing and are not on the list at all.
+
 1. **Press Right Shift in a world and look at it.** The menu is written, compiled and its contract is
    proved; its appearance and the feel of the magnet are not. Build the jar, copy it into an
    instance's `minecraft/mods/`, launch, load a world. Everything after this is guesswork until then.
