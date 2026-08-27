@@ -233,8 +233,12 @@ public class HudMenuScreen extends Screen {
         boolean drawn = moduleDrawn(mod);
         boolean overCard = Ui.hit(mx, my, x, y, CARD_W, CARD_H);
 
+        /* HOVER IS THE FILL, and now it is the only thing. The card used to
+           brighten its outline as well, which meant the hover state was
+           carried twice and the resting state had a line round it for no
+           reason. */
         Ui.surface(ctx, x, y, CARD_W, CARD_H, Paint.R_CARD,
-            overCard ? Paint.HOVER : Paint.RAISE, overCard ? Paint.DEFINE : Paint.REGION);
+            overCard ? Paint.HOVER : Paint.RAISE);
 
         /* THE WELL FOLLOWS THE CARD'S TOP CORNERS AND SQUARES OFF AT THE
            BOTTOM, because that is where it meets the card's own surface
@@ -259,8 +263,7 @@ public class HudMenuScreen extends Screen {
         int bw = CARD_W - 8;
         int oy = optionsY(y);
         boolean overOpt = Ui.hit(mx, my, bx, oy, bw, BTN_H);
-        Ui.surface(ctx, bx, oy, bw, BTN_H, Paint.R_CTRL,
-            overOpt ? Paint.ACTIVE : Paint.PANEL, overOpt ? Paint.ACCENT : Paint.DEFINE);
+        Ui.surface(ctx, bx, oy, bw, BTN_H, Paint.R_CTRL, overOpt ? Paint.ACTIVE : Paint.PANEL);
         Ui.centred(ctx, this.textRenderer, "OPTIONS", bx - 6, bw, oy + 2, overOpt ? Paint.VALUE : Paint.BODY);
         Ui.gear(ctx, bx + bw - 13, oy + 2, overOpt ? Paint.ACCENT : Paint.MUTE,
             overOpt ? Paint.ACTIVE : Paint.PANEL);

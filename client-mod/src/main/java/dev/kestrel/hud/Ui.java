@@ -10,8 +10,12 @@ import net.minecraft.client.gui.DrawContext;
  * friends. Vanilla's widgets carry vanilla's look: the beveled nine-slice
  * button, the highlight on hover, the 20px height. A menu that configures a
  * Kestrel HUD while wearing Minecraft's chrome would read as two products in
- * one window, so the furniture here is Kestrel's own — thin borders, a 14px
- * row, and corners softened by a few pixels.
+ * one window, so the furniture here is Kestrel's own — a 14px row, corners
+ * softened by a few pixels, and <b>no outlines at all</b>.
+ *
+ * <p><b>NOTHING HERE IS OUTLINED.</b> Every control is a rounded fill and
+ * nothing more; what separates one plane from the next is how much of the
+ * blurred world shows through it. See the note above {@link #surface}.
  *
  * <p><b>THE CORNERS ARE THE ONE PLACE THIS PARTS FROM THE HUD.</b> A plate
  * drawn into the world defaults to square, because Minecraft's own panels and
@@ -96,56 +100,33 @@ final class Ui {
         ctx.fill(x, y + rr, x + w, y + h - rr, colour);
     }
 
-    /**
-     * The 1px outline of that same shape, so a fill and its border agree about
-     * where the corner is — two different roundings on one rectangle is the
-     * failure this shares its inset table to avoid.
-     *
-     * <p><b>THE FIRST ROW IS THE WHOLE EDGE, and the first version of this
-     * missed that.</b> It treated row 0 like every other row of the arc and
-     * drew only the short horizontal run at each end, so a panel came out with
-     * a continuous line down both sides and NOTHING across the top or the
-     * bottom. That reads exactly as it sounds: the sides look thicker and
-     * darker than the top and bottom, which is how it was reported — as a
-     * shadow, because a heavier edge on two sides only is what a shadow looks
-     * like.
-     *
-     * <p>At row 0 the shape's topmost pixels ARE its edge, so the run is the
-     * full span from one inset to the other. Every row after that is a step,
-     * where only the newly exposed pixels are edge.
-     */
-    static void roundBorder(DrawContext ctx, int x, int y, int w, int h, int r, int colour) {
-        int rr = Math.max(0, Math.min(Math.min(r, MAX_R), Math.min(w, h) / 2));
-        if (rr == 0) { border(ctx, x, y, w, h, colour); return; }
-        for (int i = 0; i < rr; i++) {
-            int in = inset(rr, i);
-            if (i == 0) {
-                /* the top and bottom edges themselves, corner to corner */
-                ctx.fill(x + in, y, x + w - in, y + 1, colour);
-                ctx.fill(x + in, y + h - 1, x + w - in, y + h, colour);
-                continue;
-            }
-            int prev = inset(rr, i - 1);
-            /* the horizontal run of this row's step, at both ends of both rows */
-            ctx.fill(x + in, y + i, x + prev + 1, y + i + 1, colour);
-            ctx.fill(x + w - prev - 1, y + i, x + w - in, y + i + 1, colour);
-            ctx.fill(x + in, y + h - 1 - i, x + prev + 1, y + h - i, colour);
-            ctx.fill(x + w - prev - 1, y + h - 1 - i, x + w - in, y + h - i, colour);
-        }
-        /* the straight sides between the corners */
-        ctx.fill(x, y + rr, x + 1, y + h - rr, colour);
-        ctx.fill(x + w - 1, y + rr, x + w, y + h - rr, colour);
-    }
+    /* ── NO OUTLINES. DEPTH IS A SURFACE, NOT A LINE ──────────────────────
+       There was a roundBorder here that drew a 1px edge around every one of
+       these shapes, and it is gone rather than merely unused: nothing outlines
+       a surface any more, and a method kept "in case" is a method that grows a
+       caller back.
 
-    /** fill and outline in one call, which is what almost every caller wants */
-    static void surface(DrawContext ctx, int x, int y, int w, int h, int r, int fill, int edge) {
+       What replaces it is the alpha ladder, which was already doing the work.
+       Composited over the blurred world a panel reads at 43%, a card on it at
+       64%, a hovered card at 79% and the preview well at 81% — four distinct
+       planes, told apart by how much world shows through each. A line drawn
+       around all of them was a second, louder answer to a question the fills
+       had already settled.
+
+       TWO 1PX LINES SURVIVE AND ARE NOT OUTLINES. Ui.rule separates the fixed
+       header and footer from the scrolling middle, which is a statement about
+       what moves rather than about the shape of a box; and the ring on the
+       chosen colour swatch is the only thing saying which one is chosen. Both
+       carry information. An outline carried none. */
+
+    /** a rounded fill, which is now the whole of what a surface is */
+    static void surface(DrawContext ctx, int x, int y, int w, int h, int r, int fill) {
         roundRect(ctx, x, y, w, h, r, fill);
-        roundBorder(ctx, x, y, w, h, r, edge);
     }
 
-    /** the panel itself: softened corners, one thin line, glass */
+    /** the panel itself: softened corners, glass, no edge */
     static void panel(DrawContext ctx, int x, int y, int w, int h) {
-        surface(ctx, x, y, w, h, Paint.R_PANEL, Paint.PANEL, Paint.REGION);
+        surface(ctx, x, y, w, h, Paint.R_PANEL, Paint.PANEL);
     }
 
     static void border(DrawContext ctx, int x, int y, int w, int h, int colour) {
@@ -197,8 +178,7 @@ final class Ui {
 
     static void toggle(DrawContext ctx, TextRenderer tr, int x, int y, boolean on, boolean hover, boolean enabled) {
         int fill = !enabled ? Paint.RAISE : on ? (hover ? Paint.GO_HI : Paint.ACCENT) : (hover ? Paint.HOVER : Paint.RAISE);
-        surface(ctx, x, y, TOGGLE_W, TOGGLE_H, Paint.R_CTRL, fill,
-            !enabled ? Paint.FAINT : on ? Paint.ACCENT : Paint.DEFINE);
+        surface(ctx, x, y, TOGGLE_W, TOGGLE_H, Paint.R_CTRL, fill);
         int ink = !enabled ? Paint.FAINT : on ? Paint.ON_GO : Paint.MUTE;
         centred(ctx, tr, on ? "ON" : "OFF", x, TOGGLE_W, y + 2, ink);
     }
@@ -212,7 +192,7 @@ final class Ui {
 
     static void stepper(DrawContext ctx, TextRenderer tr, int x, int y, int w, int h,
                         String value, boolean hoverLeft, boolean hoverRight) {
-        surface(ctx, x, y, w, h, Paint.R_CTRL, Paint.RAISE, Paint.DEFINE);
+        surface(ctx, x, y, w, h, Paint.R_CTRL, Paint.RAISE);
         centred(ctx, tr, "<", x, STEP_ARROW, y + (h - 8) / 2, hoverLeft ? Paint.ACCENT : Paint.MUTE);
         centred(ctx, tr, ">", x + w - STEP_ARROW, STEP_ARROW, y + (h - 8) / 2, hoverRight ? Paint.ACCENT : Paint.MUTE);
         centred(ctx, tr, value, x + STEP_ARROW, w - STEP_ARROW * 2, y + (h - 8) / 2, Paint.VALUE);
@@ -227,9 +207,12 @@ final class Ui {
     static void check(DrawContext ctx, int x, int y, boolean on, boolean hover) {
         /* R_CTRL would eat a 9px box, so a checkbox keeps a single corner
            pixel off — enough to stop it reading as the one hard square left
-           on the screen, not so much that the tick loses its ground */
-        surface(ctx, x, y, BOX, BOX, 1, hover ? Paint.HOVER : Paint.RAISE,
-            on ? Paint.ACCENT : Paint.DEFINE);
+           on the screen, not so much that the tick loses its ground.
+
+           THE TICK IS THE WHOLE SIGNAL now that there is no accent ring around
+           it. That is the right way round: a tick means yes at any size, and
+           the ring was saying the same thing a second time. */
+        surface(ctx, x, y, BOX, BOX, 1, hover ? Paint.HOVER : Paint.RAISE);
         if (!on) return;
         ctx.fill(x + 2, y + 4, x + 3, y + 6, Paint.ACCENT);
         ctx.fill(x + 3, y + 5, x + 4, y + 7, Paint.ACCENT);
@@ -245,7 +228,7 @@ final class Ui {
     static void button(DrawContext ctx, TextRenderer tr, int x, int y, int w, int h,
                        String label, boolean hover, boolean primary) {
         int fill = primary ? (hover ? Paint.GO_HI : Paint.ACCENT) : (hover ? Paint.HOVER : Paint.RAISE);
-        surface(ctx, x, y, w, h, Paint.R_CTRL, fill, primary ? Paint.ACCENT : Paint.DEFINE);
+        surface(ctx, x, y, w, h, Paint.R_CTRL, fill);
         centred(ctx, tr, label, x, w, y + (h - 8) / 2, primary ? Paint.ON_GO : hover ? Paint.VALUE : Paint.BODY);
     }
 
@@ -379,9 +362,9 @@ final class Ui {
 
     /** the close control, top right of a panel — an X drawn as two diagonals
      *  for the same reason the tick is drawn: there is no glyph in the font
-     *  that is reliably square at this size */
+     *  that is reliably square at this size. No box around it: the X is the
+     *  control, and a square drawn round it was the outline habit again. */
     static void close(DrawContext ctx, int x, int y, int size, boolean hover) {
-        border(ctx, x, y, size, size, hover ? Paint.ACCENT : Paint.DEFINE);
         int ink = hover ? Paint.ACCENT : Paint.MUTE;
         for (int i = 2; i < size - 2; i++) {
             ctx.fill(x + i, y + i, x + i + 1, y + i + 1, ink);
