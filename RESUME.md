@@ -5,17 +5,25 @@ build step. **It downloads and launches Minecraft, installs mod loaders, and ins
 
     npm start
 
-## READ THIS FIRST — how the last session actually went wrong
+## READ THIS FIRST
 
-**Your shell and the user's app do not share `%APPDATA%.`** The project folder IS shared — code
-edits reach them instantly, `git pull` says "already up to date" because it is the same working
-tree — but `%APPDATA%/Kestrel` is not. Instances you create with a script go into YOUR data folder
-and the user never sees them. An hour went into "why can't I see the HUD Test instance"; the answer
-was that it was never on their machine.
+**`%APPDATA%/Kestrel` IS READABLE FROM THE SHELL — TEST IT, DO NOT ASSUME.** This section used to
+say the opposite in bold: that your shell and the user's app do not share `%APPDATA%`, that
+instances you create go into your own data folder, and that you must never claim to have verified
+anything under it. A whole session was spent quoting that instead of checking it, refusing to look
+at the user's instances and telling them so — and then one `Test-Path` listed all thirty-nine of
+them, the installed jar with its byte count, the live `config/kestrel-hud.json` and the game's own
+`latest.log`.
 
-So: **never say "verified on your machine" about anything under `%APPDATA%`.** Code checks are real.
-Instances, worlds, mods, HUD config and launches are not, unless you inspected the user's own
-running app over a debug port they started.
+Whether it was ever true, it is not true now. **Check the path before you claim anything about it**,
+in either direction; that is the whole lesson and it is worth more than either answer.
+
+What it buys you is real end-to-end verification instead of "proved against the compiled classes":
+after the user plays you can read the config the mod wrote, see its `rev` and `by` stamp, read the
+elements it saved, and grep `logs/latest.log` for the mod's own lines.
+
+**Still true:** WRITING there is the user's business. Installing a jar into an instance, creating
+instances, editing their config — ask first. Reading to verify is free; changing their game is not.
 
 **When a prototype is being made real, grep the SYMPTOM, not the action.** Six "Open folder" controls
 existed. Grepping for the handler found one; grepping for the placeholder string `"Would open"`
