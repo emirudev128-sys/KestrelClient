@@ -150,16 +150,26 @@ final class HudRenderer {
 
         int x = Paint.PAD_X;
         for (HudElements.Run r : runs) {
-            /* NO SHADOW OVER A PLATE: it already holds the text apart from
-               the world, and over a plate a shadow is a smeared second copy
-               of every glyph — blur pretending to be depth.
+            /* ── NO SHADOW. NOT OVER A PLATE, AND NOT WITHOUT ONE EITHER ───
+               Over a plate a shadow is a smeared second copy of every glyph —
+               blur pretending to be depth — and the plate is already what
+               holds the text apart from the world.
 
-               WITHOUT A PLATE THE SHADOW COMES BACK, because it is the only
-               thing left holding white text off snow. That is what vanilla
-               does and why it does it; dropping the box is a choice about
-               looks, not a licence to be unreadable. */
+               An earlier version here turned the shadow back ON when the
+               plate was switched off, reasoning that it was then the only
+               thing keeping white text off snow. That was vanilla's answer to
+               vanilla's problem, and it is the look this HUD exists to not
+               have: a hard black offset copy of every character is precisely
+               what makes the debug screen ugly.
+
+               THE HONEST TOOLS FOR THAT CASE ARE ALREADY ON THE OPTIONS
+               SCREEN. Somebody who turns the box off and finds the text hard
+               to read over snow can pick a darker ink, or leave the plate on
+               at fifteen percent, which costs nothing and works everywhere. A
+               shadow nobody asked for is not a third option, it is this
+               deciding for them. */
             ctx.drawText(tr, r.text, x, Paint.PAD_Y,
-                HudElements.colourOf(r.role, st), !st.plate);
+                HudElements.colourOf(r.role, st), false);
             x += tr.getWidth(r.text) + Paint.GAP;
         }
         ctx.getMatrices().pop();

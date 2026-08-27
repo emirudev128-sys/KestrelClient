@@ -491,6 +491,24 @@ if (paintJava) {
     'sharp is what looks native in the world; the menu is not in the world');
 }
 
+/* ── NO SHADOW, ANYWHERE ────────────────────────────────────────────────
+   Minecraft's drawText takes a boolean for it and vanilla passes true almost
+   everywhere, which is why the debug screen looks the way it does: a hard
+   black offset copy of every glyph. The plate is this HUD's answer to the
+   problem the shadow solves, and a shadow on top of a plate is a smear.
+
+   This is asserted rather than trusted because it is a one-character
+   regression — flipping a `false` to a `true`, or to a condition — and it was
+   made once already, when a version here turned the shadow back on for
+   elements whose plate was switched off. */
+const shadowed = [...['HudRenderer.java', 'Ui.java'].map((f) => [f, src(f)])]
+  .filter(([, j]) => j)
+  .flatMap(([f, j]) => [...j.matchAll(/drawText\([^;]*?\);/gs)]
+    .filter((m) => !/,\s*false\s*\)/.test(m[0]))
+    .map((m) => f + ': ' + m[0].replace(/\s+/g, ' ').slice(0, 70)));
+ok('nothing draws text with a shadow', shadowed.length === 0,
+  shadowed.length ? shadowed.join(' | ') : 'every drawText passes false');
+
 if (uiJava) {
   ok('a rounded rectangle is built from horizontal spans',
     /static void roundRect/.test(uiJava) && /static void roundBorder/.test(uiJava),
