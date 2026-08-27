@@ -96,16 +96,37 @@ final class Ui {
         ctx.fill(x, y + rr, x + w, y + h - rr, colour);
     }
 
-    /** the 1px outline of that same shape, so a fill and its border agree
-     *  about where the corner is — two different roundings on one rectangle
-     *  is the failure this shares its inset table to avoid */
+    /**
+     * The 1px outline of that same shape, so a fill and its border agree about
+     * where the corner is — two different roundings on one rectangle is the
+     * failure this shares its inset table to avoid.
+     *
+     * <p><b>THE FIRST ROW IS THE WHOLE EDGE, and the first version of this
+     * missed that.</b> It treated row 0 like every other row of the arc and
+     * drew only the short horizontal run at each end, so a panel came out with
+     * a continuous line down both sides and NOTHING across the top or the
+     * bottom. That reads exactly as it sounds: the sides look thicker and
+     * darker than the top and bottom, which is how it was reported — as a
+     * shadow, because a heavier edge on two sides only is what a shadow looks
+     * like.
+     *
+     * <p>At row 0 the shape's topmost pixels ARE its edge, so the run is the
+     * full span from one inset to the other. Every row after that is a step,
+     * where only the newly exposed pixels are edge.
+     */
     static void roundBorder(DrawContext ctx, int x, int y, int w, int h, int r, int colour) {
         int rr = Math.max(0, Math.min(Math.min(r, MAX_R), Math.min(w, h) / 2));
         if (rr == 0) { border(ctx, x, y, w, h, colour); return; }
         for (int i = 0; i < rr; i++) {
             int in = inset(rr, i);
-            int prev = i == 0 ? in : inset(rr, i - 1);
-            /* the horizontal run of this row's step, top and bottom */
+            if (i == 0) {
+                /* the top and bottom edges themselves, corner to corner */
+                ctx.fill(x + in, y, x + w - in, y + 1, colour);
+                ctx.fill(x + in, y + h - 1, x + w - in, y + h, colour);
+                continue;
+            }
+            int prev = inset(rr, i - 1);
+            /* the horizontal run of this row's step, at both ends of both rows */
             ctx.fill(x + in, y + i, x + prev + 1, y + i + 1, colour);
             ctx.fill(x + w - prev - 1, y + i, x + w - in, y + i + 1, colour);
             ctx.fill(x + in, y + h - 1 - i, x + prev + 1, y + h - i, colour);

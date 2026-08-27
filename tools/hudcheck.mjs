@@ -535,6 +535,89 @@ if (uiJava) {
     ok('and no corner of 3px or more is inset by its own full radius',
       rows.every((r, ri) => ri < 3 || r.length === 0 || r[0] < ri),
       'that is the tangent point of the circle, where its width is zero');
+
+    /* ── THE OUTLINE HAS TO CLOSE ─────────────────────────────────────────
+       Reported by eye as "the sides are thicker than the top and bottom, I
+       thought that was a shadow". It was not a shadow: roundBorder treated
+       row 0 as just another step of the arc and drew only the short run at
+       each end, so a panel got a continuous line down both sides and NOTHING
+       across the top or the bottom. A heavier edge on two sides only is
+       exactly what a drop shadow looks like, which is why that is what it
+       read as.
+
+       Grepping for the missing line would only ever catch this one bug. So
+       this RASTERISES both methods off the Java's own inset table and asserts
+       the geometric property that was violated: every filled pixel touching
+       the outside must be covered by the border. */
+    const insetOf = (r, row) => (r <= 0 || row >= r ? 0
+      : (rows[r] ? rows[r][row]
+        : Math.ceil(r - Math.sqrt(Math.max(0, r * r - (r - row - 0.5) ** 2)) - 1e-9)));
+
+    const raster = (W, H, r) => {
+      const FILL = 1, EDGE = 2;
+      const g = Array.from({ length: H }, () => new Array(W).fill(0));
+      const put = (x1, y1, x2, y2, v) => {
+        for (let yy = Math.max(0, y1); yy < Math.min(H, y2); yy++) {
+          for (let xx = Math.max(0, x1); xx < Math.min(W, x2); xx++) g[yy][xx] = v;
+        }
+      };
+      /* roundRect */
+      for (let i = 0; i < r; i++) {
+        const inn = insetOf(r, i);
+        put(inn, i, W - inn, i + 1, FILL);
+        put(inn, H - 1 - i, W - inn, H - i, FILL);
+      }
+      put(0, r, W, H - r, FILL);
+      /* roundBorder */
+      for (let i = 0; i < r; i++) {
+        const inn = insetOf(r, i);
+        if (i === 0) {
+          put(inn, 0, W - inn, 1, EDGE);
+          put(inn, H - 1, W - inn, H, EDGE);
+          continue;
+        }
+        const prev = insetOf(r, i - 1);
+        put(inn, i, prev + 1, i + 1, EDGE);
+        put(W - prev - 1, i, W - inn, i + 1, EDGE);
+        put(inn, H - 1 - i, prev + 1, H - i, EDGE);
+        put(W - prev - 1, H - 1 - i, W - inn, H - i, EDGE);
+      }
+      put(0, r, 1, H - r, EDGE);
+      put(W - 1, r, W, H - r, EDGE);
+      return g;
+    };
+
+    const leaksAt = (r) => {
+      const W = 24, H = 14, g = raster(W, H, r);
+      let leaks = 0;
+      for (let yy = 0; yy < H; yy++) {
+        for (let xx = 0; xx < W; xx++) {
+          if (g[yy][xx] !== 1) continue;
+          const exposed = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
+            const ny = yy + dy, nx = xx + dx;
+            return ny < 0 || ny >= H || nx < 0 || nx >= W || g[ny][nx] === 0;
+          });
+          if (exposed) leaks++;
+        }
+      }
+      return leaks;
+    };
+    const openAt = [1, 2, 3, 4].filter((r) => leaksAt(r) > 0);
+    ok('and every radius draws a CLOSED outline — no bare fill on an edge',
+      openAt.length === 0,
+      openAt.length ? 'open at r=' + openAt.join(', ') : 'r=1,2,3,4 all closed');
+
+    /* THE RASTERISER ABOVE PROVES THE ALGORITHM, NOT THE JAVA. It reads the
+       inset table out of Ui.java but then draws the spans itself, so it would
+       still pass if somebody edited roundBorder back to the broken shape.
+       This is the other half: that the method really does special-case its
+       first row into a full-width run, which is the whole of the fix. */
+    const body = /static void roundBorder\([\s\S]*?\n    \}/.exec(uiJava);
+    ok('and roundBorder really does treat row 0 as the whole edge',
+      body !== null && /if \(i == 0\)/.test(body[0])
+        && /x \+ in, y, x \+ w - in, y \+ 1/.test(body[0])
+        && /x \+ in, y \+ h - 1, x \+ w - in, y \+ h/.test(body[0]),
+      'the rasteriser cannot see the method body; this can');
   }
 }
 
