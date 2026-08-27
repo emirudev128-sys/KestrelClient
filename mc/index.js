@@ -348,9 +348,21 @@ class Game {
        alternative is tracking which instances hold a stale copy, and there is
        no version of that simpler than writing 300 bytes before a process that
        takes twenty seconds to start. Costs nothing when the mod is absent —
-       an unread file in config/ is what every other mod's config also is. */
+       an unread file in config/ is what every other mod's config also is.
+
+       AND READ BACK FIRST, because the mod writes it too now. Right Shift
+       opens an in-game menu that can drag an element, and a launch that only
+       ever wrote would erase that edit before the player saw it again.
+       hud.sync() reads, folds a game-written document back into settings, and
+       only then writes — see the provenance note at the top of mc/hud.js.
+
+       THE IMPORT IS PERSISTED HERE rather than inside hud.js, which has no
+       store and should not grow one: it is the module that turns a settings
+       object into a file, and giving it the ability to write settings back
+       would make the direction of that dependency a matter of opinion. */
     try {
-      await hud.write(this.L.gameDir(instanceId), this.store.readSettings().hud, this.log);
+      const synced = await hud.sync(this.L.gameDir(instanceId), this.store.readSettings().hud, this.log);
+      if (synced.imported) this.store.writeSettings({ hud: synced.settings });
     } catch (e) {
       /* A HUD IS NOT A REASON NOT TO PLAY. If this cannot be written the mod
          falls back to its own defaults, which is a worse HUD and not a

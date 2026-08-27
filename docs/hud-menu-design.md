@@ -93,12 +93,52 @@ magnet you cannot switch off is a magnet that fights you.
 **Configure what Phase 1 added:** corners (sharp/rounded), font (Minecraft/Kestrel), compass on
 coords, and per-element anchor, offset and scale.
 
-## The blocker to settle first
+## The blocker, settled
 
-The mod only reads the config today; `mc/hud.js` rewrites it from `settings.hud` on **every launch**.
-An in-game editor that saves a layout would have it clobbered the next time the launcher starts.
+The mod used to only read the config; `mc/hud.js` rewrote it from `settings.hud` on **every launch**,
+so an in-game editor that saved a layout would have had it clobbered at the next start.
 
-Proposed, and **not yet agreed with the user**: the launcher reads the file back into `settings.hud`
-before writing, so in-game edits flow back to the HUD screen and the two stay in sync. Ask before
-building on it — it inverts the "the launcher owns the settings" rule that the whole contract was
-designed around.
+**The user chose read-back with provenance, and it is built.** Document version 3 carries `rev` and
+`by`. The mod stamps `by: "game"`; on the next launch `hud.sync()` reads first, folds a game-written
+document back into `settings.hud`, and only then writes — stamped `by: "launcher"` again, which is
+what makes the import happen exactly once.
+
+**One refinement on the proposal as it was put.** The obvious rule is "import if the file's rev is
+newer than the one we last wrote", and that has a hole: `settings.hud` is ONE global object while the
+config file is PER INSTANCE, so revs across instances are not a total order. Edit in-game in instance
+A, launch B, come back to A, and A's rev is behind the number the launcher moved on to — the edit
+would be silently discarded. So the decision rests on `by` alone. `rev` stays for the log line and
+for ordering within one instance.
+
+This did NOT invert "the launcher owns the settings", which was the worry. The launcher still owns
+every default, every name and every word a player reads: `module` and `label` travel in the document
+so the mod has no vocabulary of its own, and a twelfth element added to the HUD screen appears in
+the in-game menu with no Java changing. What the mod gained is an *editor for the document*, not a
+second model of it.
+
+## What got built
+
+`HudMenuScreen` (the panel) and `HudLayoutScreen` (drag and magnet), with `HudRenderer`,
+`HudElements` and `Ui` split out so the live HUD and the editor draw from one source. Right Shift is
+registered through the ordinary keybinding API, so it shows up in Minecraft's Controls screen and can
+be rebound.
+
+**Departures from the notes above, and why.** No collapsible sections — NoRisk collapses because it
+has four groups; this has two and ten rows, and a disclosure triangle over five rows costs a click to
+see what already fits. No blur behind the panel — Lunar blurs, but blur is a shader pass whose API
+has moved in every recent Minecraft version, and a fill that works beats a blur that compiles today.
+ASCII `< >` in the stepper rather than `‹ ›`, because single guillemets are exactly the character
+that comes out as a missing-glyph box under some resource packs.
+
+**A bug fell out of the drag maths.** Both sides clamped percentages to `0..100`, but a centre or
+middle anchor offsets in *both* directions from the middle — the HUD screen's own `place()` writes
+`top: calc(50% + Y%)`. The stock layout has one, `helmet` at `mr` / `-9.6`, so every launch was
+writing that element as `0` and dropping the helmet icon into the vertical centre. Invisible until
+now only because the mod does not draw armour. Both sides clamp `-100..100` now.
+
+## Still not drawn
+
+Nine of the eleven elements are arranged, carried, listed and toggled — and not drawn. The menu says
+so on the rows it cannot honour, and the layout editor shows those elements as their own label in the
+muted ink rather than as invented sample data, because a plate reading `21 ms` on top of the world
+would be indistinguishable from a ping display that works.

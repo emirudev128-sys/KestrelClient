@@ -31,32 +31,78 @@ as a stale window or a misclick, and three times it was real.
     cd client-mod && gradle build      # JDK 21 + Gradle 8; loom 1.9.2 (1.17 needs Gradle 9.5)
     -> build/libs/kestrel-hud-0.1.0.jar
 
+**Neither `gradle` nor a JDK 21 is on PATH on this machine**, and there is no `gradlew` wrapper in
+the project, so that line does not run as written. Gradle 8.14.3 is in the wrapper cache under
+`%USERPROFILE%\.gradle\wrapper\dists\gradle-8.14.3-bin\<hash>\gradle-8.14.3\bin\gradle.bat` (the
+hash is a directory name — list the folder to find it), and the JDK is Adoptium 21 under
+`%ProgramFiles%\Eclipse Adoptium`. In PowerShell:
+
+    $env:JAVA_HOME = (Get-ChildItem "$env:ProgramFiles\Eclipse Adoptium" -Filter "jdk-21*")[0].FullName
+    $g = (Get-ChildItem "$env:USERPROFILE\.gradle\wrapper\dists\gradle-8.14.3-bin" -Recurse -Filter gradle.bat)[0].FullName
+    & $g -p client-mod build
+
+`java` on PATH is 1.8, which will not compile this. Gradle 9.2.0 is also in that dists folder and
+loom 1.9.2 refuses to load under it — take the 8.14.3 one. `tools/hudcheck.mjs` finds the JDK on its
+own (JAVA_HOME, then PATH, then Adoptium) and says so when it cannot.
+
+Paths are written with `%USERPROFILE%` rather than spelled out because this repository is public and
+a home directory names its owner — the same rule as the rest of the never-commit list at the bottom.
+
 Install by copying that jar into `<instance>/minecraft/mods/`. Fabric API installs itself now
 (mc/deps.js reads what the jars declare). Verified on 1.21.4: builds, loads, draws.
 
-**The contract** is one file, `<instance>/config/kestrel-hud.json`, written by `mc/hud.js` on every
-launch from `settings.hud` and read by `HudConfig.java`. `tools/hudcheck.mjs` asserts the three
-languages agree — markup, JS, Java. Positions are percentages against nine anchors, plus a scale;
-visibility is resolved launcher-side from the seven MODULES (Armor status owns five elements).
+**The contract** is one file, `<instance>/config/kestrel-hud.json`, **version 3**, written by
+`mc/hud.js` and read AND WRITTEN by `HudConfig.java`. `tools/hudcheck.mjs` asserts the three
+languages agree — markup, JS, Java — in 91 assertions, the last eleven of which run the compiled mod
+against a document the launcher just wrote and read back what it wrote. Positions are percentages
+against nine anchors, plus a scale; visibility is resolved launcher-side from the seven MODULES
+(Armor status owns five elements); `module` and `label` travel in the document so the in-game menu
+has no vocabulary of its own.
 
-## Phase 2, the next piece of work
+## Phase 2 is built: the in-game menu
 
-The user asked for an in-game menu on **Right Shift**, inspired by Lunar Client and mod menus:
-element list with toggles, free dragging with **magnet snapping**, and the config controls
-(corners, font, compass, anchors). Phase 1 — sharp/rounded, two fonts, compass, and collision
-stacking — is done and pushed.
+**Right Shift opens it, in a world.** `HudMenuScreen` toggles the seven modules and sets corners,
+font and the coords compass; `EDIT HUD LAYOUT` drops into `HudLayoutScreen`, which is the HUD alone
+on screen with drag, **magnet snapping**, wheel-to-scale, arrow-nudge and Alt to suppress the magnet.
+The layout screen hands back to the menu, and the menu is the single exit — so a whole session of
+dragging produces exactly one write, and opening the menu to look at it produces none.
 
-**Look at `hud-inspos/` first** — the three reference screenshots the user supplied: Lunar Client's
-mod list, Sodium's settings, NoRisk's Host World dialog. The folder is gitignored (other people's
-product UI) but is on the machine. `docs/hud-menu-design.md` is a written reading of them and what
-to take from each; the images are the source, the notes are not.
+The magnet snaps, in this order: the nine anchors (flush, the launcher's stock 2.6%/4.2% inset, and
+the centre lines), then other elements' leading edges, trailing edges, centres, and the two positions
+that sit one element directly beside or beneath another. Five pixels of pull, and a guide line is
+drawn at whatever it caught on.
 
-**The design decision that is still open, and must be settled before writing the menu.** The mod
-currently only READS the config; the launcher rewrites it on every launch from `settings.hud`. The
-moment the in-game menu saves a dragged layout, the next launch clobbers it. The proposed answer,
-which the user has not yet approved: the launcher READS the file back into `settings.hud` first,
-then writes — so in-game edits flow back to the HUD screen and the two stay in sync. Ask before
-building on it.
+**Files:** `HudMenuScreen`, `HudLayoutScreen`, `Ui` (the furniture, drawn by hand rather than from
+`ButtonWidget` — vanilla's widgets carry vanilla's look), plus `HudRenderer` and `HudElements` split
+out of the render callback so the live HUD and the editor draw from ONE source. An editor arranging
+boxes of a different width from the ones the game will draw is an editor that lies.
+
+**Look at `hud-inspos/` first** if you touch the visuals — the three reference screenshots the user
+supplied: Lunar Client's mod list, Sodium's settings, NoRisk's Host World dialog. The folder is
+gitignored (other people's product UI) but is on the machine. `docs/hud-menu-design.md` reads them,
+and now also records what was deliberately NOT taken from each and why.
+
+### The ownership question, settled
+
+**The user chose read-back with provenance.** The document carries `rev` and `by`. The mod stamps
+`by: "game"`; on the next launch `hud.sync()` reads first, folds a game-written document back into
+`settings.hud`, persists that through the store, and only then writes — stamped `by: "launcher"`
+again, which is what makes an edit import exactly once. Verified both directions with the real
+compiled jar's classes, including the second launch importing nothing.
+
+**One refinement on the proposal as it was put to the user:** the decision rests on `by` alone, NOT
+on "is this rev newer than the one we last wrote". `settings.hud` is one GLOBAL object and the config
+file is PER INSTANCE, so revs across instances are not a total order — edit in-game in A, launch B,
+return to A, and a rev comparison discards A's edit silently. `rev` stays for the log line.
+
+### A bug this turned up
+
+Both sides clamped percentages to `0..100`. A centre or middle anchor offsets in **both** directions
+from the middle — the HUD screen's own `place()` writes `top: calc(50% + Y%)` — and the stock layout
+has one, `helmet` at `mr` / `-9.6`. So every launch was writing that element as `0`, dropping the
+helmet icon into the vertical centre of the screen. Invisible only because the mod does not draw
+armour yet. Both sides clamp `-100..100` now, and hudcheck asserts the markup's own negative offset
+survives the trip.
 
 
 ## What works, verified end to end on this machine
@@ -74,6 +120,7 @@ building on it.
 | **Accounts** | Microsoft device-code flow, real client id, tokens never leave the main process |
 | **Client mod** | `kestrel-hud` **draws in-game**, confirmed on screen by the user: fps and coords on a plate |
 | **HUD wiring** | The screen's layout persists and reaches the mod: 11 elements, 6 anchors, scales intact |
+| **HUD round trip** | The **compiled** mod read a launcher document, edited it, wrote it back; the launcher took the edit and, on the next launch, imported nothing. Negative offsets, fractional scales and a non-ASCII label all intact |
 | **Modpacks** | Fabulously Optimized (.mrpack) planned and installed — 50 files sha1-checked, 55 overrides |
 | **Packaging** | `Kestrel-0.5.0-Setup.exe`, 106 MB. The packaged app launches and runs out of its own asar. |
 
@@ -105,7 +152,7 @@ and no token on a command line (the launcher refuses rather than leaking on Java
     node tools/phase4check.mjs    loader merge rules (60)
     node tools/phase4check.mjs modern   ... and really install + launch NeoForge 1.21.1 (83)
     node tools/phase5check.mjs    content install
-    node tools/hudcheck.mjs       the HUD contract across markup, JS and Java (31)
+    node tools/hudcheck.mjs       the HUD contract across markup, JS and Java (91)
     node tools/packcheck.mjs      what the packaged build actually contains (47)
     bash  tools/scan.sh           Electronegativity + semgrep + npm audit + token containment
 
@@ -117,13 +164,19 @@ and nothing else.
 - **Update checking reports but does not apply** — installing the newer version replaces the file.
 - **Mojang has not approved the Azure application** for the Minecraft scopes, so the final token
   exchange will 403 until they do. Form: https://aka.ms/mce-reviewappid
-- Only two HUD elements are DRAWN (fps, coords). The screen arranges eleven and the launcher now
-  writes all eleven to the config; the mod ignores the other nine. That is the next piece and it is
-  Java.
-- The HUD has still not been seen on screen. It draws only in a world.
-- The HUD has not been seen ON SCREEN. It draws only in a world, and nothing can drive Minecraft
-  into one unattended — what is proved is that it loads, parses its config and registers its
-  render callback without crashing.
+- **Only two HUD elements are DRAWN (fps, coords).** The screen arranges eleven, the launcher writes
+  eleven, and the menu now lists and toggles all seven modules — the nine undrawn ones are marked
+  `not drawn yet` on their row, and the layout editor shows them as their own label in the muted ink
+  rather than as invented sample data. Positioning them works; they just do not appear in-world.
+  That is the next piece and it is Java: `HudElements.of()` is the one place to add each.
+- **THE MENU HAS NOT BEEN SEEN ON SCREEN.** It compiles, and the contract it reads and writes is
+  proved end to end against the compiled classes — but nothing can drive Minecraft into a world
+  unattended, so no pixel of `HudMenuScreen` or `HudLayoutScreen` has been looked at, and the feel of
+  the magnet is a guess until somebody drags something. Press Right Shift in a world and judge it.
+- `HudRenderCallback` is **deprecated** in Fabric's 1.21.4 API (`-Xlint:deprecation` names it, and it
+  is the only warning in the build). It still works — it is what has been drawing on screen — but a
+  future API version will drop it for `HudLayerRegistrationCallback`. Left alone deliberately: it is
+  the one part of this that is confirmed working by eye.
 
 ## Where things stand (last session)
 
@@ -222,7 +275,9 @@ has been caught five times and is written up in `docs/rubric.md`.
 ## Also true right now
 
 - `dist/` holds a 0.5.0 installer built BEFORE the modpack work, the HUD wiring and every fix since.
-  Rebuild with `npm run dist && npm run packcheck` before giving it to anyone.
+  Rebuild with `npm run dist && npm run packcheck` before giving it to anyone. **`packcheck` fails 2
+  of 47 because of this** — `mc/deps.js` and `mc/hud.js` are not in that asar, because the installer
+  was built at 20:42 and those files landed at 00:05 and 21:13. Not a packaging bug; a stale build.
 - The Azure app was re-registered. The new client id is in `auth.config.json` (gitignored) and
   **nowhere else** — the user asked explicitly that it never be pushed. The old one is dead but
   still readable in history at `a46edfd`; `RESUME.md` no longer names any id.
@@ -234,13 +289,18 @@ has been caught five times and is written up in `docs/rubric.md`.
 
 ## Sensible next steps
 
-1. **Persist the HUD screen's layout.** Everything downstream is done: `mc/hud.js` validates and
-   writes `config/kestrel-hud.json` on every launch, and the mod reads it. The renderer just never
-   saves — its layout lives in `ST` as undo state and dies with the screen. Then the other nine
-   elements in the mod.
-2. **CurseForge packs** — `.mrpack` is done; their `.zip` export is a different manifest, needs an
+1. **Press Right Shift in a world and look at it.** The menu is written, compiled and its contract is
+   proved; its appearance and the feel of the magnet are not. Build the jar, copy it into an
+   instance's `minecraft/mods/`, launch, load a world. Everything after this is guesswork until then.
+   (The previous version of this list said "persist the HUD screen's layout" — that was already done;
+   `saveHud()` in `ui/scripts/app.js` has been writing it for some time. Do not redo it.)
+2. **The other nine elements in the mod.** `HudElements.of()` is the single place: return runs for
+   `ping`, `cps`, `potion`, `keys` and the five armour slots, and delete the name from the
+   placeholder path. The menu rows stop saying `not drawn yet` on their own, because that string is
+   driven by `HudElements.drawn()`.
+3. **CurseForge packs** — `.mrpack` is done; their `.zip` export is a different manifest, needs an
    API key, and has a redistribution story worth reading before it is written.
-3. **Code signing** — SmartScreen warns on every first run until the binary is signed by a
+4. **Code signing** — SmartScreen warns on every first run until the binary is signed by a
    certificate with reputation behind it. That is a purchase, not a config change.
 
 ## How to work on this

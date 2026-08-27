@@ -1,16 +1,21 @@
 package dev.kestrel.hud;
 
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.InputUtil;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
-import net.minecraft.util.math.MathHelper;
+import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -18,13 +23,17 @@ import java.util.List;
  * THE IN-GAME HALF OF KESTREL.
  *
  * <p>Reads {@code <instance>/config/kestrel-hud.json} — written by the
- * launcher — and draws the elements it turns on.
+ * launcher — draws the elements it turns on, and since Right Shift opened a
+ * menu, writes it back when a player edits it in game. The document, and the
+ * rule that keeps the two writers from erasing each other, is
+ * {@link HudConfig}.
  *
  * <p><b>NO NETWORK, AND NOTHING TOLD TO A SERVER.</b> Kestrel's claim is that
  * it never talks to a game server and has nothing to disclose. A client mod
  * is exactly where that could quietly stop being true — mods register plugin
  * channels routinely and a HUD has no business doing so. This one opens no
- * channel, registers no packet handler and makes no request.
+ * channel, registers no packet handler and makes no request. Adding a screen
+ * did not change that: a menu reads a file and writes a file.
  */
 public class KestrelHudClient implements ClientModInitializer {
 
@@ -35,191 +44,104 @@ public class KestrelHudClient implements ClientModInitializer {
        is Minecraft's, because a HUD that looks like the game costs a new
        player nothing to read; ours is the deliberate choice, not the imposed
        one. See assets/kestrel-hud/font/kestrel.json. */
-    private static final Identifier FONT = Identifier.of(MOD_ID, "kestrel");
+    static final Identifier FONT = Identifier.of(MOD_ID, "kestrel");
+
+    /* RIGHT SHIFT, because vanilla binds it to nothing and every client that
+       has done this has landed on the same key. Registered through the
+       ordinary keybinding API, so it appears in Minecraft's own Controls
+       screen and a player who wants a different key has one — which is more
+       than a hard-coded GLFW check in a tick handler would have given them. */
+    private static KeyBinding menuKey;
 
     private HudConfig config;
+    private Path runDir;
 
     @Override
     public void onInitializeClient() {
-        config = HudConfig.read(FabricLoader.getInstance().getGameDir());
-        LOG.info("Kestrel HUD: {} element(s) configured, {} corners, {} font",
-            config.count(), config.rounded ? "rounded" : "sharp",
+        runDir = FabricLoader.getInstance().getGameDir();
+        config = HudConfig.read(runDir);
+        LOG.info("Kestrel HUD: {} element(s) configured at revision {}, {} corners, {} font",
+            config.count(), config.revision(),
+            config.rounded ? "rounded" : "sharp",
             config.kestrelFont ? "Kestrel" : "Minecraft");
+
+        menuKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key." + MOD_ID + ".menu", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, "category." + MOD_ID));
+
+        ClientTickEvents.END_CLIENT_TICK.register(this::tick);
         HudRenderCallback.EVENT.register(this::draw);
     }
 
-    private Text face(String s) {
-        return config.kestrelFont
-            ? Text.literal(s).styled(st -> st.withFont(FONT))
-            : Text.literal(s);
-    }
-
-    /** one run of text in one colour; an element is a few of these in a row */
-    private final class Run {
-        final Text text;
-        final int colour;
-        Run(String text, int colour) { this.text = face(text); this.colour = colour; }
-    }
-
-    /** a placed element, kept so the next one can avoid sitting on it */
-    private static final class Box {
-        final double x, y, w, h;
-        Box(double x, double y, double w, double h) { this.x = x; this.y = y; this.w = w; this.h = h; }
-        boolean hits(Box o) {
-            return x < o.x + o.w && x + w > o.x && y < o.y + o.h && y + h > o.y;
+    /* Drained in a while loop rather than read once: wasPressed() pops one
+       press off a queue, and a key pressed twice inside one tick would
+       otherwise leave the second press sitting there to open the menu again
+       the moment it was closed. */
+    private void tick(MinecraftClient client) {
+        while (menuKey.wasPressed()) {
+            /* IN A WORLD, AND NOT OVER ANOTHER SCREEN. This configures a HUD
+               that only exists in a world, and opening it over the title
+               screen would offer to arrange nothing against nothing. */
+            if (client.player != null && client.currentScreen == null) {
+                client.setScreen(new HudMenuScreen(config, runDir));
+            }
         }
     }
 
+    /** the face the config asked for, as a function — the screens draw the
+     *  same elements the HUD does and have to ask for them the same way */
+    static HudElements.Face face(HudConfig cfg) {
+        if (cfg.kestrelFont) return s -> Text.literal(s).styled(st -> st.withFont(FONT));
+        return Text::literal;
+    }
+
+    /* The second parameter is Minecraft's render tick counter, taken as
+       Object. A method reference is compatible with a wider parameter, and
+       that class has changed both package and name across recent versions
+       while the callback's shape has not — so not naming it is one fewer
+       thing to fix at the next version bump. Nothing here uses it. */
     private void draw(DrawContext ctx, Object tickCounter) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.textRenderer == null) return;
-        /* the HUD belongs to the world: nothing over a menu, and F1 means F1 */
-        if (client.player == null || client.currentScreen != null) return;
+        if (client.player == null) return;
         if (client.options != null && client.options.hudHidden) return;
+
+        /* THE HUD BELONGS TO THE WORLD — with one exception. Nothing draws
+           over a menu and F1 means F1, but the Kestrel menu is the one screen
+           where the HUD has to stay up: it is what you are configuring, and
+           watching an element vanish from the corner as you flip its toggle
+           is the entire reason to do this in game rather than in the
+           launcher. The LAYOUT screen is not in this exception — it draws its
+           own editable copy, and two of everything is not a preview. */
+        if (client.currentScreen != null && !(client.currentScreen instanceof HudMenuScreen)) return;
 
         /* WHAT IS ALREADY ON SCREEN, so nothing lands on top of anything.
            Rebuilt every frame: the elements move, and a stale rectangle would
            push this frame's element out of the way of last frame's. */
-        List<Box> placed = new ArrayList<>();
+        List<HudRenderer.Box> placed = new ArrayList<>();
+        HudElements.Face face = face(config);
 
-        int fps = MinecraftClient.getInstance().getCurrentFps();
-        List<Run> f = new ArrayList<>();
-        f.add(new Run(Integer.toString(fps), fpsColour(fps)));
-        f.add(new Run("FPS", Paint.LABEL));
-        element(ctx, client, "fps", f, placed);
+        for (String name : config.names()) {
+            HudConfig.Element el = config.get(name);
+            if (el == null || !el.on) continue;
+            /* placeholder: false — an element this mod cannot draw is simply
+               absent from the world. The layout editor shows it as a named
+               box so it can be positioned; the game does not, because a plate
+               reading "Ping" that never becomes a ping is worse than nothing
+               being there. */
+            List<HudElements.Run> runs = HudElements.of(name, el, client, face, false);
+            if (runs == null || runs.isEmpty()) continue;
 
-        HudConfig.Element co = config.get("coords");
-        List<Run> pos = new ArrayList<>();
-        pos.add(new Run("X", Paint.LABEL));
-        pos.add(new Run(fixed(client.player.getX()), Paint.VALUE));
-        pos.add(new Run("Y", Paint.LABEL));
-        pos.add(new Run(fixed(client.player.getY()), Paint.VALUE));
-        pos.add(new Run("Z", Paint.LABEL));
-        pos.add(new Run(fixed(client.player.getZ()), Paint.VALUE));
-        /* THE COMPASS, when asked for. Vanilla puts the facing in F3 and
-           nowhere else, so a coordinate readout without it means opening the
-           debug screen to answer "which way is north" — which is usually the
-           question the coordinates were being read to settle. */
-        if (co != null && co.compass) {
-            pos.add(new Run(cardinal(client.player.getYaw()), Paint.ACCENT));
+            int w = HudRenderer.width(client.textRenderer, runs);
+            int h = HudRenderer.height();
+            int sw = ctx.getScaledWindowWidth();
+            int sh = ctx.getScaledWindowHeight();
+
+            HudRenderer.Box box = HudRenderer.box(el, w, h, sw, sh);
+            box = HudRenderer.avoid(box, placed, el.anchor.charAt(0) == 'b');
+            box = HudRenderer.onScreen(box, sw, sh);
+            placed.add(box);
+
+            HudRenderer.draw(ctx, client.textRenderer, runs, box.x, box.y, w, h, el.scale, config.rounded);
         }
-        element(ctx, client, "coords", pos, placed);
-    }
-
-    /* GREEN IS NOT A COLOUR THIS PALETTE HAS, and inventing one for "good
-       fps" would put a hue on screen that appears nowhere in the launcher. So
-       the accent marks the case worth noticing — fps low enough to feel — and
-       everything healthy stays in the ordinary ink. A HUD that lights up when
-       nothing is wrong is a HUD you stop reading. */
-    private static int fpsColour(int fps) {
-        return fps > 0 && fps < 30 ? Paint.ACCENT : Paint.VALUE;
-    }
-
-    private static String fixed(double v) {
-        return String.format("%.1f", v);
-    }
-
-    /* Minecraft's yaw is 0 at SOUTH and grows clockwise, which is why mapping
-       it naively onto compass points puts north where south is. Wrapped to
-       -180..180 first, then shifted and rounded into eight 45-degree sectors. */
-    private static String cardinal(float yaw) {
-        int i = MathHelper.floor((MathHelper.wrapDegrees(yaw) + 180.0f) / 45.0f + 0.5f) & 7;
-        return new String[] { "N", "NE", "E", "SE", "S", "SW", "W", "NW" }[i];
-    }
-
-    /* ── one element: place it, avoid what is already there, then draw ──── */
-    private void element(DrawContext ctx, MinecraftClient client, String name, List<Run> runs, List<Box> placed) {
-        HudConfig.Element el = config.get(name);
-        if (el == null || !el.on || runs.isEmpty()) return;
-
-        int inner = 0;
-        for (int i = 0; i < runs.size(); i++) {
-            inner += client.textRenderer.getWidth(runs.get(i).text);
-            if (i < runs.size() - 1) inner += Paint.GAP;
-        }
-        int w = inner + Paint.PAD_X * 2;
-        int h = Paint.LINE + Paint.PAD_Y * 2;
-
-        int sw = ctx.getScaledWindowWidth();
-        int sh = ctx.getScaledWindowHeight();
-        double bw = w * el.scale;
-        double bh = h * el.scale;
-
-        /* the anchor decides what x and y mean: the offset runs inward from
-           the edge it names, and the element's own size comes off a right or
-           bottom anchor so the box stays on screen */
-        double ox = sw * el.x / 100.0;
-        double oy = sh * el.y / 100.0;
-        char vert = el.anchor.charAt(0);
-        char horiz = el.anchor.charAt(1);
-
-        double px = horiz == 'l' ? ox : horiz == 'r' ? sw - ox - bw : (sw - bw) / 2.0 + ox;
-        double py = vert == 't' ? oy : vert == 'b' ? sh - oy - bh : (sh - bh) / 2.0 + oy;
-
-        /* ── NOTHING SITS ON TOP OF ANYTHING ──────────────────────────────
-           Two elements sent to the same corner used to overlap into an
-           unreadable smear. The second one now moves clear of the first —
-           downward, because a HUD reads as a column and pushing sideways
-           would walk it off a right-hand anchor.
-
-           A BOTTOM ANCHOR PUSHES UPWARD instead: at the bottom of the screen
-           "underneath the last one" means further from the edge, not off it.
-           The guard bounds the search so a pathological config cannot spin. */
-        final boolean upward = vert == 'b';
-        Box box = new Box(px, py, bw, bh);
-        for (int guard = 0; guard < 16; guard++) {
-            Box clash = null;
-            for (Box o : placed) { if (box.hits(o)) { clash = o; break; } }
-            if (clash == null) break;
-            double ny = upward ? clash.y - bh - Paint.STACK_GAP : clash.y + clash.h + Paint.STACK_GAP;
-            box = new Box(px, ny, bw, bh);
-        }
-        px = Math.max(0, Math.min(box.x, sw - bw));
-        py = Math.max(0, Math.min(box.y, sh - bh));
-        placed.add(new Box(px, py, bw, bh));
-
-        ctx.getMatrices().push();
-        ctx.getMatrices().translate(px, py, 0);
-        if (el.scale != 1.0) ctx.getMatrices().scale((float) el.scale, (float) el.scale, 1.0f);
-
-        plate(ctx, w, h, config.rounded);
-
-        int x = Paint.PAD_X;
-        for (Run r : runs) {
-            /* NO SHADOW: the plate already holds the text apart from the
-               world, and over a plate a shadow is a smeared second copy of
-               every glyph — blur pretending to be depth. */
-            ctx.drawText(client.textRenderer, r.text, x, Paint.PAD_Y, r.colour, false);
-            x += client.textRenderer.getWidth(r.text) + Paint.GAP;
-        }
-        ctx.getMatrices().pop();
-    }
-
-    /* ── the plate ─────────────────────────────────────────────────────────
-       SHARP IS THE DEFAULT, because Minecraft's own interface is square:
-       every vanilla panel, tooltip and inventory slot has a hard corner, so a
-       square plate is the one that looks like it belongs on that screen.
-
-       ROUNDED is the same rectangle with its four corner pixels omitted,
-       drawn as three fills instead of one. Minecraft has no rounded-rectangle
-       primitive, and faking one with a texture would mean shipping an asset
-       for a single pixel. */
-    private static void plate(DrawContext ctx, int w, int h, boolean rounded) {
-        if (!rounded) {
-            ctx.fill(0, 0, w, h, Paint.PLATE);
-            ctx.fill(0, 0, w, 1, Paint.EDGE);
-            ctx.fill(0, h - 1, w, h, Paint.EDGE);
-            ctx.fill(0, 1, 1, h - 1, Paint.EDGE);
-            ctx.fill(w - 1, 1, w, h - 1, Paint.EDGE);
-            return;
-        }
-        ctx.fill(1, 0, w - 1, 1, Paint.PLATE);
-        ctx.fill(0, 1, w, h - 1, Paint.PLATE);
-        ctx.fill(1, h - 1, w - 1, h, Paint.PLATE);
-
-        ctx.fill(1, 0, w - 1, 1, Paint.EDGE);
-        ctx.fill(1, h - 1, w - 1, h, Paint.EDGE);
-        ctx.fill(0, 1, 1, h - 1, Paint.EDGE);
-        ctx.fill(w - 1, 1, w, h - 1, Paint.EDGE);
     }
 }
