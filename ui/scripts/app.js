@@ -350,9 +350,31 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     if (dds.length) el.kvJava = dds[0];
   })();
 
+  /* ── THE SESSION CLOCK ────────────────────────────────────────────────────
+     WHEN THIS SESSION STARTED, not how many times an interval has fired.
+
+     This used to be `elapsed = 754` with the display seeded to "00:12:34" —
+     a prototype fixture that made a screenshot look like somebody had been
+     playing a while. Every real launch therefore started twelve and a half
+     minutes in, and counted up from there.
+
+     Counting from a TIMESTAMP rather than incrementing a number is not just
+     the smaller fix. setInterval is not a clock: browsers throttle it hard in
+     a background window — often to once a minute — so a counter that adds one
+     per tick loses minutes while the launcher sits behind the game, which is
+     exactly where this clock spends its whole life. Subtracting two Date.now()
+     values cannot drift.
+
+     0 means "no session". apply() reads it rather than writing it whenever it
+     is already set, so re-applying the running scenario — which happens when
+     the subtitle changes — does not restart the clock. */
   var clockTimer = null;
-  var elapsed = 0;
+  var clockSince = 0;
   function two(n) { return (n < 10 ? '0' : '') + n; }
+  function paintClock() {
+    var s = Math.max(0, Math.floor((Date.now() - clockSince) / 1000));
+    el.clock.textContent = two(Math.floor(s / 3600)) + ':' + two(Math.floor(s / 60) % 60) + ':' + two(s % 60);
+  }
 
   function apply(key) {
     var s = SCENARIOS[key] || SCENARIOS.normal;
@@ -377,13 +399,13 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
 
     if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
     if (s.launch === 'playing') {
-      elapsed = 754;
-      el.clock.textContent = '00:12:34';
-      clockTimer = setInterval(function () {
-        elapsed++;
-        el.clock.textContent = two(Math.floor(elapsed / 3600)) + ':' + two(Math.floor(elapsed / 60) % 60) + ':' + two(elapsed % 60);
-      }, 1000);
+      /* set only if this is a NEW session. A reattach fills it in first, with
+         the real start time the main process has been holding. */
+      if (!clockSince) clockSince = Date.now();
+      paintClock();
+      clockTimer = setInterval(paintClock, 1000);
     } else {
+      clockSince = 0;
       el.clock.textContent = s.p ? s.p + '%' : '';
     }
   }
@@ -2576,10 +2598,16 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
       SCENARIOS.crashed.label = 'Play again';
       apply(p.code === 0 ? 'normal' : 'crashed');
     });
-    /* a launcher restarted while a game is running should say so */
+    /* A LAUNCHER RESTARTED WHILE A GAME IS RUNNING should say so — and should
+       say how long it has been running, not start counting from zero.
+       running() already reports `since`, the timestamp the main process minted
+       at the spawn, so the clock picks up mid-session at the right number
+       instead of claiming the game just started. Falls back to now if an older
+       main process does not send one. */
     host.game.running().then(function (list) {
       if (!list || !list.length) return;
       run.instance = list[0].instance; run.session = list[0].session; run.busy = true;
+      clockSince = Number(list[0].since) > 0 ? Number(list[0].since) : Date.now();
       apply('running');
     }).catch(function () {});
   }
