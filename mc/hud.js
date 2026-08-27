@@ -274,6 +274,46 @@ function optsFor(name, raw, legacy) {
   return out;
 }
 
+/* ── WHERE AN ELEMENT SITS WHEN NOBODY HAS SAID ──────────────────────────
+   Mirrors the `data-a` / `data-x` / `data-y` / `data-s` on every `.hel` in
+   ui/index.html, which is the layout a fresh install opens on. hudcheck
+   asserts the two agree, so moving one on the screen and forgetting this is a
+   failed check rather than a silent disagreement.
+
+   THIS EXISTS BECAUSE build() USED TO ITERATE THE STORED SETTINGS. It walked
+   `settings.hud.elements` and wrote what it found there — so nine elements
+   added to the launcher never reached the game at all, because the settings
+   on disk predated them and nothing filled the gap. The user tested a build
+   they had been told drew twenty elements and it drew eleven, and the log
+   said so plainly: "saved revision 20 (11 element(s))".
+
+   The features block had the shape right all along — featuresOf() iterates
+   FEATURE_NAMES, the declaration, and defaults anything absent. That is why
+   six features arrived in the same document that was missing nine elements,
+   and the inconsistency is what gave the bug away. */
+const ELEMENT_STOCK = {
+  fps: { a: 'tl', x: 2.6, y: 4.2, s: 1 },
+  cps: { a: 'tl', x: 2.6, y: 9.8, s: 1 },
+  ping: { a: 'tl', x: 2.6, y: 12.4, s: 1 },
+  keys: { a: 'ml', x: 3.4, y: 6, s: 1.2 },
+  coords: { a: 'bl', x: 2.6, y: 17, s: 1 },
+  potion: { a: 'tr', x: 2.6, y: 4.2, s: 1 },
+  helmet: { a: 'mr', x: 2.6, y: -9.6, s: 1 },
+  chest: { a: 'mr', x: 2.6, y: -3.4, s: 1 },
+  legs: { a: 'mr', x: 2.6, y: 2.8, s: 1 },
+  boots: { a: 'mr', x: 2.6, y: 9, s: 1 },
+  held: { a: 'br', x: 2.6, y: 17, s: 1 },
+  day: { a: 'tl', x: 2.6, y: 20, s: 1 },
+  clock: { a: 'tr', x: 2.6, y: 9.8, s: 1 },
+  playtime: { a: 'tr', x: 2.6, y: 12.4, s: 1 },
+  memory: { a: 'bl', x: 2.6, y: 10, s: 1 },
+  combo: { a: 'mc', x: 0, y: 12, s: 1 },
+  totems: { a: 'br', x: 12, y: 4, s: 1 },
+  tnt: { a: 'tc', x: 0, y: 12, s: 1 },
+  reach: { a: 'mc', x: 0, y: 18, s: 1 },
+  pvp: { a: 'ml', x: 3.4, y: 22, s: 1 }
+};
+
 /* the nine the screen offers, and nothing else is an anchor */
 const ANCHORS = ['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br'];
 
@@ -510,11 +550,19 @@ function build(hud, rev) {
 
   const elements = {};
   let dropped = 0;
-
+  /* an unrecognised NAME in the settings is still worth reporting, even
+     though the loop below no longer walks them */
   for (const name of Object.keys(src)) {
-    if (!Object.prototype.hasOwnProperty.call(ELEMENT_MODULE, name)) { dropped++; continue; }
-    const e = src[name];
-    if (!e || typeof e !== 'object') { dropped++; continue; }
+    if (!Object.prototype.hasOwnProperty.call(ELEMENT_MODULE, name)) dropped++;
+    else if (!src[name] || typeof src[name] !== 'object') dropped++;
+  }
+
+  /* EVERY ELEMENT THIS LAUNCHER KNOWS ABOUT, not every element somebody's
+     settings happen to hold. See ELEMENT_STOCK for what went wrong when this
+     was the other way round. */
+  for (const name of ELEMENTS) {
+    const stored = src[name];
+    const e = (stored && typeof stored === 'object') ? stored : ELEMENT_STOCK[name];
 
     const anchor = ANCHORS.indexOf(String(e.a)) >= 0 ? String(e.a) : 'tl';
     const mod = ELEMENT_MODULE[name];
@@ -740,7 +788,7 @@ async function write(gameDir, hud, log, rev) {
 
 module.exports = {
   sync, read, write, build, fromDoc, labelOf,
-  ELEMENTS, ELEMENT_MODULE, ELEMENT_SUB, ELEMENT_OPTS, optsFor, optSpec,
+  ELEMENTS, ELEMENT_MODULE, ELEMENT_SUB, ELEMENT_OPTS, ELEMENT_STOCK, optsFor, optSpec,
   FEATURES, FEATURE_NAMES, featureFor, featuresOf,
   ANCHORS, CORNERS, FONTS, WRITERS,
   FILE, VERSION, SCALE_MIN, SCALE_MAX, MAX_BYTES,

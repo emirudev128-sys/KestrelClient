@@ -103,6 +103,51 @@ if (!fs.existsSync(javaFile)) {
     hud.SCALE_MIN + '..' + hud.SCALE_MAX);
 }
 
+/* ── 4b. EVERY element reaches the game, not just the stored ones ───────
+   The bug this exists for: build() walked `settings.hud.elements` and wrote
+   what it found there, so nine elements added to the launcher never reached
+   the game at all — the settings on disk predated them and nothing filled the
+   gap. The user tested a build described as drawing twenty elements; it drew
+   eleven, and the log said "saved revision 20 (11 element(s))".
+
+   The features block had it right from the start — featuresOf() iterates the
+   DECLARATION and defaults what is absent. That inconsistency is what gave it
+   away, and it is what this asserts for both. */
+console.log('');
+console.log('every declared element reaches the document, stored or not');
+const sparse = hud.build({ elements: { fps: { a: 'tl', x: 1, y: 1, s: 1 } }, modules: {} });
+ok('a settings object holding ONE element still writes them all',
+  sparse.count === hud.ELEMENTS.length,
+  sparse.count + ' of ' + hud.ELEMENTS.length);
+ok('and the ones it did not hold come from the stock layout',
+  sparse.doc.elements.coords.anchor === hud.ELEMENT_STOCK.coords.a
+    && sparse.doc.elements.coords.y === hud.ELEMENT_STOCK.coords.y,
+  'not 0,0 — everything would pile into the top-left corner');
+ok('a stored element still wins over the stock one',
+  sparse.doc.elements.fps.y === 1, String(sparse.doc.elements.fps.y));
+ok('empty settings write the whole stock layout',
+  hud.build({}).count === hud.ELEMENTS.length);
+ok('and features already worked this way — that is how the bug showed',
+  Object.keys(hud.build({}).doc.features).length === hud.FEATURE_NAMES.length);
+
+/* THE STOCK TABLE IS A SECOND COPY OF THE MARKUP, so it gets the same
+   treatment every other duplicated table here gets. */
+console.log('');
+console.log('and the stock layout agrees with the markup it mirrors');
+const mk = {};
+for (const m of html.matchAll(/data-el="([a-z0-9-]+)"[^>]*?data-a="([a-z]+)"[^>]*?data-x="(-?[0-9.]+)"[^>]*?data-y="(-?[0-9.]+)"[^>]*?data-s="([0-9.]+)"/g)) {
+  mk[m[1]] = { a: m[2], x: Number(m[3]), y: Number(m[4]), s: Number(m[5]) };
+}
+ok('the markup positions every element hud.js knows',
+  hud.ELEMENTS.every((e) => mk[e]), hud.ELEMENTS.filter((e) => !mk[e]).join(' '));
+const drift = hud.ELEMENTS.filter((e) => {
+  const a = mk[e], b = hud.ELEMENT_STOCK[e];
+  return !a || !b || a.a !== b.a || a.x !== b.x || a.y !== b.y || a.s !== b.s;
+});
+ok('and every stock position matches it exactly', drift.length === 0,
+  drift.map((e) => e + ': markup ' + JSON.stringify(mk[e]) + ' vs hud.js ' + JSON.stringify(hud.ELEMENT_STOCK[e])).join(' | ')
+    || hud.ELEMENTS.length + ' positions');
+
 /* ── 5. what the page sends is validated, not passed through ───────────── */
 console.log('\nwhat the page sends is validated, not passed through');
 const built = hud.build({
@@ -118,7 +163,16 @@ const built = hud.build({
 });
 ok('an unknown element name is dropped', !('evil' in built.doc.elements));
 ok('a name that looks like a path is dropped', !('../../escape' in built.doc.elements));
-ok('a non-object is dropped', !('potion' in built.doc.elements));
+/* NOT "dropped" any more, and the change is the point: every declared
+   element is written whatever the settings hold, so garbage where an
+   element's geometry should be falls back to the stock position rather than
+   removing the element from the game. It is still COUNTED as dropped, which
+   is what puts it in the log. */
+ok('a non-object falls back to the stock position rather than vanishing',
+  built.doc.elements.potion
+    && built.doc.elements.potion.anchor === hud.ELEMENT_STOCK.potion.a
+    && built.doc.elements.potion.y === hud.ELEMENT_STOCK.potion.y,
+  JSON.stringify(built.doc.elements.potion && built.doc.elements.potion.anchor));
 ok('the drop count is reported rather than swallowed', built.dropped === 3, String(built.dropped));
 ok('an anchor that is not one of the nine falls back to tl',
   built.doc.elements.coords.anchor === 'tl', built.doc.elements.coords.anchor);
