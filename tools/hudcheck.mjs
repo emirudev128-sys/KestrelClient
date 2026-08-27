@@ -369,6 +369,65 @@ if (menuJava) {
     menuJava.indexOf('not drawn yet') >= 0);
 }
 
+/* ── 8b. the menu holds still, and the world behind it is blurred ────────
+   Both of these were reported by eye and both are the kind of thing that
+   regresses silently — a live value creeping back into a preview looks like
+   nothing in a diff, and a dropped applyBlur() call just makes the menu
+   quietly worse. */
+console.log('');
+console.log('nothing in a menu moves, and the world behind one is blurred');
+const elemJava = src('HudElementScreen.java');
+const elementsJava = src('HudElements.java');
+
+if (elementsJava) {
+  ok('there are two render modes, LIVE and SAMPLE',
+    /int LIVE = 0/.test(elementsJava) && /int SAMPLE = 1/.test(elementsJava));
+  /* the live reads must sit AFTER the sample early-return, or a menu asking
+     for SAMPLE would still tick a counter on its way past */
+  const sampleAt = elementsJava.indexOf('if (mode == SAMPLE) return sample(');
+  const fpsAt = elementsJava.indexOf('client.getCurrentFps()');
+  const posAt = elementsJava.indexOf('client.player.getX()');
+  ok('SAMPLE returns before anything is read from the game',
+    sampleAt > 0 && fpsAt > sampleAt && posAt > sampleAt,
+    'sample@' + sampleAt + ' fps@' + fpsAt + ' pos@' + posAt);
+  ok('and every element has a sample, not just the drawn ones',
+    /default:/.test(elementsJava) && /shortLabel\(el, name\)/.test(elementsJava));
+}
+
+for (const [file, java] of [['HudMenuScreen', menuJava], ['HudElementScreen', elemJava],
+                            ['HudLayoutScreen', layoutJava]]) {
+  if (!java) continue;
+  ok(file + ' asks for SAMPLE, never LIVE',
+    java.indexOf('HudElements.SAMPLE') >= 0 && java.indexOf('HudElements.LIVE') < 0);
+}
+if (clientJava) {
+  ok('and only the world HUD asks for LIVE',
+    clientJava.indexOf('HudElements.LIVE') >= 0 && clientJava.indexOf('HudElements.SAMPLE') < 0);
+}
+
+if (menuJava) ok('the menu blurs the world behind it', /applyBlur\(\)/.test(menuJava));
+if (elemJava) ok('and so does the options screen', /applyBlur\(\)/.test(elemJava));
+if (layoutJava) {
+  /* the layout editor deliberately does NOT: you are positioning a HUD
+     against the world, and blurring what you are positioning it against
+     defeats the screen */
+  ok('but the layout editor leaves the world alone', !/applyBlur\(\)/.test(layoutJava),
+    'you are arranging a HUD against that world');
+}
+
+const paintJava = src('Paint.java');
+if (paintJava) {
+  const panel = /int PANEL = 0x([0-9A-Fa-f]{2})/.exec(paintJava);
+  ok('the panel is opaque', panel && parseInt(panel[1], 16) === 0xFF,
+    panel ? '0x' + panel[1] : 'not found');
+  const scrim = /int SCRIM = 0x([0-9A-Fa-f]{2})/.exec(paintJava);
+  /* vanilla darkens its own in-game background from 0xC0 to 0xD0; the point
+     of blurring is to need far less than that */
+  ok('and the tint over the blur is lighter than vanilla darkening',
+    scrim && parseInt(scrim[1], 16) < 0xC0,
+    scrim ? '0x' + scrim[1] + ' vs vanilla 0xC0-0xD0' : 'not found');
+}
+
 /* ── 9. and the two languages, actually run against each other ──────────
    Everything above reads source. This runs the COMPILED mod against a
    document the launcher just wrote, and reads back what it wrote — which is

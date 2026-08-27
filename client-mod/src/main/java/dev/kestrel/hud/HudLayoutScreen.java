@@ -103,10 +103,13 @@ public class HudLayoutScreen extends Screen {
         for (String name : config.names()) {
             HudConfig.Element el = config.get(name);
             if (el == null || !el.on) continue;
-            /* placeholder: true — an element this mod cannot draw yet still
-               has a place in the layout, and being unable to position it
-               until the Java lands would be the worse half of the gap */
-            List<HudElements.Run> runs = HudElements.of(name, el, this.client, face, true);
+            /* SAMPLE, not live. Two reasons, and the second is the one that
+               matters here: an element this mod cannot draw yet still has a
+               place in the layout, and — more importantly — a live fps counter
+               changes WIDTH as the number crosses 100, and an element that
+               changes width under the cursor is one you cannot line up against
+               its neighbours. */
+            List<HudElements.Run> runs = HudElements.of(name, el, this.client, face, HudElements.SAMPLE);
             if (runs == null || runs.isEmpty()) continue;
             int w = HudRenderer.width(this.textRenderer, runs);
             int h = HudRenderer.height();

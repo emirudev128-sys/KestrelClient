@@ -16,12 +16,19 @@ import java.util.List;
  * counter, put the ping in red, make the plate behind it half as solid.
  *
  * <p><b>THE PREVIEW IS THE POINT.</b> It sits at the top, it is the real
- * element drawn by the real renderer, and it changes as you drag a slider.
- * Colour and transparency are choices nobody can make from a number — the
- * question is always "does that look right over the world", and the only
- * honest answer is to show it. The world is visible behind the preview strip
- * for the same reason: a plate at 30% looks entirely different over snow than
- * over stone, and a preview on a flat grey would be a lie of omission.
+ * element drawn by the real renderer from FIXED sample text, and it changes
+ * as you drag a slider. Colour and transparency are choices nobody can make
+ * from a number — the question is always "does that look right", and the only
+ * honest answer is to show it.
+ *
+ * <p>It sits in a WELL, the same recess the menu cards use, rather than
+ * letting the world through. Showing the live world behind it was the first
+ * design and it argued for itself well — a plate at 30% does look different
+ * over snow than over stone — but a transparent hole cut in an otherwise
+ * opaque panel reads as a mistake, and the world behind it is blurred now
+ * anyway, so what showed through was a smear rather than terrain. The well is
+ * the darkest surface in the palette, which is the honest hard case for
+ * white-on-dark anyway.
  *
  * <p><b>A MODULE MAY OWN MORE THAN ONE ELEMENT.</b> "Armor status" owns five.
  * Rather than five cards on the menu — which would have made visibility look
@@ -55,11 +62,16 @@ public class HudElementScreen extends Screen {
         Row(int kind, String label, int h) { this.kind = kind; this.label = label; this.h = h; }
     }
 
-    private static final int PANEL_W = 214;
-    private static final int TITLE_H = 18;
-    private static final int PREVIEW_H = 34;
-    private static final int FOOT_H = 22;
-    private static final int VALUE_W = 74;
+    /* WIDER THAN IT NEEDS TO BE FOR THE ROWS, and sized for the swatch grid:
+       seven squares of 11 with 2 between them is 89 across, and a colour row
+       that wraps to a second line for want of six pixels looks like an
+       accident. The rest of the width goes to the label column, which is what
+       stops "Show the compass" colliding with its own control. */
+    private static final int PANEL_W = 252;
+    private static final int TITLE_H = 22;
+    private static final int PREVIEW_H = 38;
+    private static final int FOOT_H = 26;
+    private static final int VALUE_W = 84;
 
     private final HudConfig config;
     private final Path runDir;
@@ -135,7 +147,9 @@ public class HudElementScreen extends Screen {
         if (scroll < 0) scroll = 0;
     }
 
-    private int backY() { return py + ph - FOOT_H + 4; }
+    private int backY() { return py + ph - FOOT_H + 6; }
+    private int closeX() { return px + PANEL_W - Paint.PANEL_PAD - 11; }
+    private int closeY() { return py + 6; }
 
     /* ── scale <-> slider ─────────────────────────────────────────────────
        The track is 0..100 like every other slider on this screen; scale runs
@@ -154,20 +168,20 @@ public class HudElementScreen extends Screen {
 
     @Override
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        applyBlur();
         ctx.fill(0, 0, this.width, this.height, Paint.SCRIM);
         HudConfig.Element el = element();
 
         Ui.panel(ctx, px, py, PANEL_W, ph);
         String title = el == null ? module : el.display(name());
         Ui.left(ctx, this.textRenderer, title.toUpperCase(java.util.Locale.ROOT),
-            px + Paint.PANEL_PAD, py + 6, Paint.VALUE);
+            px + Paint.PANEL_PAD, py + 7, Paint.VALUE);
+        boolean overBack = Ui.hit(mouseX, mouseY, closeX(), closeY(), 11, 11);
+        Ui.close(ctx, closeX(), closeY(), 11, overBack);
         Ui.rule(ctx, px + 1, py + TITLE_H - 1, PANEL_W - 2);
 
-        /* ── the preview strip ────────────────────────────────────────────
-           NOT filled with a panel colour. The world shows through, because
-           "does this plate read at 30%" is a question about the world and a
-           preview on flat grey answers a different one. */
         int pvY = py + TITLE_H;
+        ctx.fill(px + 1, pvY, px + PANEL_W - 1, pvY + PREVIEW_H, Paint.WELL);
         if (el != null) previewOf(ctx, el, px + 1, pvY, PANEL_W - 2, PREVIEW_H);
         Ui.rule(ctx, px + 1, pvY + PREVIEW_H - 1, PANEL_W - 2);
 
@@ -195,7 +209,7 @@ public class HudElementScreen extends Screen {
     private void previewOf(DrawContext ctx, HudConfig.Element el, int x, int y, int w, int h) {
         if (this.client == null) return;
         List<HudElements.Run> runs =
-            HudElements.of(name(), el, this.client, KestrelHudClient.face(config), true);
+            HudElements.of(name(), el, this.client, KestrelHudClient.face(config), HudElements.SAMPLE);
         if (runs == null || runs.isEmpty()) return;
         int ew = HudRenderer.width(this.textRenderer, runs);
         int eh = HudRenderer.height();
@@ -283,6 +297,7 @@ public class HudElementScreen extends Screen {
 
         int lx = px + Paint.PANEL_PAD;
         int lw = PANEL_W - Paint.PANEL_PAD * 2;
+        if (Ui.hit(mouseX, mouseY, closeX(), closeY(), 11, 11)) { close(); return true; }
         if (Ui.hit(mouseX, mouseY, lx, backY(), lw, 14)) { close(); return true; }
         if (mouseY < viewTop || mouseY >= viewTop + viewH) return super.mouseClicked(mouseX, mouseY, button);
 

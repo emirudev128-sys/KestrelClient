@@ -123,12 +123,11 @@ public class KestrelHudClient implements ClientModInitializer {
         for (String name : config.names()) {
             HudConfig.Element el = config.get(name);
             if (el == null || !el.on) continue;
-            /* placeholder: false — an element this mod cannot draw is simply
-               absent from the world. The layout editor shows it as a named
-               box so it can be positioned; the game does not, because a plate
-               reading "Ping" that never becomes a ping is worse than nothing
-               being there. */
-            List<HudElements.Run> runs = HudElements.of(name, el, client, face, false);
+            /* LIVE — and the only place that asks for it. An element this mod
+               cannot draw returns null here and is simply absent from the
+               world; the menus ask for SAMPLE instead, because they have to be
+               able to style and position things the world does not draw yet. */
+            List<HudElements.Run> runs = HudElements.of(name, el, client, face, HudElements.LIVE);
             if (runs == null || runs.isEmpty()) continue;
 
             int w = HudRenderer.width(client.textRenderer, runs);

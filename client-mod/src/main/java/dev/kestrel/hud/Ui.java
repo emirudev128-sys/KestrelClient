@@ -256,14 +256,17 @@ final class Ui {
        and the glyph is what tells them apart at a glance. Six teeth around a
        ring, drawn as fills — there is no vector primitive and shipping a
        texture for a 7px icon is not a trade worth making. */
-    static void gear(DrawContext ctx, int x, int y, int ink) {
+    static void gear(DrawContext ctx, int x, int y, int ink, int ground) {
         ctx.fill(x + 2, y + 1, x + 5, y + 6, ink);
         ctx.fill(x + 1, y + 2, x + 6, y + 5, ink);
         ctx.fill(x, y + 3, x + 7, y + 4, ink);
         ctx.fill(x + 3, y, x + 4, y + 7, ink);
-        /* the hole, punched back out in the panel's own colour so the ring
-           reads as a ring rather than as a blob */
-        ctx.fill(x + 3, y + 3, x + 4, y + 4, Paint.PANEL);
+        /* THE HOLE IS PUNCHED IN WHATEVER IS BEHIND IT, which is why the
+           ground is a parameter. Filling it with Paint.PANEL was right until
+           the button under it got a hover state, at which point the gear kept
+           a panel-coloured dot in the middle of a lighter button and read as
+           a smudge rather than as a ring. */
+        ctx.fill(x + 3, y + 3, x + 4, y + 4, ground);
     }
 
     /** the close control, top right of a panel — an X drawn as two diagonals

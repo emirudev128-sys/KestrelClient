@@ -61,19 +61,31 @@ final class Paint {
        generous line height, which is already how Kestrel's own screens look.
        See docs/hud-menu-design.md. */
 
-    /* THE PANEL IS NEARLY OPAQUE where the HUD plate is not. A plate has to
-       let the world through — it sits on top of the game you are playing. A
-       menu has stopped the game being the thing you are looking at, and a
-       translucent menu over a moving world is a menu you have to squint at.
-       --s-pane #12151B at 95%. */
-    static final int PANEL = 0xF212151B;
-    /* --s-well #040609 at 55%: enough to push the world back without hiding
-       the HUD elements drawn around the panel, which are the things being
-       configured and have to stay visible. A BLUR WAS THE OTHER OPTION and
-       was not taken: blur is a shader pass whose API has moved in every
-       recent Minecraft version, and a fill that works is worth more than a
-       blur that compiles today. */
-    static final int SCRIM = 0x8C040609;
+    /* THE PANEL IS OPAQUE. A plate has to let the world through — it sits on
+       top of the game you are playing. A menu has stopped the game being the
+       thing you are looking at, and a translucent menu over a moving world is
+       a menu you have to squint at. --s-pane #12151B, and the alpha that used
+       to be here was 95%, which was 5% of nothing but noise. */
+    static final int PANEL = 0xFF12151B;
+
+    /* ── AND THE WORLD BEHIND IT IS BLURRED, NOT BLACKED OUT ──────────────
+       This was a flat 55% fill, and it read as a black sheet with a window
+       cut in it. The screens now call Screen.applyBlur() — which is vanilla's
+       own path, gameRenderer.renderBlur() followed by a framebuffer rebind —
+       and put only a LIGHT tint over the result.
+
+       An earlier note here argued against blur on the grounds that the API
+       moves between versions. That was true and it was the wrong trade: the
+       method is right there on Screen in 1.21.4, vanilla's own
+       renderBackground calls it, and a menu that looks right is worth
+       re-checking one method call at a version bump.
+
+       For scale: vanilla darkens its own in-game background with a gradient
+       from 0xC0101010 to 0xD0101010 — around 75-80% black. This is 30%,
+       because the blur is doing the separating and the HUD elements drawn
+       around the panel are the things being configured and have to stay
+       readable. */
+    static final int SCRIM = 0x4D040609;
 
     static final int RAISE = 0xFF1B1F25;   /* --s-raise: a control ON the panel */
     static final int HOVER = 0xFF25292E;   /* --s-hover */
@@ -100,6 +112,14 @@ final class Paint {
        draw rows and both have to agree what a row is, or the layout editor's
        hint bar sits at a different rhythm from the menu above it. */
     static final int ROW = 14;             /* a row of the list */
-    static final int PANEL_PAD = 8;        /* panel edge to its content */
-    static final int SECTION_GAP = 7;      /* above a section heading */
+    static final int PANEL_PAD = 10;       /* panel edge to its content */
+    static final int SECTION_GAP = 9;      /* above a section heading */
+
+    /* ── the well ─────────────────────────────────────────────────────────
+       The recess a card's preview sits in. --s-well #040609, the darkest
+       surface in the palette, and the reason it exists is that a preview
+       floating directly on the card reads as part of the card's own text.
+       Sunk into a well it reads as a picture OF something, which is what it
+       is. */
+    static final int WELL = 0xFF040609;
 }
