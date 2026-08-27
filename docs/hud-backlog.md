@@ -1,120 +1,92 @@
-# The HUD backlog — what the client mod is still missing
+# The HUD backlog — what is done, and what is left
 
-Asked for on 27 August 2026, to be built **after** the nine already-arranged elements are drawn.
-Nothing here is started. This file exists so the list survives the session it was given in, and so
-the next person picks it up knowing what it costs rather than reading twenty words and guessing.
-
----
-
-## The list, as given
-
-> toggle sprint/sneak, day counter, waypoints, minimap, zoom, hit colors, scoreboard, combo counter,
-> tnt countdown, player reach display, clock, playtime, freelook, totem counter, snap look, hitbox,
-> chunk borders, pvp info, inventory sorter, memory usage
+Asked for on 27 August 2026. **Most of it is built.** This file now records what
+shipped, what was deliberately not built and why, and what is genuinely left.
 
 ---
 
-## THE THING TO NOTICE FIRST: most of these are not HUD elements
+## Done
 
-The contract (`config/kestrel-hud.json`, v4) models one kind of thing — an **element**: a plate of
-text placed against one of nine anchors, with an offset, a scale, and per-element style. Every one
-of the eleven that exist today is that.
+### Elements — twenty of them, all drawn
 
-**Half of this list is not that.** A toggle-sprint has no anchor. Zoom has a keybind and a field of
-view, not a position. Hitbox lines are drawn in the WORLD, in 3D, not on the HUD plane. Trying to
-express those as elements would put `anchor` and `plateAlpha` on things that have neither, and the
-first person to open the options screen for "Zoom" would find a colour picker.
-
-So the list splits three ways, and the split is the design work:
-
-### 1. Real HUD elements — the contract already fits
-
-These are text on a plate at an anchor. They need `HudElements.of()` to produce runs and nothing
-else; the menu, the layout editor, the styling and the round trip all work the moment they exist.
-
-| | needs |
+| | |
 |---|---|
-| **Day counter** | `world.getTimeOfDay() / 24000` |
-| **Clock** | the system clock; a real-time clock while you play |
-| **Playtime** | session elapsed — the launcher already mints a `since` at spawn |
-| **Memory usage** | `Runtime.totalMemory() - freeMemory()`; see the caching note below |
-| **Combo counter** | consecutive hits landed, with a decay timer |
-| **Totem counter** | count of totems in inventory + offhand |
-| **TNT countdown** | fuse ticks of the nearest primed TNT — needs a per-entity readout, not one line |
-| **Player reach display** | distance to the last player hit; contested, see below |
-| **PvP info** | a composite (opponent health, gaps eaten, pots) — really several elements |
-| **Scoreboard** | ALREADY NAMED in the Tweaks screen. Reposition/restyle the vanilla sidebar |
+| First eleven | fps, cps, ping, keystrokes, coords, potion effects, and the five armour slots |
+| Second nine | day counter, clock, playtime, memory, combo counter, totem counter, TNT countdown, reach display, PvP info |
 
-### 2. Behaviours — no anchor, no plate, a keybind and a setting
+Each has its own options, declared in `mc/hud.js` and carried in the document.
+Each exists on all three sides: the launcher's HUD screen arranges it, the
+Tweaks list switches it, the mod draws it.
 
-These do not belong in `elements` at all. They need a **second section in the contract**, something
-like `"features": { "zoom": { "on": true, "key": "C", "amount": 4 } }` — and a second kind of row in
-the menu that has no position and no colour.
+### Features — the second noun
 
-| | note |
+`sprint`, `sneak`, `zoom`, `snaplook`, `hitbox`, `chunks`. A feature is **on or
+off, a key, and its own options** — no anchor, no colour, no scale. It reuses the
+element option machinery and the same top-level `optSpec`, so the menu builds a
+feature's rows exactly the way it builds an element's.
+
+- **Behaviours** (`Behaviours.java`): toggle sprint, toggle sneak, zoom, snap
+  look. Each undoes itself when switched off, on key release, and when the world
+  goes away.
+- **World overlays** (`Overlays.java`): hitboxes and chunk borders, through
+  Fabric's `WorldRenderEvents`.
+
+---
+
+## NOT built, and why — read this before starting any of them
+
+### The four that need a MIXIN
+
+A mixin is a build-time weave into somebody else's compiled class. It needs its
+own config and refmap, it fails in ways that are hard to read, and it breaks
+differently on every Minecraft version. **This mod has none**, and `hudcheck`
+asserts that — deliberately, so adding the first one is a decision somebody
+makes on purpose rather than drifts into.
+
+| | what it would take |
 |---|---|
-| **Toggle sprint / sneak** | ALREADY NAMED in the Tweaks screen. Needs a HUD tag too (`[Sprinting]`) |
-| **Zoom** | ALREADY NAMED. FOV change on a held key |
-| **Freelook** | look around without turning; a camera rotation decoupled from the player's |
-| **Snap look** | instant 180 / fixed-angle turn on a key |
-| **Inventory sorter** | a button in the inventory screen; not a HUD thing at all |
-| **Hit colors** | tints the damage flash; a render tweak with one colour setting |
+| **Freelook** | The camera's yaw and pitch have to come apart from the player's. `Camera` computes both from the entity; nothing outside it can intervene. |
+| **Hit colours** | The damage flash is a hard-coded tint inside the entity renderer. |
+| **Scoreboard** | Vanilla draws the sidebar itself. Our own version can read the scores and draw them anywhere — but vanilla's still draws, so you get two. Cancelling vanilla's is the mixin. |
+| **Inventory sorter** | Not strictly a mixin, but it needs to send slot-click packets in the right order and a button in a screen somebody else owns. Fiddly, and a wrong packet order desyncs an inventory. |
 
-### 3. World overlays — drawn in 3D, not on the HUD plane
+If mixins are ever added, do it once and deliberately: add the config, add ONE
+mixin, launch the game, and only then write the second.
 
-Different render event entirely (world render, not `HudRenderCallback`), different maths, depth
-testing, and no anchor. Closer to a rendering feature than to the HUD.
+### The two that are their own piece of work
 
-| | note |
-|---|---|
-| **Hitbox** | vanilla has F3+B; the value here is styling and per-entity filtering |
-| **Chunk borders** | vanilla has F3+G; same |
-| **Waypoints** | a beacon in the world PLUS a marker on the HUD edge PLUS storage per world |
-| **Minimap** | ALREADY NAMED in the Tweaks screen. The biggest single item on this list by far — chunk sampling, a texture, a cache, per-world storage, and it is the one thing here that can itself cost FPS |
-
----
-
-## What the launcher already names
-
-The Tweaks screen (`#screen-modules`) lists **sixteen** modules. Only **seven** reach the HUD —
-`hud.js`'s `ELEMENT_MODULE` covers FPS, CPS, Ping, Keystrokes, Coordinates, Potion effects and Armor
-status. The other nine are rows in a list that are wired to nothing:
-
-    Chat   Compass   Crosshair   Level head   Minimap   Nick hider   Scoreboard   Toggle sprint   Zoom
-
-Four of those (**Minimap, Scoreboard, Toggle sprint, Zoom**) are on this backlog. **They already have
-a name and a switch in the launcher** — which means `hudModules()` is already reporting their state
-into `settings.hud.modules`, and has been all along. Whatever gets built for them should adopt the
-name that is already on screen rather than inventing a second one, and `tools/hudcheck.mjs` should
-grow an assertion the day any of them becomes real.
-
-The remaining five — Chat, Compass, Crosshair, Level head, Nick hider — are not on this list and are
-worth a decision of their own: build, or remove the row. A switch that does nothing is worse than an
-absent feature, and there are five of them.
+- **Waypoints** — a beacon in the world, a marker on the HUD edge, and storage
+  per world. The storage is the hard part: a waypoint belongs to a world, and
+  "which world is this" is a different question on a server than in singleplayer.
+- **Minimap** — the largest single item on the original list by a distance.
+  Chunk sampling, a texture, a cache, per-world storage, and it is the one thing
+  here that can itself cost frames. Worth building only when somebody wants to
+  spend a session on it alone.
 
 ---
 
-## Two things worth deciding before any of it is written
+## Still true about the launcher's own list
 
-**The contract needs a second noun.** `elements` cannot hold a behaviour. Adding `features` is not
-hard, but it touches all three languages and the menu needs a row type with no position — so it is
-worth doing once, deliberately, rather than growing sideways out of the first behaviour somebody
-implements.
+The Tweaks screen names modules the HUD does not wire. After this work the
+unwired ones are:
 
-**Some of these cost frames.** A minimap samples chunks and uploads a texture; a memory readout that
-calls `Runtime` every frame allocates; hitboxes add draw calls per entity. The HUD's own render path
-already rebuilds every string every frame — see the caching item in the research notes — and that
-should be fixed BEFORE ten more elements are added to it, not after.
+    Chat   Compass   Crosshair   Level head   Nick hider
+
+Five switches attached to nothing. They want a decision of their own — build, or
+delete the row. **A switch that does nothing is worse than an absent feature.**
+(`Minimap`, `Scoreboard`, `Toggle sprint` and `Zoom` were on this list before;
+the last two are now real, and the first two are in the "not built" table above
+with reasons.)
 
 ---
 
-## Ordering
+## The performance note that still stands
 
-1. **The nine already arranged** — ping, cps, potion, keystrokes and the five armour slots. They are
-   already in the contract, on the cards, and marked `not drawn yet`. Finishing them closes a gap
-   that is currently visible to the user.
-2. **Cache the HUD render** before widening it.
-3. **The easy elements** from group 1 — day counter, clock, playtime, memory, totem counter. Each is
-   a few lines in `HudElements.of()` and needs no contract change.
-4. **The `features` section**, then the behaviours in group 2.
-5. **World overlays** and, last and separately, the minimap.
+The HUD rebuilds every string every frame — `config.names()` allocates a fresh
+list per frame just to iterate, and each element allocates a list, its runs, its
+`Text` objects and any `String.format`. That was worth fixing before ten more
+elements joined the loop; there are now **nine more in it**. Caching the rows at
+10–20 Hz rather than per frame is the single cheapest thing left.
+
+See the research note in the session history: this is exactly what other clients'
+"HUD caching" settings exist to do.

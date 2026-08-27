@@ -1,417 +1,256 @@
 # Kestrel — where the project stands
 
 A privacy-first Minecraft launcher. Electron shell, plain HTML/CSS/JS renderer, no framework and no
-build step. **It downloads and launches Minecraft, installs mod loaders, and installs mods.**
+build step. **It downloads and launches Minecraft, installs mod loaders, installs mods, and ships a
+Fabric client mod that draws a configurable HUD.**
 
     npm start
 
+---
+
 ## READ THIS FIRST
 
-**`%APPDATA%/Kestrel` IS READABLE FROM THE SHELL — TEST IT, DO NOT ASSUME.** This section used to
-say the opposite in bold: that your shell and the user's app do not share `%APPDATA%`, that
-instances you create go into your own data folder, and that you must never claim to have verified
-anything under it. A whole session was spent quoting that instead of checking it, refusing to look
-at the user's instances and telling them so — and then one `Test-Path` listed all thirty-nine of
-them, the installed jar with its byte count, the live `config/kestrel-hud.json` and the game's own
-`latest.log`.
+**Check a path before claiming anything about it, in either direction.** This section used to say in
+bold that `%APPDATA%/Kestrel` was invisible from the shell. A whole session was spent quoting that
+instead of testing it — refusing to look at the user's instances and saying so — and then one
+`Test-Path` listed all thirty-nine of them, the installed jar with its byte count, the live
+`config/kestrel-hud.json` and the game's own `latest.log`. **It is readable.** That lesson is worth
+more than either answer: test, do not quote.
 
-Whether it was ever true, it is not true now. **Check the path before you claim anything about it**,
-in either direction; that is the whole lesson and it is worth more than either answer.
+What it buys you is real end-to-end verification instead of "it compiles". After the user plays you
+can read the config the mod wrote, see its `rev` and `by` stamp, and grep `logs/latest.log` for the
+mod's own lines. That is how the round trip was finally proved.
 
-What it buys you is real end-to-end verification instead of "proved against the compiled classes":
-after the user plays you can read the config the mod wrote, see its `rev` and `by` stamp, read the
-elements it saved, and grep `logs/latest.log` for the mod's own lines.
+**Writing there is the user's business.** Installing a jar, creating instances, editing their
+config — ask. Reading to verify is free; changing their game is not.
 
-**Still true:** WRITING there is the user's business. Installing a jar into an instance, creating
-instances, editing their config — ask first. Reading to verify is free; changing their game is not.
+**The user is right more often than the theory is.** Every visual bug reported in this project was
+real, including one reported as "the sides look thicker, I thought that was the shadow" — which
+turned out to be a border with no top or bottom edge at all.
 
-**When a prototype is being made real, grep the SYMPTOM, not the action.** Six "Open folder" controls
-existed. Grepping for the handler found one; grepping for the placeholder string `"Would open"`
-found five, plus one with no `data-act` at all that could not even reach a handler. The same class
-of bug hit the launch buttons: `currentInstance()` answered "the row marked current, or failing that
-the FIRST row", so every card launched 1.21.4 Fabric.
+**When a prototype is being made real, grep the SYMPTOM, not the action.** Six "Open folder"
+controls existed; grepping for the handler found one, grepping for the placeholder string found
+five. The same class of bug hit the launch buttons and the session clock.
 
-**The user is right more often than the theory is.** Three times a reported bug was explained away
-as a stale window or a misclick, and three times it was real.
+---
+
+## The three languages, and the file between them
+
+The HUD exists in three places that cannot see each other:
+
+    ui/index.html + ui/scripts/app.js   the screen a player arranges it on
+    mc/hud.js                           what the launcher writes to disk
+    client-mod/…/HudConfig.java         what the game reads back
+
+Nothing links them at build time. **`node tools/hudcheck.mjs` is what notices** — 177 assertions,
+and the last twenty run the COMPILED mod against a document the launcher just wrote, then read back
+what it wrote. That is the only stage that can catch a locale-formatted number, a broken escape, or
+a parser that loses a sign.
+
+### The contract: `<instance>/minecraft/config/kestrel-hud.json`, version 6
+
+```
+{ "version": 6, "rev": 11, "by": "launcher",
+  "style":    { "corners": "sharp", "font": "minecraft" },
+  "optSpec":  { "compass": { "label": "Show the compass" }, … },
+  "elements": { "fps": { "on": true, "module": "FPS", "label": "FPS",
+                         "anchor": "tl", "x": 2.6, "y": 4.2, "scale": 1,
+                         "plate": true, "plateColour": "#0A0E13", "plateAlpha": 72,
+                         "textColour": "#F1F4F7", "textAlpha": 100 } },
+  "features": { "zoom": { "on": true, "label": "Zoom", "desc": "…",
+                          "key": "KEY_C", "opts": { "amount": "4x" } } } }
+```
+
+**Two nouns, and the distinction is load-bearing.**
+
+- An **element** is a plate of text at one of nine anchors, with an offset, a scale and a style.
+  Twenty of them.
+- A **feature** is on-or-off, a key, and its own options. No anchor, no colour, no scale. Six.
+
+Forcing a feature into `elements` would put `plateAlpha` on a toggle-sprint and show a colour picker
+to somebody opening the options for Zoom.
+
+**Things that will bite you if you do not know them:**
+
+- **Percentages may be NEGATIVE.** Against a centre or middle anchor the offset runs both ways from
+  the middle. The stock layout has one (`helmet` at `mr` / `-9.6`). Both sides clamp `-100..100`.
+  Clamping at zero silently dropped that element into the centre for months.
+- **Visibility arrives resolved.** The launcher groups elements into MODULES ("Armor status" owns
+  five) and writes a plain `on` per element. The mod never needs to know what a module is to draw.
+- **The mod has no vocabulary.** `module`, `label`, `desc` and the whole `optSpec` travel in the
+  document. Add an option in `mc/hud.js` and it appears in the in-game menu **with no Java
+  changing**. Do not give the mod a label table; that rule is what this design rests on.
+- **One option name means one thing.** `optSpec` is a single global table shared by elements AND
+  features, deduped by name. `hudcheck` asserts no name is used twice with a different type or
+  label — that already caught `unit` being a switch on ping and an enum on memory.
+- **The parser walks MATCHING braces.** It used `indexOf('}')`, correct only while an element was
+  flat. `opts` is nested, so the first `}` is now that object's.
+
+### Two writers, and neither erases the other
+
+`by` says who wrote it last; `rev` counts up. The mod stamps `"game"`; on the next launch
+`hud.sync()` reads FIRST, folds a game-written document back into `settings.hud`, persists it, and
+only then rewrites — stamped `"launcher"` again, which is what makes the import happen exactly once.
+
+**The decision rests on `by` alone, not on comparing revs.** `settings.hud` is one GLOBAL object and
+the config is PER INSTANCE, so revs across instances are not a total order: edit in-game in A,
+launch B, return to A, and a rev comparison silently discards A's edit.
+
+---
 
 ## The client mod
 
-    cd client-mod && gradle build      # JDK 21 + Gradle 8; loom 1.9.2 (1.17 needs Gradle 9.5)
-    -> build/libs/kestrel-hud-0.1.0.jar
+    client-mod/  →  build/libs/kestrel-hud-0.1.0.jar
 
-**Neither `gradle` nor a JDK 21 is on PATH on this machine**, and there is no `gradlew` wrapper in
-the project, so that line does not run as written. Gradle 8.14.3 is in the wrapper cache under
-`%USERPROFILE%\.gradle\wrapper\dists\gradle-8.14.3-bin\<hash>\gradle-8.14.3\bin\gradle.bat` (the
-hash is a directory name — list the folder to find it), and the JDK is Adoptium 21 under
-`%ProgramFiles%\Eclipse Adoptium`. In PowerShell:
+**Neither `gradle` nor a JDK 21 is on PATH, and there is no wrapper.** `java` on PATH is 1.8 and
+will not compile this. In PowerShell:
 
     $env:JAVA_HOME = (Get-ChildItem "$env:ProgramFiles\Eclipse Adoptium" -Filter "jdk-21*")[0].FullName
     $g = (Get-ChildItem "$env:USERPROFILE\.gradle\wrapper\dists\gradle-8.14.3-bin" -Recurse -Filter gradle.bat)[0].FullName
     & $g -p client-mod build
 
-`java` on PATH is 1.8, which will not compile this. Gradle 9.2.0 is also in that dists folder and
-loom 1.9.2 refuses to load under it — take the 8.14.3 one. `tools/hudcheck.mjs` finds the JDK on its
-own (JAVA_HOME, then PATH, then Adoptium) and says so when it cannot.
+Gradle 9.2.0 is also in that dists folder and loom 1.9.2 refuses to load under it — take 8.14.3.
+`tools/hudcheck.mjs` finds the JDK itself and says so when it cannot.
 
-Paths are written with `%USERPROFILE%` rather than spelled out because this repository is public and
-a home directory names its owner — the same rule as the rest of the never-commit list at the bottom.
+Install by copying **only** `kestrel-hud-0.1.0.jar` into `<instance>/minecraft/mods/`. Not the
+`-sources.jar` — it carries an unexpanded `${version}` in its `fabric.mod.json` and Fabric warns
+about it on every launch.
 
-Install by copying that jar into `<instance>/minecraft/mods/`. Fabric API installs itself now
-(mc/deps.js reads what the jars declare). Verified on 1.21.4: builds, loads, draws.
+### What is in it
 
-**The contract** is one file, `<instance>/config/kestrel-hud.json`, **version 4**, written by
-`mc/hud.js` and read AND WRITTEN by `HudConfig.java`. `tools/hudcheck.mjs` asserts the three
-languages agree — markup, JS, Java — in 121 assertions, the last twenty of which run the compiled
-mod against a document the launcher just wrote and read back what it wrote. Positions are percentages
-against nine anchors, plus a scale; visibility is resolved launcher-side from the seven MODULES
-(Armor status owns five elements); `module` and `label` travel in the document so the in-game menu
-has no vocabulary of its own.
+| file | what it is |
+|---|---|
+| `KestrelHudClient` | entrypoint, keybind, the live HUD render callback |
+| `HudConfig` | the contract: hand-rolled parser and writer, no JSON library |
+| `HudElements` | what each element says — LIVE values, or fixed SAMPLE text |
+| `HudRenderer` | geometry and drawing, forward AND inverse (the editor needs both) |
+| `Paint` / `Ui` | the palette, and the furniture: panel, card, stepper, slider, swatches |
+| `HudMenuScreen` | Right Shift — a card grid of modules, plus feature rows |
+| `HudElementScreen` | one element's options, or one feature's |
+| `HudLayoutScreen` | drag with magnet snapping |
+| `Behaviours` | sprint, sneak, zoom, snap look |
+| `Overlays` | hitboxes and chunk borders, in the world render pass |
+| `Clicks` / `Combat` / `Session` | the state the counters need |
 
-**Version 5 added PER-ELEMENT OPTIONS.** `compass` used to be a lone boolean on coords; nine more
-elements each wanting a switch would have been eleven more top-level fields for three languages to
-agree about. An element now carries an `opts` map, and what may be in it is DECLARED in `mc/hud.js`
-— a type, a default and the label the in-game menu prints. A top-level `optSpec` names each option
-once (`wear` is shared by all five armour rows). **Add a switch in `mc/hud.js` and it appears in the
-in-game options screen with no Java changing**, the same way `module` and `label` already work.
+**Design rules that are decisions, not accidents — each asserted by `hudcheck`:**
 
-That change forced a real fix: the mod's hand-rolled parser found an element's closing brace with
-`indexOf('}')`, which was correct only while an element was flat. `opts` is nested, so the first `}`
-is now that object's — the body came out truncated and the loop resumed mid-element. It walks
-matching braces now, string-aware.
+- **NO MIXINS.** Everything goes through supported Fabric entry points. Four backlog items need one;
+  see `docs/hud-backlog.md` before adding the first.
+- **NO SHADOWS.** Every `drawText` passes `false`. Minecraft draws a shadow as a hard offset copy of
+  every glyph, which is the look the plate exists to avoid.
+- **NO OUTLINES on the menu.** Depth is the alpha ladder — panel 43%, card 64%, hover 79%, well 81%
+  COMPOSITED. `roundBorder` was deleted rather than left unused.
+- **NOTHING IN A MENU MOVES.** Every preview is `HudElements.SAMPLE`, fixed text. A live fps counter
+  in a card flickers and changes width; in the layout editor that makes an element impossible to
+  align against its neighbours.
+- **The menu is softened, the HUD is not.** Menu corners are rounded (panel 4, card 3, well 2,
+  control 2); a HUD plate stays square because Minecraft's own panels are.
 
-**Version 4 added PER-ELEMENT STYLE**: `plate` (is there a box at all), `plateColour`, `plateAlpha`,
-`textColour`, `textAlpha`. Corners and font stay whole-HUD — three sharp plates and one rounded one
-is still a mistake — but colour, transparency and the box are per element, because picking ONE
-element out of the rest is the entire reason anybody opens the menu. **Every default is the old
-hard-coded constant to the byte** (`#0A0E13` at 72% is `Paint.PLATE`, `#F1F4F7` is `Paint.VALUE`),
-so an unstyled HUD is pixel-identical to before.
+---
 
-The label tone used to be a second hard-coded grey (`#929497`). Two hard-coded greys cannot survive
-somebody picking red, so a label is now its element's own colour at 58% alpha — which over the
-default plate blends to `#909294`, the grey it replaces. The ACCENT (low fps, the compass letter)
-deliberately does NOT follow the element colour: it marks the case worth noticing, and a "worth
-noticing" the same colour as everything around it has stopped noticing anything.
-
-## Phase 2 is built: the in-game menu
-
-**Right Shift opens it, in a world.** `HudMenuScreen` is **a grid of cards, one per module**, each
-with its own `OPTIONS` and `ENABLED`. The first version was a list of rows with a toggle on the
-right; it worked and it was not what was asked for. The card is right because **enable and configure
-are two different controls**, and a row with one toggle has nowhere to put the second.
-
-**Every card draws the real element** — actual colours, actual transparency, actual plate setting,
-through the same renderer the world uses. The grid is a contact sheet of your HUD. An invented icon
-would have been more work and told you less.
-
-`OPTIONS` opens **`HudElementScreen`**: size (slider), anchor, show-the-box, box colour, box
-opacity, text colour, text opacity, and the compass on coords. A live preview sits at the top with
-the WORLD showing through behind it, because "does this read at 30%" is a question about the world
-and a preview on flat grey answers a different one. Where a module owns more than one element
-(Armor status owns five) a `< HELMET >` stepper moves between them.
-
-`EDIT HUD LAYOUT` drops into `HudLayoutScreen`: the HUD alone on screen with drag, **magnet
-snapping**, wheel-to-scale, arrow-nudge and Alt to suppress the magnet. Both sub-screens hand back
-to the menu, and the menu is the single exit — so a whole session of dragging, toggling and
-recolouring produces exactly one write, and opening the menu to look at it produces none.
-
-The magnet snaps, in this order: the nine anchors (flush, the launcher's stock 2.6%/4.2% inset, and
-the centre lines), then other elements' leading edges, trailing edges, centres, and the two positions
-that sit one element directly beside or beneath another. Five pixels of pull, and a guide line is
-drawn at whatever it caught on.
-
-**Files:** `HudMenuScreen`, `HudElementScreen`, `HudLayoutScreen`, `Ui` (the furniture — panel,
-card, stepper, checkbox, slider, colour swatches, gear — drawn by hand rather than from
-`ButtonWidget`, because vanilla's widgets carry vanilla's look), plus `HudRenderer` and `HudElements`
-split out of the render callback so the live HUD, the cards, the preview and the editor all draw
-from ONE source. An editor arranging boxes of a different width from the ones the game will draw is
-an editor that lies.
-
-**Colour is picked from swatches, not a wheel or a hex field.** A hex field needs a focus model and a
-validation state for a value that is wrong most of the time you are typing it; a wheel needs a
-shader. Fourteen squares: Kestrel's own four first, so "put it back" is a click, then Minecraft's
-chat colours, which are the ones players already have names for.
-
-**`HudElements.Run` carries a ROLE, not a colour** (`VALUE`/`LABEL`/`ACCENT`). It used to carry a
-resolved colour, which was fine while the colours were two constants — but a run that had already
-decided it was `#F1F4F7` cannot be repainted when somebody picks red.
-
-**Reference screenshots the user supplied live in `hud-inspos/`**, which is gitignored and stays
-that way — they are other people's product UI. Look at them before touching the visuals; do not
-describe them, name them or quote them in anything tracked. `docs/hud-menu-design.md` holds the
-design decisions on their own terms, with the reasoning and without the attributions, which is the
-form they belong in for a public repository.
-
-### The ownership question, settled
-
-**The user chose read-back with provenance.** The document carries `rev` and `by`. The mod stamps
-`by: "game"`; on the next launch `hud.sync()` reads first, folds a game-written document back into
-`settings.hud`, persists that through the store, and only then writes — stamped `by: "launcher"`
-again, which is what makes an edit import exactly once. Verified both directions with the real
-compiled jar's classes, including the second launch importing nothing.
-
-**One refinement on the proposal as it was put to the user:** the decision rests on `by` alone, NOT
-on "is this rev newer than the one we last wrote". `settings.hud` is one GLOBAL object and the config
-file is PER INSTANCE, so revs across instances are not a total order — edit in-game in A, launch B,
-return to A, and a rev comparison discards A's edit silently. `rev` stays for the log line.
-
-### The launcher screen was write-only, and that had to be fixed to ship this
-
-`saveHud()` wrote `settings.hud` and **nothing ever read it back**. `ST` was built from the markup's
-`data-` attributes at startup ([app.js:1289](ui/scripts/app.js:1289)) and `host.settings.get()` was
-never called for the HUD at all — so the launcher forgot its own layout every session, and the first
-drag on that screen wrote the STOCK arrangement over whatever had been set in game.
-
-Version 4 made that fatal rather than annoying: `store.js` merges patches at the top level only, so
-`{hud: …}` swapped the whole object and every per-element colour, transparency and plate setting went
-with it. One drag in the launcher and an evening's work in game was gone, with a "Saved" flashing to
-confirm it.
-
-Both halves fixed. `loadHud()` reads the stored layout into `ST` at startup and the stored module
-state into `MODG` (via the same field `eff()` reads, not through `setVal()`, which would mark every
-row dirty — dirty means *changed from default*, not *restored from disk*). `saveHud()` now reads,
-lays this screen's four fields over what is stored, and writes back: `a/x/y/s` are what it owns and
-may overwrite; everything else travels through untouched.
-
-### A bug this turned up
-
-Both sides clamped percentages to `0..100`. A centre or middle anchor offsets in **both** directions
-from the middle — the HUD screen's own `place()` writes `top: calc(50% + Y%)` — and the stock layout
-has one, `helmet` at `mr` / `-9.6`. So every launch was writing that element as `0`, dropping the
-helmet icon into the vertical centre of the screen. Invisible only because the mod does not draw
-armour yet. Both sides clamp `-100..100` now, and hudcheck asserts the markup's own negative offset
-survives the trip.
-
-
-## What works, verified end to end on this machine
+## What works, verified end to end
 
 | | proof |
 |---|---|
-| **Vanilla launch** | 1.8.9 — 770 files, 146 MB, 19.8 s to running. Second launch: 0 bytes, 0.8 s. |
-| **Fabric** | 1.16.5 launched — `Loading Minecraft 1.16.5 with Fabric Loader 0.19.3` |
-| **Forge (legacy)** | 1.8.9 launched — `Forge Mod Loader version 11.15.1.2318 loading` |
-| **NeoForge** | 1.21.1 **launched** — processors run, patched jar built, loaded into a world on Java 21 |
-| **Forge (modern)** | 1.20.1 47.4.23 installed — 6 processors run, 2 output digests verified |
-| **Mods** | Sodium installed through the UI, launched, `- sodium 0.2.0+build.4` in the log |
-| **Dependencies** | REI planned 3 and installed 3, each hash-checked |
-| **Disable** | `.jar.disabled` — next launch logged 56 mods instead of 57 |
-| **Accounts** | Microsoft device-code flow, real client id, tokens never leave the main process |
-| **Client mod** | `kestrel-hud` **draws in-game**, confirmed on screen by the user: fps and coords on a plate |
-| **HUD wiring** | The screen's layout persists and reaches the mod: 11 elements, 6 anchors, scales intact |
-| **HUD round trip** | The **compiled** mod read a launcher document, edited it, wrote it back; the launcher took the edit and, on the next launch, imported nothing. Negative offsets, fractional scales and a non-ASCII label all intact |
-| **Modpacks** | Fabulously Optimized (.mrpack) planned and installed — 50 files sha1-checked, 55 overrides |
-| **Packaging** | `Kestrel-0.5.0-Setup.exe`, 106 MB. The packaged app launches and runs out of its own asar. |
+| **Vanilla / Fabric / Forge / NeoForge** | all launch; NeoForge 1.21.1 into a world, processors run |
+| **Mods** | installed through the UI, hash-checked, dependencies resolved |
+| **Modpacks** | `.mrpack` installed end to end — 50 files, 55 overrides |
+| **Accounts** | Microsoft device-code flow, tokens never leave the main process |
+| **The HUD draws in-game** | confirmed on screen by the user |
+| **The in-game menu runs** | user opened it, dragged coords to top-centre, saved revs 9→11 |
+| **The magnet works** | that drag landed at `tc` with `x: 0` — it caught the centre line exactly |
+| **The round trip** | the compiled mod read a launcher document, edited it, wrote it back; the launcher imported it exactly once |
+| **Packaging** | `Kestrel-0.5.0-Setup.exe`, 106 MB, launches from its own asar |
 
-## Architecture
+---
 
-    main.js        window, IPC, session hardening (CSP, permission denial)
-    preload.js     the contextBridge - named functions only
-    store.js       %APPDATA%/Kestrel - instances as folders
-    msauth.js      the six-request Microsoft chain, main process only
-    accounts.js    accounts.json, credential half sealed with safeStorage
-    auth-config.js client id resolution + the Azure/Mojang procedure
-    mc/            paths, net, unzip, version, install, java, launch, loaders, content,
-                   processors (Forge/NeoForge installer processors), modpack (.mrpack)
-    ui/            the renderer - index.html, styles/, scripts/, icons/
-    client-mod/    the Fabric mod: reads config/kestrel-hud.json, draws the HUD
-    electron-builder.yml  what ships, as an allow-list, and the NSIS options
-    build/         icon.ico and icon.png, generated from the mark in the icon set
+## New instances get a performance set
 
-**Security posture.** `contextIsolation`, `nodeIntegration: false`, `sandbox: true`, a CSP with no
-inline script and no eval, all permissions denied, an exact-match download host allow-list, SHA
-verification on every downloaded file, zip-slip guards, path containment proved rather than assumed,
-and no token on a command line (the launcher refuses rather than leaking on Java 8).
+Created with `perf: 'pending'`; the first launch installs **Sodium, Lithium, FerriteCore and Entity
+Culling** from pinned Modrinth ids in `mc/perf.js`. That is what makes "more frames" a claim this
+launcher can actually make — the engine doing the work is Sodium's, installed by name, visible in
+the mods list and removable like anything else.
+
+**ABSENT MEANS OFF, and that is the safety property.** Only `store.create()` sets the flag — NOT
+`clean()`, which also runs on `update()` and `seed()` and would have marked all thirty-nine existing
+instances. Retro-fitting mods into somebody's tuned setup is the failure that loses trust in a
+launcher's mods folder for good. Modpack imports pass `'off'`: a pack states its own list.
+
+It degrades rather than failing — `NO_BUILD` is caught per mod. Verified live: Fabric 1.21.4 and
+1.16.5 give 4 of 4, NeoForge 1.21.1 gives 4 of 4, Forge 1.20.1 gives 2 of 4, 1.8.9 gives 0.
+
+---
 
 ## Verify it yourself
 
-    node tools/clicktest.mjs      every control, does it respond
-    node tools/audit.mjs ui       the design standard
-    node tools/phase3check.mjs    download/launch security assertions (33)
-    node tools/phase4check.mjs    loader merge rules (60)
-    node tools/phase4check.mjs modern   ... and really install + launch NeoForge 1.21.1 (83)
-    node tools/phase5check.mjs    content install
-    node tools/hudcheck.mjs       the HUD contract across markup, JS and Java (157)
-    node tools/perfcheck.mjs      the performance set: ids, gating, the flag (34)
-    node tools/perfcheck.mjs live ... and ask Modrinth whether any of it exists
-    node tools/packcheck.mjs      what the packaged build actually contains (47)
-    bash  tools/scan.sh           Electronegativity + semgrep + npm audit + token containment
+    node tools/hudcheck.mjs          the HUD contract across three languages (177)
+    node tools/perfcheck.mjs         the performance set: ids, gating, the flag (26)
+    node tools/perfcheck.mjs live    ... and ask Modrinth whether any of it exists
+    node tools/clicktest.mjs         every control, does it respond (340)
+    node tools/audit.mjs ui          the design standard
+    node tools/phase3check.mjs       download/launch security assertions
+    node tools/phase4check.mjs       loader merge rules
+    node tools/phase5check.mjs       content install
+    node tools/packcheck.mjs         what the packaged build contains
+    bash  tools/scan.sh              Electronegativity + semgrep + npm audit + token containment
+
+**`packcheck` fails 2 of 47 and it is not a bug** — `mc/deps.js` and `mc/hud.js` are absent from the
+asar in `dist/`, which was built before either existed. Rebuild with `npm run dist`.
 
 Stronger than any of those: run it with **Wireshark** open. It talks to Microsoft, Mojang, Modrinth
 and nothing else.
 
-## New instances get the performance set
+---
 
-**A new instance is created with `perf: 'pending'`, and its first launch installs Sodium, Lithium,
-FerriteCore and Entity Culling** — pinned Modrinth project ids in `mc/perf.js`, through the same
-hash-checked path as any other mod. That is what makes "more frames" a claim Kestrel can actually
-make: the renderer doing the work is Sodium's, installed by name, visible in the mods list and
-removable like anything else.
+## THE ONE THING NOBODY HAS DONE
 
-**The safety property is that ABSENT MEANS OFF.** Only `store.create()` sets the flag, so every
-instance that existed before this did has no `perf` key and is never touched. Retro-fitting four
-mods into somebody's tuned 1.8.9 setup is the failure that loses trust in a launcher's mods folder
-forever. Modpack imports pass `perf: 'off'` — a pack states its own mod list and this is not invited
-to edit it.
+**Almost nothing from the last two sessions has been seen on screen.** The menu was opened once, in
+an earlier form. Since then: nine more elements, six features, world overlays, per-element options,
+and the entire visual pass — glass panel, rounded corners, no borders, no shadows, static previews.
 
-**It degrades rather than failing.** `content.pickVersion` throws `NO_BUILD` when a loader/version
-pair has no build; `perf.fill` catches that, logs the miss and carries on. Verified live: Fabric
-1.21.4 and 1.16.5 resolve 4 of 4, NeoForge 1.21.1 resolves 4 of 4, Forge 1.20.1 resolves 2 of 4
-(Sodium and Lithium are not on Forge), and 1.8.9 resolves 0 — which is a skip, not an error.
+The world overlays are the part a compiler cannot check at all: a render pass either draws or it
+does not. **Build the jar, copy it into an instance, load a world, press Right Shift.**
 
-The flag is cleared whatever happened, so a launch never retries four downloads forever.
+There is a pixel-accurate mockup of the menu at
+`https://claude.ai/code/artifact/69a0c0f0-a7f8-40b3-8c68-5a4850aac95b`, built from the mod's own
+constants with every proportion and alpha on a slider, and its own harness asserting it has not
+drifted from the Java. Use it to settle proportions without a build — it cannot tell you whether the
+overlays render.
 
-## Not finished
+---
 
-- **Update checking reports but does not apply** — installing the newer version replaces the file.
-- **Mojang has not approved the Azure application** for the Minecraft scopes, so the final token
-  exchange will 403 until they do. Form: https://aka.ms/mce-reviewappid
-- **All eleven HUD elements are drawn now.** fps, cps, ping, keystrokes, coords, potion effects and
-  the five armour slots. What is NOT done is `docs/hud-backlog.md` — twenty more features, of which
-  half are not elements at all and need a `features` section in the contract before they can exist.
-- **THE CARD GRID AND THE OPTIONS SCREEN HAVE NOT BEEN SEEN.** The first menu was tested by the user
-  and sent back; this replaces it, compiles, and its contract is proved end to end against the
-  compiled classes — but nothing can drive Minecraft into a world unattended, so no pixel of the
-  cards, the swatches, the sliders or the preview strip has been looked at. Card sizes (76x62, three
-  across), the 14-colour palette and the preview strip height are all picked blind.
-- `HudRenderCallback` is **deprecated** in Fabric's 1.21.4 API (`-Xlint:deprecation` names it, and it
-  is the only warning in the build). It still works — it is what has been drawing on screen — but a
-  future API version will drop it for `HudLayerRegistrationCallback`. Left alone deliberately: it is
-  the one part of this that is confirmed working by eye.
+## Next
 
-## Where things stand (last session)
+1. **Look at it in game.** Everything below is guesswork until then.
+2. **Cache the HUD render.** It rebuilds every string every frame — `config.names()` allocates a
+   fresh list per frame just to iterate — and there are now twenty elements in that loop. This is the
+   cheapest real win left; see the end of `docs/hud-backlog.md`.
+3. **`docs/hud-backlog.md`** — what is left, including the four items that need a mixin and why none
+   was added.
+4. **Five dead switches** in the Tweaks list: Chat, Compass, Crosshair, Level head, Nick hider. Build
+   them or delete the rows. A switch that does nothing is worse than an absent feature.
+5. **CurseForge `.zip` packs**, **code signing** (a purchase, not a config change).
 
-**Packaging is done.** `npm run icon && npm run dist` produces `dist/Kestrel-0.5.0-Setup.exe`, 106 MB,
-per-user NSIS, unsigned. `electron-builder.yml` holds the whole configuration and the reasoning.
-The packaged build was launched and inspected live over CDP rather than assumed: the renderer loads
-from `app.asar/ui/index.html`, `brand.js` imports as an ES module from *inside* the archive (the
-`readFileSync` fallback in `main.js` was never reached), 969 CSS rules resolve, and the instance
-list renders from the real store. What was NOT done: the installer has not been run through a clean
-install on a fresh machine, and nothing is code signed.
+---
 
-**`package.json` was wrong on three counts** and is fixed. It declared `"license": "ISC"` against an
-all-rights-reserved LICENSE, it was still named `mc-launcher`, and it carried Playwright as a
-*runtime* dependency — which would have put the whole browser automation stack inside the
-installer. There are now **zero runtime dependencies**, and `packcheck` asserts it.
+## Never commit
 
-**The version is in two places now** — `package.json` (electron-builder reads it) and `BRAND.version`
-(the UI reads it). Bump both. `packcheck` fails if they diverge, which is the only reason two
-places is tolerable.
+The real `auth.config.json` (gitignored; read the value with
+`node -e "console.log(require('./auth.config.json').clientId)"`), anything under `%APPDATA%/Kestrel`,
+the user's Minecraft username, or **local paths containing the Windows username** — that last was
+committed once here and caught before it was pushed. `hud-inspos/`, `shots/`, `ref/`, `variants/`
+and `docs/round*-judgement.json` are gitignored; `docs/screenshots/` is not.
 
-**A packaged build deliberately carries no client id** and starts in demo mode. `auth.config.json`
-is excluded from `files:`, so an installer built from this repo cannot leak it. To sign in from an
-installed copy, put `auth.config.json` in `%APPDATA%\Kestrel\` — `auth-config.js` looks there
-first, which is what that ordering was always for.
+**Grep for the VALUE, not the filename.** A filename check proves a filename is absent. The old
+client id is still readable in history at `a46edfd` — that app is dead, but the lesson is why
+`packcheck` holds this standard for the packaged build.
 
-**Modpacks install, and the Import screen is wired to it.** `mc/modpack.js` reads a `.mrpack`,
-plans it, and installs it as a new instance. The picker is opened in the MAIN process — `pack.choose()`
-takes no argument at all, so the renderer cannot name a file to read any more than it can name a url
-to download — and `pack.install()` hands back only the plan id. Verified: Fabulously Optimized
-installed end to end (50 files, 55 overrides), and a bogus plan id round-trips through IPC and comes
-back refused. NOT covered by a test: the `dialog.showOpenDialog` seam itself, which needs a human to
-click. CurseForge `.zip` is a different manifest and is refused by name.
+**Repo:** https://github.com/emirudev128-sys/KestrelClient — **all rights reserved**, source-available
+for verification only. NOT open source; do not reintroduce MIT.
 
-**Modern Forge and NeoForge work now.** `mc/processors.js` runs the installer's processors — a JVM
-per processor, in order, with the `data` block resolved for the client side. NeoForge 1.21.1 was
-installed and **launched into a world**; Forge 1.20.1 installs and its declared output digests are
-verified. Three things worth knowing before touching it:
+**Do not name other launchers or clients anywhere in this repository.** Design notes carry the
+reasoning on their own terms; `docs/hud-menu-design.md` is the model. The reference screenshots in
+`hud-inspos/` stay gitignored.
 
-- **The ordering is load-bearing.** The processors patch the vanilla client jar, so they cannot run
-  in `installLoader` — that is called *before* the vanilla install, because the profile is what
-  names the libraries to fetch. They run at the end of `Game.install()`. `pwarn` is cleared only if
-  a processor actually ran, and `pjar` on the record is how a later session finds the installer.
-- **NeoForge publishes no output digests at all** — zero across its ten processors, where Forge
-  1.20.1 declares two. So for NeoForge the six JVMs exit 0 and nothing has verified they wrote
-  anything. `runProcessors` therefore checks the `PATCHED` artefact exists and is non-empty
-  regardless, and the log says which case it is in rather than implying verification happened.
-- **`-DignoreList` had to be corrected at launch.** Modern Forge/NeoForge run through
-  BootstrapLauncher, which moves everything on the classpath to the MODULE path except the
-  filenames in that list. Their profiles write `${name}.jar`, guessing the launcher names the game
-  jar after the version being launched. This one does not — `jar` means the client jar is the
-  PARENT's, so `1.21.1.jar` went on the classpath, was not ignored, and collided with the patched
-  `minecraft` module: `ResolutionException: Modules _1._21._1 and minecraft export package
-  net.minecraft.data`. `mc/launch.js` appends the real basename to the list.
-
-**The User-Agent is fixed.** It used to send `Kestrel/1.0 (+https://github.com/kestrel-launcher)` —
-an organisation that does not exist, and a version the product had not been on for months. It now
-sends `Kestrel/0.4.2 (+https://github.com/emirudev128-sys/KestrelClient)`, built once by
-`BRAND.userAgent` in `brand.js` and handed to `mc/net.js` through `Game` at startup, so the version
-cannot drift again. `BRAND.repo` still derives its repository half from the product name — the
-rename-is-one-edit property survives — but the OWNER is written out, because a GitHub account is not
-a product name and deriving it is what produced a plausible URL nobody could visit. `net.js` keeps a
-versionless fallback for the harness scripts, which require it with no Electron and no brand.
-Nine assertions in `phase3check` cover it, including the wiring, not just the pieces.
-
-**Repo:** https://github.com/emirudev128-sys/KestrelClient — pushed, one commit, `main`.
-**Licence:** all rights reserved, source-available for verification only. NOT open source.
-Do not reintroduce MIT. The history was deliberately squashed so no MIT commit exists.
-
-**Azure client id** lives in `auth.config.json`, which is **gitignored**, and it is not written down
-anywhere else — not here, not in a commit message, not in a PR. `auth.config.example.json` ships
-with a placeholder. Read the live value with
-`node -e "console.log(require('./auth.config.json').clientId)"` rather than keeping a copy of it in
-a document.
-
-**Why that sentence changed.** The previous version of this file stated the id inline — inside the
-very paragraph explaining that it is kept out of git — and this repository is public, so it was
-readable by anyone from commit `a46edfd` onward. `.gitignore` covered the filename and everybody
-took that for the whole story. The app has since been re-registered and the old id is dead, but the
-lesson stands: a filename check proves a filename is absent, and only searching for the VALUE
-proves the value is. `tools/packcheck.mjs` already holds that standard for the packaged build.
-
-Sign-in reaches Microsoft and Xbox Live but the final Minecraft exchange will 403 until Mojang
-approves the app at https://aka.ms/mce-reviewappid — the app was re-registered, so that approval
-has to be requested again, with the repo URL rather than `localhost`.
-
-**Never commit:** the real `auth.config.json`, anything under `%APPDATA%/Kestrel`, the user's
-Minecraft username (fixture data says `Player`), or local paths containing the Windows username.
-`shots/`, `ref/`, `variants/` and `kestrel.html` are gitignored; `docs/screenshots/` is not, and
-holds the three README images.
-
-**Demo data:** nine instances named by version and mod setup (`1.21.4 Fabric`, `1.20.1 Fabric copy`,
-`1.8.9 Forge`, `All the Mods 10`, …). They are deliberately repetitive — the `1.20.1` pair is
-identical but for the name. Do not make each one demonstrate a different feature; that failure mode
-has been caught five times and is written up in `docs/rubric.md`.
-
-## Also true right now
-
-- `dist/` holds a 0.5.0 installer built BEFORE the modpack work, the HUD wiring and every fix since.
-  Rebuild with `npm run dist && npm run packcheck` before giving it to anyone. **`packcheck` fails 2
-  of 47 because of this** — `mc/deps.js` and `mc/hud.js` are not in that asar, because the installer
-  was built at 20:42 and those files landed at 00:05 and 21:13. Not a packaging bug; a stale build.
-- The Azure app was re-registered. The new client id is in `auth.config.json` (gitignored) and
-  **nowhere else** — the user asked explicitly that it never be pushed. The old one is dead but
-  still readable in history at `a46edfd`; `RESUME.md` no longer names any id.
-- Mojang approval has to be requested again for the new app, with the repo URL rather than
-  `localhost`.
-- The instance detail screen (`#screen-instance`) shows its identity and launches correctly now,
-  but its mod list, session history and sizes are still the prototype fixture describing some other
-  instance. A screen that shows wrong data confidently.
-
-## Sensible next steps
-
-0. **`docs/hud-backlog.md` — twenty more HUD features are already asked for**, to be built after the
-   nine below. Read it before designing anything: half of that list is NOT a HUD element (a toggle
-   sprint has no anchor, zoom has a keybind, hitboxes are drawn in the world) and the contract has
-   one noun, `elements`. It also records that the Tweaks screen already names sixteen modules while
-   only seven reach the HUD — four of the backlog items already have a switch on screen wired to
-   nothing, and five more rows are wired to nothing and are not on the list at all.
-
-1. **Press Right Shift in a world and look at it.** The menu is written, compiled and its contract is
-   proved; its appearance and the feel of the magnet are not. Build the jar, copy it into an
-   instance's `minecraft/mods/`, launch, load a world. Everything after this is guesswork until then.
-   (The previous version of this list said "persist the HUD screen's layout" — that was already done;
-   `saveHud()` in `ui/scripts/app.js` has been writing it for some time. Do not redo it.)
-2. **The other nine elements in the mod.** `HudElements.of()` is the single place: return runs for
-   `ping`, `cps`, `potion`, `keys` and the five armour slots, and delete the name from the
-   placeholder path. The menu rows stop saying `not drawn yet` on their own, because that string is
-   driven by `HudElements.drawn()`.
-3. **CurseForge packs** — `.mrpack` is done; their `.zip` export is a different manifest, needs an
-   API key, and has a redistribution story worth reading before it is written.
-4. **Code signing** — SmartScreen warns on every first run until the binary is signed by a
-   certificate with reputation behind it. That is a purchase, not a config change.
-
-## How to work on this
-
-Small change: build it, run `node tools/clicktest.mjs`, fix, re-test. ~15-20 min.
-Anything touching the design system, a new component, or multiple window sizes: 40 min, say so up
-front. Do not attach a judging pass unless asked. Always run `bash tools/scan.sh` after touching
-`main.js`, `preload.js` or anything in `mc/`.
+**Current branch:** `hud-per-element-style`, 13 commits ahead of `origin/main`, **unpushed** — the
+user wants to see the menu in game before a PR is opened.
