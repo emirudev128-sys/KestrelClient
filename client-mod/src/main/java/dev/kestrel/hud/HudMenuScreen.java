@@ -24,12 +24,14 @@ import java.util.Map;
  * actually has rather than fixed, so it stays landscape at GUI scale 4 on a
  * small window instead of running off both edges.
  *
- * <p><b>THE WORLD BEHIND IT IS BLURRED.</b> {@link #applyBlur()} is vanilla's
- * own path and vanilla's own {@code renderBackground} calls it. What goes over
- * the blur is a light tint — 30%, against the 75-80% gradient vanilla uses for
- * its in-game screens — because the blur is what separates the panel from the
- * world, and the HUD elements drawn around the panel are the things being
- * configured and have to stay readable.
+ * <p><b>THE WORLD BEHIND IT IS BLURRED, AND NOTHING ELSE.</b>
+ * {@link #applyBlur()} is vanilla's own path and vanilla's own
+ * {@code renderBackground} calls it. The tint that used to go over the blur is
+ * now zero: vanilla darkens its in-game screens with a 75-80% gradient, this
+ * went to 30%, and dialling it against the real thing put it at nothing at
+ * all. The blur does the separating on its own, and every percent of tint was
+ * costing legibility on the HUD elements drawn around the panel — which are
+ * the things being configured.
  *
  * <p><b>NOTHING IN HERE MOVES.</b> Every preview is
  * {@link HudElements#SAMPLE} — fixed text. A card with a live fps counter in
@@ -59,7 +61,7 @@ public class HudMenuScreen extends Screen {
        card's own writing. */
     private static final int CARD_W = 84;
     private static final int CARD_H = 74;
-    private static final int CARD_GAP = 7;
+    private static final int CARD_GAP = 9;
     private static final int WELL_H = 26;
     private static final int BTN_H = 12;
     private static final int MAX_COLS = 4;
@@ -231,16 +233,21 @@ public class HudMenuScreen extends Screen {
         boolean drawn = moduleDrawn(mod);
         boolean overCard = Ui.hit(mx, my, x, y, CARD_W, CARD_H);
 
-        ctx.fill(x, y, x + CARD_W, y + CARD_H, overCard ? Paint.HOVER : Paint.RAISE);
-        Ui.border(ctx, x, y, CARD_W, CARD_H, overCard ? Paint.DEFINE : Paint.REGION);
+        Ui.surface(ctx, x, y, CARD_W, CARD_H, Paint.R_CARD,
+            overCard ? Paint.HOVER : Paint.RAISE, overCard ? Paint.DEFINE : Paint.REGION);
 
-        /* the well, and the element sunk into it */
-        ctx.fill(x + 1, y + 1, x + CARD_W - 1, y + WELL_H, Paint.WELL);
-        preview(ctx, mod, x + 1, y + 1, CARD_W - 2, WELL_H - 1);
+        /* THE WELL FOLLOWS THE CARD'S TOP CORNERS AND SQUARES OFF AT THE
+           BOTTOM, because that is where it meets the card's own surface
+           rather than its edge. Rounding all four would leave four slivers of
+           card showing under it and read as a floating tile. */
+        int wy = y + 1, wx = x + 1, ww = CARD_W - 2, wh = WELL_H - 1;
+        Ui.roundRect(ctx, wx, wy, ww, wh + Paint.R_WELL, Paint.R_WELL, Paint.WELL);
+        ctx.fill(wx, wy + wh, wx + ww, wy + wh + Paint.R_WELL, Paint.WELL);
+        preview(ctx, mod, wx, wy, ww, wh);
 
         /* AN ELEMENT THAT IS OFF IS SHOWN FAINT, not hidden. The card is how
            you find the thing again to switch it back on. */
-        if (!on) ctx.fill(x + 1, y + 1, x + CARD_W - 1, y + WELL_H, 0xAA12151B);
+        if (!on) ctx.fill(wx, wy, wx + ww, wy + wh, 0xAA12151B);
 
         String name = clip(mod, CARD_W - 8);
         Ui.centred(ctx, this.textRenderer, name, x, CARD_W, y + WELL_H + 3, on ? Paint.VALUE : Paint.MUTE);
@@ -252,8 +259,8 @@ public class HudMenuScreen extends Screen {
         int bw = CARD_W - 8;
         int oy = optionsY(y);
         boolean overOpt = Ui.hit(mx, my, bx, oy, bw, BTN_H);
-        ctx.fill(bx, oy, bx + bw, oy + BTN_H, overOpt ? Paint.ACTIVE : Paint.PANEL);
-        Ui.border(ctx, bx, oy, bw, BTN_H, overOpt ? Paint.ACCENT : Paint.DEFINE);
+        Ui.surface(ctx, bx, oy, bw, BTN_H, Paint.R_CTRL,
+            overOpt ? Paint.ACTIVE : Paint.PANEL, overOpt ? Paint.ACCENT : Paint.DEFINE);
         Ui.centred(ctx, this.textRenderer, "OPTIONS", bx - 6, bw, oy + 2, overOpt ? Paint.VALUE : Paint.BODY);
         Ui.gear(ctx, bx + bw - 13, oy + 2, overOpt ? Paint.ACCENT : Paint.MUTE,
             overOpt ? Paint.ACTIVE : Paint.PANEL);

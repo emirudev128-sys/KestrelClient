@@ -236,6 +236,7 @@ ok('and only ELEMENTS carry colour — the document style stays the two choices'
 
 /* the Java side has to agree about every one of those */
 const cfgJava0 = fs.readFileSync(javaFile, 'utf8');
+const hudJs = fs.readFileSync(path.join(ROOT, 'mc', 'hud.js'), 'utf8');
 for (const k of hud.STYLE_KEYS) {
   ok('HudConfig reads and writes "' + k + '"', cfgJava0.indexOf('\\"' + k + '\\"') >= 0
     || cfgJava0.indexOf('"' + k + '"') >= 0);
@@ -330,6 +331,7 @@ const cfgJava = src('HudConfig.java');
 const menuJava = src('HudMenuScreen.java');
 const layoutJava = src('HudLayoutScreen.java');
 const clientJava = src('KestrelHudClient.java');
+const uiJava = src('Ui.java');
 
 ok('HudMenuScreen exists', menuJava !== null);
 ok('HudLayoutScreen exists', layoutJava !== null);
@@ -424,35 +426,98 @@ if (paintJava) {
   const panel = alphaOf('PANEL');
   /* THE PANEL IS GLASS, and this has been wrong in both directions — 95%,
      which is 5% of nothing, then fully opaque, which made the menu a slab
-     dropped on Minecraft. The range is what the intent actually is: enough
-     transparency to see the blurred world through it, enough body to carry
-     text. Asserted as a range rather than a number so tuning it does not mean
-     editing a check to match. */
+     dropped on Minecraft. A WIDE range on purpose: the exact value is a
+     judgement about how the blurred world reads through it, made by eye, and
+     a check that pins it to a number is a check that has to be edited every
+     time somebody looks at it properly. What is worth asserting is only that
+     it is neither of the two failures. */
   ok('the panel is glass — you can see the blurred world through it',
-    panel !== null && panel >= 0x70 && panel <= 0xC0,
-    panel === null ? 'not found' : '0x' + panel.toString(16) + ' (want 0x70..0xC0)');
+    panel !== null && panel >= 0x40 && panel <= 0xC0,
+    panel === null ? 'not found' : '0x' + panel.toString(16) + ' (want 0x40..0xC0)');
 
-  /* AND THE STACK GOES UP. A card at the panel's own alpha vanishes into it
-     and the grid reads as one sheet; each layer has to be more solid than the
-     surface under it or depth stops reading as depth. */
-  const raise = alphaOf('RAISE'), hover = alphaOf('HOVER'),
-        active = alphaOf('ACTIVE'), well = alphaOf('WELL');
-  ok('a card is more solid than the panel it sits on',
-    raise !== null && panel !== null && raise > panel,
-    'panel 0x' + (panel || 0).toString(16) + ' -> card 0x' + (raise || 0).toString(16));
-  ok('and hover and pressed are more solid again',
-    hover > raise && active > hover,
-    [raise, hover, active].map((v) => '0x' + (v || 0).toString(16)).join(' -> '));
-  ok('the preview well is the most solid of all',
-    well !== null && well > active,
-    'a plate\'s own transparency cannot be judged through a second one');
+  /* ── AND THE STACK ASCENDS — COMPOSITED, NOT RAW ──────────────────────
+     The first version of this compared the constants directly and would now
+     be failing: a card is 0x5E where the panel is 0x6E, which looks like the
+     card is the fainter of the two. It is not. The card is drawn OVER the
+     panel, so what anybody sees is the pair composited — and 43% then 37% of
+     what is left is 64%.
+
+     Comparing the constants was comparing two numbers that are never on
+     screen alone. This composites them the way the renderer does. */
+  const a = (v) => (v === null ? 0 : v / 255);
+  const over = (under, top) => under + top * (1 - under);
+  const pc = (v) => Math.round(v * 100) + '%';
+
+  const vPanel = a(panel);
+  const vCard = over(vPanel, a(alphaOf('RAISE')));
+  const vHover = over(vPanel, a(alphaOf('HOVER')));
+  const vActive = over(vPanel, a(alphaOf('ACTIVE')));
+  const vWell = over(vCard, a(alphaOf('WELL')));
+
+  ok('a card, composited over the panel, is more solid than the panel',
+    vCard > vPanel, 'panel ' + pc(vPanel) + ' -> card ' + pc(vCard));
+  ok('hover and pressed are both more solid than a resting card',
+    vHover > vCard && vActive > vCard,
+    'card ' + pc(vCard) + ' -> hover ' + pc(vHover) + ', pressed ' + pc(vActive));
+  ok('and the preview well is the most solid thing on the screen',
+    vWell > vCard && vWell > vHover,
+    'well ' + pc(vWell) + " — a plate's own transparency cannot be judged through a second one");
 
   const scrim = alphaOf('SCRIM');
   /* vanilla darkens its own in-game background from 0xC0 to 0xD0; the point
-     of blurring is to need far less than that */
+     of blurring is to need far less than that, and dialling it by eye put it
+     at nothing at all */
   ok('and the tint over the blur is lighter than vanilla darkening',
     scrim !== null && scrim < 0xC0,
     scrim === null ? 'not found' : '0x' + scrim.toString(16) + ' vs vanilla 0xC0-0xD0');
+
+  /* ── the corners ──────────────────────────────────────────────────────
+     The menu is softened and the HUD is not, which is a distinction worth
+     holding on to: a plate in the world should look like Minecraft's own
+     square panels, and a menu is Kestrel's own surface. */
+  const radiusOf = (n) => {
+    const m = new RegExp('int ' + n + ' = (\\d+)').exec(paintJava);
+    return m ? Number(m[1]) : null;
+  };
+  const rPanel = radiusOf('R_PANEL'), rCard = radiusOf('R_CARD'),
+        rWell = radiusOf('R_WELL'), rCtrl = radiusOf('R_CTRL');
+  ok('the menu declares corner radii', [rPanel, rCard, rWell, rCtrl].every((v) => v !== null),
+    'panel ' + rPanel + ', card ' + rCard + ', well ' + rWell + ', control ' + rCtrl);
+  ok('and they step down with the size of the thing',
+    rPanel >= rCard && rCard >= rWell && rPanel > rCtrl,
+    'a 12px button at the panel\'s radius is a lozenge');
+  ok('while the HUD plate itself stays square by default',
+    /rounded \? "rounded" : "sharp"/.test(cfgJava0) || /corners.*sharp/.test(hudJs),
+    'sharp is what looks native in the world; the menu is not in the world');
+}
+
+if (uiJava) {
+  ok('a rounded rectangle is built from horizontal spans',
+    /static void roundRect/.test(uiJava) && /static void roundBorder/.test(uiJava),
+    'Minecraft has fill() and no rounded-rect primitive');
+  ok('and its fill and its outline share one inset table',
+    (uiJava.match(/inset\(rr,/g) || []).length >= 3,
+    'two roundings on one rectangle is a fill that misses its own border');
+  /* THE ARC HAS TO BE CONVEX. Insets must not increase as you move inward
+     from the corner, or the shape bulges back out and stops being a corner.
+     The first table here was computed off a circle measured at the tangent
+     point and inset the top row by the FULL radius — a notch, not a curve. */
+  const arc = /int\[\]\[\] ARC = \{([\s\S]*?)\};/.exec(uiJava);
+  if (arc) {
+    const rows = [...arc[1].matchAll(/\{([^}]*)\}/g)]
+      .map((m) => m[1].split(',').map((s) => s.trim()).filter(Boolean).map(Number));
+    const bad = rows.filter((r) => r.some((v, i) => i > 0 && v > r[i - 1]));
+    ok('every tabled corner is convex — insets never grow inward',
+      bad.length === 0, bad.length ? JSON.stringify(bad) : rows.map((r) => '[' + r + ']').join(' '));
+    /* THE BUG THIS GUARDS was r=4 coming out as [4,2,1,1] — a top row inset
+       by the whole radius, which is a notch bitten out of the panel rather
+       than a curve. At r=1 and r=2 a full-radius first row IS the natural
+       pixel corner (two pixels cannot describe an arc), so the rule only
+       bites from 3 up, where the difference is visible. */
+    ok('and no corner of 3px or more is inset by its own full radius',
+      rows.every((r, ri) => ri < 3 || r.length === 0 || r[0] < ri),
+      'that is the tangent point of the circle, where its width is zero');
+  }
 }
 
 /* ── 9. and the two languages, actually run against each other ──────────

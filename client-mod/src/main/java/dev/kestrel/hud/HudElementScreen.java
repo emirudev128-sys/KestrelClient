@@ -181,6 +181,8 @@ public class HudElementScreen extends Screen {
         Ui.rule(ctx, px + 1, py + TITLE_H - 1, PANEL_W - 2);
 
         int pvY = py + TITLE_H;
+        /* square: this strip spans the panel and butts against the title
+           rule above and the rows below, so it has no free corners to round */
         ctx.fill(px + 1, pvY, px + PANEL_W - 1, pvY + PREVIEW_H, Paint.WELL);
         if (el != null) previewOf(ctx, el, px + 1, pvY, PANEL_W - 2, PREVIEW_H);
         Ui.rule(ctx, px + 1, pvY + PREVIEW_H - 1, PANEL_W - 2);

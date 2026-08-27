@@ -56,16 +56,17 @@ final class Paint {
     static final int STACK_GAP = 2;
 
     /* ══ THE MENU ═════════════════════════════════════════════════════════
-       Right Shift opens a screen over the world, and it is painted from the
-       same values the HUD is: a square-cornered panel, thin borders and
-       generous line height, which is already how Kestrel's own screens look.
-       See docs/hud-menu-design.md. */
+       Right Shift opens a screen over the world, painted from the same
+       values the HUD is — thin borders, generous line height, one accent —
+       but softened at the corners, which the HUD is not. See R_PANEL below
+       and docs/hud-menu-design.md. */
 
     /* ── THE PANEL IS GLASS ───────────────────────────────────────────────
-       --s-pane #12151B at 62%. This has been wrong in both directions: it
-       started at 95%, which is 5% of nothing, and was then argued all the way
-       to fully opaque on the grounds that a translucent menu over a MOVING
-       world is one you squint at.
+       --s-pane #12151B at 43%, dialled in by eye against the blurred world
+       rather than argued from a principle. This value has been wrong in both
+       directions before now: it started at 95%, which is 5% of nothing, and
+       was then argued all the way to fully opaque on the grounds that a
+       translucent menu over a MOVING world is one you squint at.
 
        That argument was about the wrong world. Nothing behind this is moving
        any more, because the screen blurs it first — and over a blurred ground
@@ -73,14 +74,23 @@ final class Paint {
        looking at the game you are still standing in. Opaque made the menu a
        slab dropped on top of Minecraft.
 
-       THE CONTROLS ON IT ARE LESS TRANSPARENT THAN THE PANEL, not equal to
-       it. A card at the panel's own alpha would vanish into it and the grid
-       would read as one sheet of text; each layer up the stack gets more
-       solid, so depth reads as depth. The well at the bottom of that stack is
-       the most solid of all, because it is the ground a HUD plate is being
-       judged against and that judgement is worthless against a moving
-       backdrop. */
-    static final int PANEL = 0x9E12151B;
+       THE NUMBERS BELOW DO NOT READ AS A LADDER, AND THEY ARE ONE.  A card
+       is 37% where the panel is 43%, which looks like the card is the fainter
+       of the two and is not: the card is drawn OVER the panel, so what you
+       see is the pair composited — 43% then 37% of what is left is 64%. Each
+       step up the stack still lands more solid than the one under it,
+       finishing at the preview well on 81%, and it is the composited figure
+       that has to ascend rather than the constant. tools/hudcheck.mjs
+       composites them before comparing, which is the version of that check
+       that is actually about what anybody sees.
+
+       AND THE SCRIM IS ZERO. It was 30%, and before that 55%; the blur alone
+       turned out to do all of the separating, so the tint over it does
+       nothing but dim the HUD elements around the panel — which are the
+       things being configured. Kept as a named constant rather than deleted
+       because it is the dial you would reach for if a future backdrop needed
+       holding down, and a fill at zero alpha costs nothing. */
+    static final int PANEL = 0x6E12151B;
 
     /* ── AND THE WORLD BEHIND IT IS BLURRED, NOT BLACKED OUT ──────────────
        This was a flat 55% fill, and it read as a black sheet with a window
@@ -99,13 +109,13 @@ final class Paint {
        because the blur is doing the separating and the HUD elements drawn
        around the panel are the things being configured and have to stay
        readable. */
-    static final int SCRIM = 0x4D040609;
+    static final int SCRIM = 0x00040609;
 
     /* each one a step more solid than the surface under it, so a card reads
        as sitting ON the panel rather than as a patch of it */
-    static final int RAISE = 0xC41B1F25;   /* --s-raise: a control ON the panel */
-    static final int HOVER = 0xD425292E;   /* --s-hover */
-    static final int ACTIVE = 0xE02F3339;  /* --s-active, the pressed state */
+    static final int RAISE = 0x5E1B1F25;   /* --s-raise: a control ON the panel */
+    static final int HOVER = 0xA125292E;   /* --s-hover */
+    static final int ACTIVE = 0x942F3339;  /* --s-active, the pressed state */
     static final int REGION = 0xFF2D3137;  /* --line-region: divides sections */
     static final int DEFINE = 0xFF474B51;  /* --line-define: outlines a control */
     static final int BODY = 0xFFCDCFD3;    /* --body: a row's label */
@@ -131,6 +141,29 @@ final class Paint {
     static final int PANEL_PAD = 10;       /* panel edge to its content */
     static final int SECTION_GAP = 9;      /* above a section heading */
 
+    /* ── CORNER RADII ─────────────────────────────────────────────────────
+       THE MENU IS SOFTENED; THE HUD IS NOT.  Every square corner in here used
+       to be an argument — Minecraft's own interface is square, so a square
+       plate is the one that looks like it belongs on that screen. That
+       argument still holds for a PLATE sitting in the world, which is why the
+       HUD's own corners stay sharp by default and stay the player's choice.
+
+       It does not hold for a menu. A menu is Kestrel's surface rather than
+       Minecraft's, it is the largest thing on screen when it is open, and at
+       350 pixels across a hard corner reads as unfinished rather than as
+       native. So the panel and everything on it are rounded, and the amount
+       steps down with the size of the thing: a big surface can carry a
+       rounder corner than a 12px button, and giving them the same radius
+       makes the small one look like a lozenge.
+
+       Four pixels is the most that reads as a corner rather than as a bite at
+       this scale. See Ui.roundRect for how they are actually drawn, which is
+       the interesting half. */
+    static final int R_PANEL = 4;          /* the window itself */
+    static final int R_CARD = 3;           /* a card on it */
+    static final int R_WELL = 2;           /* the recess inside a card */
+    static final int R_CTRL = 2;           /* buttons, steppers, toggles */
+
     /* ── the well ─────────────────────────────────────────────────────────
        The recess a card's preview sits in. --s-well #040609, the darkest
        surface in the palette, and the reason it exists is that a preview
@@ -142,5 +175,5 @@ final class Paint {
        HUD plate is judged against — its own transparency is the thing being
        set — and judging one translucent thing through another is judging
        neither. */
-    static final int WELL = 0xED040609;
+    static final int WELL = 0x75040609;
 }

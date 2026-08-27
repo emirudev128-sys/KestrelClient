@@ -8,11 +8,17 @@ import net.minecraft.client.gui.DrawContext;
  *
  * <p>Drawn by hand rather than assembled from {@code ButtonWidget} and
  * friends. Vanilla's widgets carry vanilla's look: the beveled nine-slice
- * button, the highlight on hover, the 20px height. Kestrel's screens are
- * square-cornered, thin-bordered and 14px to a row, and a menu that
- * configures a Kestrel HUD while wearing Minecraft's chrome would read as two
- * products in one window. So the furniture here is Kestrel's own: the same
- * square-cornered panel, thin border and row rhythm the launcher uses.
+ * button, the highlight on hover, the 20px height. A menu that configures a
+ * Kestrel HUD while wearing Minecraft's chrome would read as two products in
+ * one window, so the furniture here is Kestrel's own — thin borders, a 14px
+ * row, and corners softened by a few pixels.
+ *
+ * <p><b>THE CORNERS ARE THE ONE PLACE THIS PARTS FROM THE HUD.</b> A plate
+ * drawn into the world defaults to square, because Minecraft's own panels and
+ * tooltips are square and a plate should look like it belongs on that screen.
+ * A menu is not on that screen — it IS the screen while it is open — and at
+ * 350 pixels across a hard corner reads as unfinished. See {@link #roundRect},
+ * which is where the interesting half of that lives.
  *
  * <p><b>NO WIDGET OBJECTS, AND SO NO WIDGET STATE.</b> Every control here is
  * a function of a rectangle and a value: draw it from those, hit-test it
@@ -35,10 +41,90 @@ final class Ui {
         return mx >= x && mx < x + w && my >= y && my < y + h;
     }
 
-    /** the panel itself: square corners, one thin line, nearly opaque */
+    /* ══ ROUNDED CORNERS, WITHOUT A ROUNDED-RECTANGLE PRIMITIVE ═══════════
+       Minecraft has {@code fill}, which draws an axis-aligned rectangle, and
+       nothing else. A rounded rectangle is therefore a STACK OF HORIZONTAL
+       SPANS: the rows near an edge are inset, the rows in the middle are not.
+
+       THE INSETS ARE TABLED FOR THE SIZES ACTUALLY USED, and that is a
+       correction rather than a shortcut. The first version of this computed
+       them straight off a circle — {@code r - sqrt(r² - dy²)} with
+       {@code dy = r - row} — and the comment here claimed it produced 2, 1,
+       1, 0 at r=4. It produces 4, 2, 1, 1: at row zero that {@code dy} lands
+       on the TANGENT POINT of the circle, where its width is zero, so the top
+       row gets inset by the whole radius and the corner reads as a notch
+       bitten out of the panel rather than as a curve. Printing the four rows
+       is what caught it; the arithmetic looked right.
+
+       Two to four pixels is too few for a formula to choose well anyway —
+       every pixel is a fifth of the corner, so the shape is a drawing
+       decision, not a rounding of one. These four are the arcs a pixel artist
+       would draw by hand. Anything larger falls through to the circle, now
+       measured from the row's CENTRE ({@code dy = r - row - 0.5}), which is
+       the fix the tabled cases also embody.
+
+       Cost is 2r+1 fills instead of 1. At r=4 that is nine rectangles for a
+       panel drawn once a frame, which is not a number worth optimising. */
+    private static final int MAX_R = 8;
+
+    /** insets from the corner inward, one per row, for the radii in use */
+    private static final int[][] ARC = {
+        {},                 /* r=0 */
+        { 1 },              /* r=1 — a single corner pixel off */
+        { 2, 1 },           /* r=2 */
+        { 2, 1, 1 },        /* r=3 */
+        { 3, 2, 1, 1 }      /* r=4 */
+    };
+
+    static int inset(int r, int row) {
+        if (r <= 0 || row >= r) return 0;
+        if (r < ARC.length) return ARC[r][row];
+        double dy = r - row - 0.5;
+        double dx = r - Math.sqrt(Math.max(0.0, (double) r * r - dy * dy));
+        return (int) Math.ceil(dx - 1e-9);
+    }
+
+    /** a filled rectangle with its corners taken off */
+    static void roundRect(DrawContext ctx, int x, int y, int w, int h, int r, int colour) {
+        int rr = Math.max(0, Math.min(Math.min(r, MAX_R), Math.min(w, h) / 2));
+        if (rr == 0) { ctx.fill(x, y, x + w, y + h, colour); return; }
+        for (int i = 0; i < rr; i++) {
+            int in = inset(rr, i);
+            ctx.fill(x + in, y + i, x + w - in, y + i + 1, colour);
+            ctx.fill(x + in, y + h - 1 - i, x + w - in, y + h - i, colour);
+        }
+        ctx.fill(x, y + rr, x + w, y + h - rr, colour);
+    }
+
+    /** the 1px outline of that same shape, so a fill and its border agree
+     *  about where the corner is — two different roundings on one rectangle
+     *  is the failure this shares its inset table to avoid */
+    static void roundBorder(DrawContext ctx, int x, int y, int w, int h, int r, int colour) {
+        int rr = Math.max(0, Math.min(Math.min(r, MAX_R), Math.min(w, h) / 2));
+        if (rr == 0) { border(ctx, x, y, w, h, colour); return; }
+        for (int i = 0; i < rr; i++) {
+            int in = inset(rr, i);
+            int prev = i == 0 ? in : inset(rr, i - 1);
+            /* the horizontal run of this row's step, top and bottom */
+            ctx.fill(x + in, y + i, x + prev + 1, y + i + 1, colour);
+            ctx.fill(x + w - prev - 1, y + i, x + w - in, y + i + 1, colour);
+            ctx.fill(x + in, y + h - 1 - i, x + prev + 1, y + h - i, colour);
+            ctx.fill(x + w - prev - 1, y + h - 1 - i, x + w - in, y + h - i, colour);
+        }
+        /* the straight sides between the corners */
+        ctx.fill(x, y + rr, x + 1, y + h - rr, colour);
+        ctx.fill(x + w - 1, y + rr, x + w, y + h - rr, colour);
+    }
+
+    /** fill and outline in one call, which is what almost every caller wants */
+    static void surface(DrawContext ctx, int x, int y, int w, int h, int r, int fill, int edge) {
+        roundRect(ctx, x, y, w, h, r, fill);
+        roundBorder(ctx, x, y, w, h, r, edge);
+    }
+
+    /** the panel itself: softened corners, one thin line, glass */
     static void panel(DrawContext ctx, int x, int y, int w, int h) {
-        ctx.fill(x, y, x + w, y + h, Paint.PANEL);
-        border(ctx, x, y, w, h, Paint.REGION);
+        surface(ctx, x, y, w, h, Paint.R_PANEL, Paint.PANEL, Paint.REGION);
     }
 
     static void border(DrawContext ctx, int x, int y, int w, int h, int colour) {
@@ -90,8 +176,8 @@ final class Ui {
 
     static void toggle(DrawContext ctx, TextRenderer tr, int x, int y, boolean on, boolean hover, boolean enabled) {
         int fill = !enabled ? Paint.RAISE : on ? (hover ? Paint.GO_HI : Paint.ACCENT) : (hover ? Paint.HOVER : Paint.RAISE);
-        ctx.fill(x, y, x + TOGGLE_W, y + TOGGLE_H, fill);
-        border(ctx, x, y, TOGGLE_W, TOGGLE_H, !enabled ? Paint.FAINT : on ? Paint.ACCENT : Paint.DEFINE);
+        surface(ctx, x, y, TOGGLE_W, TOGGLE_H, Paint.R_CTRL, fill,
+            !enabled ? Paint.FAINT : on ? Paint.ACCENT : Paint.DEFINE);
         int ink = !enabled ? Paint.FAINT : on ? Paint.ON_GO : Paint.MUTE;
         centred(ctx, tr, on ? "ON" : "OFF", x, TOGGLE_W, y + 2, ink);
     }
@@ -105,8 +191,7 @@ final class Ui {
 
     static void stepper(DrawContext ctx, TextRenderer tr, int x, int y, int w, int h,
                         String value, boolean hoverLeft, boolean hoverRight) {
-        ctx.fill(x, y, x + w, y + h, Paint.RAISE);
-        border(ctx, x, y, w, h, Paint.DEFINE);
+        surface(ctx, x, y, w, h, Paint.R_CTRL, Paint.RAISE, Paint.DEFINE);
         centred(ctx, tr, "<", x, STEP_ARROW, y + (h - 8) / 2, hoverLeft ? Paint.ACCENT : Paint.MUTE);
         centred(ctx, tr, ">", x + w - STEP_ARROW, STEP_ARROW, y + (h - 8) / 2, hoverRight ? Paint.ACCENT : Paint.MUTE);
         centred(ctx, tr, value, x + STEP_ARROW, w - STEP_ARROW * 2, y + (h - 8) / 2, Paint.VALUE);
@@ -119,8 +204,11 @@ final class Ui {
     static final int BOX = 9;
 
     static void check(DrawContext ctx, int x, int y, boolean on, boolean hover) {
-        ctx.fill(x, y, x + BOX, y + BOX, hover ? Paint.HOVER : Paint.RAISE);
-        border(ctx, x, y, BOX, BOX, on ? Paint.ACCENT : Paint.DEFINE);
+        /* R_CTRL would eat a 9px box, so a checkbox keeps a single corner
+           pixel off — enough to stop it reading as the one hard square left
+           on the screen, not so much that the tick loses its ground */
+        surface(ctx, x, y, BOX, BOX, 1, hover ? Paint.HOVER : Paint.RAISE,
+            on ? Paint.ACCENT : Paint.DEFINE);
         if (!on) return;
         ctx.fill(x + 2, y + 4, x + 3, y + 6, Paint.ACCENT);
         ctx.fill(x + 3, y + 5, x + 4, y + 7, Paint.ACCENT);
@@ -136,8 +224,7 @@ final class Ui {
     static void button(DrawContext ctx, TextRenderer tr, int x, int y, int w, int h,
                        String label, boolean hover, boolean primary) {
         int fill = primary ? (hover ? Paint.GO_HI : Paint.ACCENT) : (hover ? Paint.HOVER : Paint.RAISE);
-        ctx.fill(x, y, x + w, y + h, fill);
-        border(ctx, x, y, w, h, primary ? Paint.ACCENT : Paint.DEFINE);
+        surface(ctx, x, y, w, h, Paint.R_CTRL, fill, primary ? Paint.ACCENT : Paint.DEFINE);
         centred(ctx, tr, label, x, w, y + (h - 8) / 2, primary ? Paint.ON_GO : hover ? Paint.VALUE : Paint.BODY);
     }
 
