@@ -417,15 +417,42 @@ if (layoutJava) {
 
 const paintJava = src('Paint.java');
 if (paintJava) {
-  const panel = /int PANEL = 0x([0-9A-Fa-f]{2})/.exec(paintJava);
-  ok('the panel is opaque', panel && parseInt(panel[1], 16) === 0xFF,
-    panel ? '0x' + panel[1] : 'not found');
-  const scrim = /int SCRIM = 0x([0-9A-Fa-f]{2})/.exec(paintJava);
+  const alphaOf = (name) => {
+    const m = new RegExp('int ' + name + ' = 0x([0-9A-Fa-f]{2})').exec(paintJava);
+    return m ? parseInt(m[1], 16) : null;
+  };
+  const panel = alphaOf('PANEL');
+  /* THE PANEL IS GLASS, and this has been wrong in both directions — 95%,
+     which is 5% of nothing, then fully opaque, which made the menu a slab
+     dropped on Minecraft. The range is what the intent actually is: enough
+     transparency to see the blurred world through it, enough body to carry
+     text. Asserted as a range rather than a number so tuning it does not mean
+     editing a check to match. */
+  ok('the panel is glass — you can see the blurred world through it',
+    panel !== null && panel >= 0x70 && panel <= 0xC0,
+    panel === null ? 'not found' : '0x' + panel.toString(16) + ' (want 0x70..0xC0)');
+
+  /* AND THE STACK GOES UP. A card at the panel's own alpha vanishes into it
+     and the grid reads as one sheet; each layer has to be more solid than the
+     surface under it or depth stops reading as depth. */
+  const raise = alphaOf('RAISE'), hover = alphaOf('HOVER'),
+        active = alphaOf('ACTIVE'), well = alphaOf('WELL');
+  ok('a card is more solid than the panel it sits on',
+    raise !== null && panel !== null && raise > panel,
+    'panel 0x' + (panel || 0).toString(16) + ' -> card 0x' + (raise || 0).toString(16));
+  ok('and hover and pressed are more solid again',
+    hover > raise && active > hover,
+    [raise, hover, active].map((v) => '0x' + (v || 0).toString(16)).join(' -> '));
+  ok('the preview well is the most solid of all',
+    well !== null && well > active,
+    'a plate\'s own transparency cannot be judged through a second one');
+
+  const scrim = alphaOf('SCRIM');
   /* vanilla darkens its own in-game background from 0xC0 to 0xD0; the point
      of blurring is to need far less than that */
   ok('and the tint over the blur is lighter than vanilla darkening',
-    scrim && parseInt(scrim[1], 16) < 0xC0,
-    scrim ? '0x' + scrim[1] + ' vs vanilla 0xC0-0xD0' : 'not found');
+    scrim !== null && scrim < 0xC0,
+    scrim === null ? 'not found' : '0x' + scrim.toString(16) + ' vs vanilla 0xC0-0xD0');
 }
 
 /* ── 9. and the two languages, actually run against each other ──────────

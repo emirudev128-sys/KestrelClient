@@ -61,12 +61,26 @@ final class Paint {
        generous line height, which is already how Kestrel's own screens look.
        See docs/hud-menu-design.md. */
 
-    /* THE PANEL IS OPAQUE. A plate has to let the world through — it sits on
-       top of the game you are playing. A menu has stopped the game being the
-       thing you are looking at, and a translucent menu over a moving world is
-       a menu you have to squint at. --s-pane #12151B, and the alpha that used
-       to be here was 95%, which was 5% of nothing but noise. */
-    static final int PANEL = 0xFF12151B;
+    /* ── THE PANEL IS GLASS ───────────────────────────────────────────────
+       --s-pane #12151B at 62%. This has been wrong in both directions: it
+       started at 95%, which is 5% of nothing, and was then argued all the way
+       to fully opaque on the grounds that a translucent menu over a MOVING
+       world is one you squint at.
+
+       That argument was about the wrong world. Nothing behind this is moving
+       any more, because the screen blurs it first — and over a blurred ground
+       a translucent panel does not fight the text on it, it just keeps you
+       looking at the game you are still standing in. Opaque made the menu a
+       slab dropped on top of Minecraft.
+
+       THE CONTROLS ON IT ARE LESS TRANSPARENT THAN THE PANEL, not equal to
+       it. A card at the panel's own alpha would vanish into it and the grid
+       would read as one sheet of text; each layer up the stack gets more
+       solid, so depth reads as depth. The well at the bottom of that stack is
+       the most solid of all, because it is the ground a HUD plate is being
+       judged against and that judgement is worthless against a moving
+       backdrop. */
+    static final int PANEL = 0x9E12151B;
 
     /* ── AND THE WORLD BEHIND IT IS BLURRED, NOT BLACKED OUT ──────────────
        This was a flat 55% fill, and it read as a black sheet with a window
@@ -87,9 +101,11 @@ final class Paint {
        readable. */
     static final int SCRIM = 0x4D040609;
 
-    static final int RAISE = 0xFF1B1F25;   /* --s-raise: a control ON the panel */
-    static final int HOVER = 0xFF25292E;   /* --s-hover */
-    static final int ACTIVE = 0xFF2F3339;  /* --s-active, the pressed state */
+    /* each one a step more solid than the surface under it, so a card reads
+       as sitting ON the panel rather than as a patch of it */
+    static final int RAISE = 0xC41B1F25;   /* --s-raise: a control ON the panel */
+    static final int HOVER = 0xD425292E;   /* --s-hover */
+    static final int ACTIVE = 0xE02F3339;  /* --s-active, the pressed state */
     static final int REGION = 0xFF2D3137;  /* --line-region: divides sections */
     static final int DEFINE = 0xFF474B51;  /* --line-define: outlines a control */
     static final int BODY = 0xFFCDCFD3;    /* --body: a row's label */
@@ -120,6 +136,11 @@ final class Paint {
        surface in the palette, and the reason it exists is that a preview
        floating directly on the card reads as part of the card's own text.
        Sunk into a well it reads as a picture OF something, which is what it
-       is. */
-    static final int WELL = 0xFF040609;
+       is.
+
+       NEARLY SOLID, where the panel around it is glass. This is the ground a
+       HUD plate is judged against — its own transparency is the thing being
+       set — and judging one translucent thing through another is judging
+       neither. */
+    static final int WELL = 0xED040609;
 }
