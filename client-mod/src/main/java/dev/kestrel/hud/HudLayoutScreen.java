@@ -67,10 +67,10 @@ public class HudLayoutScreen extends Screen {
     private static final class Placed {
         final String name;
         final HudConfig.Element el;
-        final List<HudElements.Run> runs;
+        final List<List<HudElements.Run>> runs;
         final int w, h;                 /* unscaled */
         final HudRenderer.Box box;      /* on screen, scaled */
-        Placed(String name, HudConfig.Element el, List<HudElements.Run> runs, int w, int h, HudRenderer.Box box) {
+        Placed(String name, HudConfig.Element el, List<List<HudElements.Run>> runs, int w, int h, HudRenderer.Box box) {
             this.name = name; this.el = el; this.runs = runs; this.w = w; this.h = h; this.box = box;
         }
     }
@@ -109,10 +109,10 @@ public class HudLayoutScreen extends Screen {
                changes WIDTH as the number crosses 100, and an element that
                changes width under the cursor is one you cannot line up against
                its neighbours. */
-            List<HudElements.Run> runs = HudElements.of(name, el, this.client, face, HudElements.SAMPLE);
+            List<List<HudElements.Run>> runs = HudElements.of(name, el, this.client, face, HudElements.SAMPLE);
             if (runs == null || runs.isEmpty()) continue;
             int w = HudRenderer.width(this.textRenderer, runs);
-            int h = HudRenderer.height();
+            int h = HudRenderer.height(runs);
             placed.add(new Placed(name, el, runs, w, h,
                 HudRenderer.box(el, w, h, this.width, this.height)));
         }

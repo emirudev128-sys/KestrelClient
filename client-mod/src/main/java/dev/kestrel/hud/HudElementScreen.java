@@ -53,13 +53,26 @@ public class HudElementScreen extends Screen {
     private static final int PLATE_A = 6;
     private static final int TEXT_RGB = 7;
     private static final int TEXT_A = 8;
-    private static final int COMPASS = 9;
+    /* ONE ROW KIND FOR EVERY PER-ELEMENT SWITCH. There used to be a COMPASS
+       constant here and a case in three switch statements to go with it —
+       which was fine for one option on one element and would have been eleven
+       constants and thirty-three cases by the time the other nine elements
+       had theirs. An OPT row carries the option's KEY and reads everything
+       else — its label, whether it is a switch or a stepper, what values it
+       steps through — out of the document. Add an option in mc/hud.js and it
+       appears here with no Java changing. */
+    private static final int OPT = 9;
 
     private static final class Row {
         final int kind;
         final String label;
         final int h;
-        Row(int kind, String label, int h) { this.kind = kind; this.label = label; this.h = h; }
+        /** OPT rows only: which option in el.opts this row edits */
+        final String key;
+        Row(int kind, String label, int h) { this(kind, label, h, null); }
+        Row(int kind, String label, int h, String key) {
+            this.kind = kind; this.label = label; this.h = h; this.key = key;
+        }
     }
 
     /* WIDER THAN IT NEEDS TO BE FOR THE ROWS, and sized for the swatch grid:
@@ -120,9 +133,24 @@ public class HudElementScreen extends Screen {
         rows.add(new Row(HEAD, "TEXT", Paint.ROW + Paint.SECTION_GAP));
         rows.add(new Row(TEXT_RGB, "Text colour", Paint.ROW - 3 + Ui.swatchesH()));
         rows.add(new Row(TEXT_A, "Text opacity", Paint.ROW));
+
+        /* ── THIS ELEMENT'S OWN SWITCHES ──────────────────────────────────
+           Whatever the launcher declared for it, in the order the document
+           lists them, labelled from the document's own spec. An option with
+           no spec gets no row: better an option nobody can see than a row
+           with no name on it. */
         HudConfig.Element el = element();
-        if (el != null && "coords".equals(name())) {
-            rows.add(new Row(COMPASS, "Show the compass", Paint.ROW));
+        if (el != null && !el.opts.isEmpty()) {
+            boolean headed = false;
+            for (String key : el.optKeys()) {
+                HudConfig.OptSpec sp = config.spec(key);
+                if (sp == null || sp.label.isEmpty()) continue;
+                if (!headed) {
+                    rows.add(new Row(HEAD, "THIS ELEMENT", Paint.ROW + Paint.SECTION_GAP));
+                    headed = true;
+                }
+                rows.add(new Row(OPT, sp.label, Paint.ROW, key));
+            }
         }
 
         int content = 0;
@@ -210,15 +238,17 @@ public class HudElementScreen extends Screen {
 
     private void previewOf(DrawContext ctx, HudConfig.Element el, int x, int y, int w, int h) {
         if (this.client == null) return;
-        List<HudElements.Run> runs =
+        List<List<HudElements.Run>> rows =
             HudElements.of(name(), el, this.client, KestrelHudClient.face(config), HudElements.SAMPLE);
-        if (runs == null || runs.isEmpty()) return;
-        int ew = HudRenderer.width(this.textRenderer, runs);
-        int eh = HudRenderer.height();
+        if (rows == null || rows.isEmpty()) return;
+        int ew = HudRenderer.width(this.textRenderer, rows);
+        int eh = HudRenderer.height(rows);
         /* shown at its OWN scale where it fits, so "bigger" looks bigger
-           here; shrunk only when it would run off the strip */
-        double s = Math.min(el.scale, (w - 12.0) / ew);
-        HudRenderer.draw(ctx, this.textRenderer, runs,
+           here; shrunk only when it would run off the strip — and a tall
+           element (potion effects, a keystroke grid) is bounded by the strip's
+           HEIGHT too, or it would spill over the rows below */
+        double s = Math.min(el.scale, Math.min((w - 12.0) / ew, (h - 6.0) / eh));
+        HudRenderer.draw(ctx, this.textRenderer, rows,
             x + (w - ew * s) / 2.0, y + (h - eh * s) / 2.0, ew, eh, s, config.rounded, el.style);
     }
 
@@ -274,10 +304,20 @@ public class HudElementScreen extends Screen {
                 Ui.slider(ctx, this.textRenderer, sx, slY, VALUE_W, el.style.textAlpha,
                     Ui.overSlider(mx, my, sx, slY, VALUE_W));
                 break;
-            case COMPASS:
-                Ui.check(ctx, rightX - Ui.BOX, y + (Paint.ROW - Ui.BOX) / 2, el.compass,
-                    Ui.hit(mx, my, rightX - Ui.BOX, y + (Paint.ROW - Ui.BOX) / 2, Ui.BOX, Ui.BOX));
+            case OPT: {
+                HudConfig.OptSpec sp = config.spec(r.key);
+                if (sp == null) break;
+                if (sp.isEnum()) {
+                    Ui.stepper(ctx, this.textRenderer, sx, sy, VALUE_W, 11,
+                        el.choice(r.key, sp.vals.get(0)).toUpperCase(java.util.Locale.ROOT),
+                        Ui.hit(mx, my, sx, sy, Ui.STEP_ARROW, 11),
+                        Ui.hit(mx, my, sx + VALUE_W - Ui.STEP_ARROW, sy, Ui.STEP_ARROW, 11));
+                } else {
+                    Ui.check(ctx, rightX - Ui.BOX, y + (Paint.ROW - Ui.BOX) / 2, el.flag(r.key),
+                        Ui.hit(mx, my, rightX - Ui.BOX, y + (Paint.ROW - Ui.BOX) / 2, Ui.BOX, Ui.BOX));
+                }
                 break;
+            }
             default:
                 break;
         }
@@ -371,13 +411,29 @@ public class HudElementScreen extends Screen {
                         return true;
                     }
                     break;
-                case COMPASS:
-                    if (Ui.hit(mouseX, mouseY, rightX - Ui.BOX, y + (Paint.ROW - Ui.BOX) / 2, Ui.BOX, Ui.BOX)) {
-                        config.put(n, el.withCompass(!el.compass));
+                case OPT: {
+                    HudConfig.OptSpec sp = config.spec(r.key);
+                    if (sp == null) break;
+                    if (sp.isEnum()) {
+                        if (Ui.hit(mouseX, mouseY, sx, sy, VALUE_W, 11)) {
+                            boolean back = mouseX < sx + VALUE_W / 2.0;
+                            String cur = el.choice(r.key, sp.vals.get(0));
+                            int at = Math.max(0, sp.vals.indexOf(cur));
+                            int nxt = (at + (back ? sp.vals.size() - 1 : 1)) % sp.vals.size();
+                            /* written back as the RAW TOKEN, quotes and all,
+                               because that is how the document holds it */
+                            config.put(n, el.withOpt(r.key, '"' + sp.vals.get(nxt) + '"'));
+                            click();
+                            return true;
+                        }
+                    } else if (Ui.hit(mouseX, mouseY, rightX - Ui.BOX,
+                                      y + (Paint.ROW - Ui.BOX) / 2, Ui.BOX, Ui.BOX)) {
+                        config.put(n, el.withOpt(r.key, el.flag(r.key) ? "false" : "true"));
                         click();
                         return true;
                     }
                     break;
+                }
                 default:
                     break;
             }

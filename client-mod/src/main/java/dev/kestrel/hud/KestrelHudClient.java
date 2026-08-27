@@ -77,6 +77,14 @@ public class KestrelHudClient implements ClientModInitializer {
        otherwise leave the second press sitting there to open the menu again
        the moment it was closed. */
     private void tick(MinecraftClient client) {
+        /* CPS IS COUNTED HERE, not in the render pass. A render pass runs at
+           the framerate, which is the thing a clicks-per-SECOND counter must
+           not depend on; a client tick is twenty a second whatever the frames
+           are doing. See Clicks for why it keeps timestamps rather than a
+           counter that resets. */
+        if (client.options != null) {
+            Clicks.tick(client.options.attackKey.isPressed(), client.options.useKey.isPressed());
+        }
         while (menuKey.wasPressed()) {
             /* IN A WORLD, AND NOT OVER ANOTHER SCREEN. This configures a HUD
                that only exists in a world, and opening it over the title
@@ -127,11 +135,11 @@ public class KestrelHudClient implements ClientModInitializer {
                cannot draw returns null here and is simply absent from the
                world; the menus ask for SAMPLE instead, because they have to be
                able to style and position things the world does not draw yet. */
-            List<HudElements.Run> runs = HudElements.of(name, el, client, face, HudElements.LIVE);
-            if (runs == null || runs.isEmpty()) continue;
+            List<List<HudElements.Run>> rows = HudElements.of(name, el, client, face, HudElements.LIVE);
+            if (rows == null || rows.isEmpty()) continue;
 
-            int w = HudRenderer.width(client.textRenderer, runs);
-            int h = HudRenderer.height();
+            int w = HudRenderer.width(client.textRenderer, rows);
+            int h = HudRenderer.height(rows);
             int sw = ctx.getScaledWindowWidth();
             int sh = ctx.getScaledWindowHeight();
 
@@ -140,7 +148,7 @@ public class KestrelHudClient implements ClientModInitializer {
             box = HudRenderer.onScreen(box, sw, sh);
             placed.add(box);
 
-            HudRenderer.draw(ctx, client.textRenderer, runs, box.x, box.y, w, h, el.scale, config.rounded, el.style);
+            HudRenderer.draw(ctx, client.textRenderer, rows, box.x, box.y, w, h, el.scale, config.rounded, el.style);
         }
     }
 }

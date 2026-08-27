@@ -166,21 +166,71 @@ ok('a corner shape that does not exist falls back to sharp', junk.doc.style.corn
 ok('a font that does not exist falls back to Minecraft', junk.doc.style.font === 'minecraft', junk.doc.style.font);
 
 console.log('');
-console.log('compass belongs to coords and to nothing else');
-const comp = hud.build({ elements: { coords: { a: 'tl', x: 1, y: 1, s: 1, compass: true },
-                                     fps: { a: 'tl', x: 1, y: 1, s: 1, compass: true } } });
-ok('coords carries it', comp.doc.elements.coords.compass === true);
-ok('fps does not, even when asked', comp.doc.elements.fps.compass === undefined);
-ok('and it is a strict boolean',
-  hud.build({ elements: { coords: { a: 'tl', x: 0, y: 0, s: 1, compass: 'yes' } } })
-     .doc.elements.coords.compass === false);
+console.log('an option belongs to the elements that declare it and to no others');
+const comp = hud.build({ elements: {
+  coords: { a: 'tl', x: 1, y: 1, s: 1, opts: { compass: true } },
+  fps: { a: 'tl', x: 1, y: 1, s: 1, opts: { compass: true } } } });
+ok('coords carries it', comp.doc.elements.coords.opts.compass === true);
+ok('fps has no opts at all, even when asked',
+  comp.doc.elements.fps.opts === undefined, 'fps declares none');
+ok('and a switch is a strict boolean',
+  hud.build({ elements: { coords: { a: 'tl', x: 0, y: 0, s: 1, opts: { compass: 'yes' } } } })
+     .doc.elements.coords.opts.compass === false);
+/* THE MIGRATION. compass sat at the top level before version 5, and a config
+   written then must not lose the setting when it is read now. */
+ok('a pre-v5 top-level compass is folded into opts',
+  hud.build({ elements: { coords: { a: 'tl', x: 0, y: 0, s: 1, compass: true } } })
+     .doc.elements.coords.opts.compass === true,
+  'a config written before v5 keeps its setting');
+ok('and is no longer written at the top level',
+  hud.build({ elements: { coords: { a: 'tl', x: 0, y: 0, s: 1, compass: true } } })
+     .doc.elements.coords.compass === undefined, 'one place, not two');
+
+console.log('');
+console.log('and an enum option is checked against its own values');
+const wear = (v) => hud.build({ elements: { helmet: { a: 'mr', x: 0, y: 0, s: 1, opts: { wear: v } } } })
+  .doc.elements.helmet.opts.wear;
+ok('a declared value is kept', wear('percent') === 'percent');
+ok('and one that is not falls back to the default', wear('rainbow') === 'bar', wear('rainbow'));
+ok('an option the element does not declare is dropped',
+  hud.build({ elements: { helmet: { a: 'mr', x: 0, y: 0, s: 1, opts: { compass: true } } } })
+     .doc.elements.helmet.opts.compass === undefined);
+
+console.log('');
+console.log('every option is named once, at the top of the document');
+const spec = hud.build({ elements: {} }).doc.optSpec;
+const declared = new Set();
+for (const el of Object.keys(hud.ELEMENT_OPTS)) {
+  for (const k of Object.keys(hud.ELEMENT_OPTS[el])) declared.add(k);
+}
+ok('the spec names every option any element declares',
+  [...declared].every((k) => spec[k] && spec[k].label),
+  [...declared].filter((k) => !(spec[k] && spec[k].label)).join(' ') || declared.size + ' options');
+ok('every enum in the spec carries its values',
+  Object.keys(spec).every((k) => {
+    const anyEnum = Object.values(hud.ELEMENT_OPTS).some((e) => e[k] && e[k].type === 'enum');
+    return anyEnum ? Array.isArray(spec[k].vals) && spec[k].vals.length > 0 : true;
+  }));
+/* the whole point of one table: `wear` is on five armour elements and must
+   mean the same thing on all five */
+ok('an option shared by several elements is declared once',
+  Object.keys(spec).length === declared.size,
+  Object.keys(spec).length + ' entries for ' + declared.size + ' distinct options');
+ok('and every default a declaration states is one of its own values',
+  Object.values(hud.ELEMENT_OPTS).every((e) => Object.values(e).every((o) =>
+    o.type === 'bool' ? typeof o.def === 'boolean' : o.vals.indexOf(o.def) >= 0)));
 
 if (fs.existsSync(javaFile)) {
   const styleJava = fs.readFileSync(javaFile, 'utf8');
   console.log('');
   console.log('the mod reads the same style words the launcher writes');
-  for (const w of ['style', 'corners', 'rounded', 'font', 'kestrel', 'compass']) {
-    ok('HudConfig looks for the word ' + w, styleJava.indexOf('"' + w + '"') >= 0);
+  /* A JAVA STRING LITERAL ESCAPES ITS OWN QUOTES, so a key the parser looks
+     for appears in the source as either "word" or \"word\" depending on
+     whether it was written as a bare literal or inside one. Matching only the
+     first form reported optSpec missing from a file that reads it. */
+  for (const w of ['style', 'corners', 'rounded', 'font', 'kestrel', 'opts', 'optSpec']) {
+    ok('HudConfig looks for the word ' + w,
+      styleJava.indexOf('"' + w + '"') >= 0 || styleJava.indexOf('\\"' + w + '\\"') >= 0);
   }
 }
 
@@ -583,6 +633,7 @@ if (!fs.existsSync(classes)) {
       elements: {
         fps: { a: 'tl', x: 2.6, y: 4.2, s: 1 },
         helmet: { a: 'mr', x: 2.6, y: -9.6, s: 1.25 },
+        coords: { a: 'bl', x: 2.6, y: 17, s: 1 },
         ping: { a: 'tr', x: 2.6, y: 4.2, s: 0.75 }
       },
       modules: { Ping: false }
@@ -649,6 +700,16 @@ if (!fs.existsSync(classes)) {
     ok('and its transparency', styled.textAlpha === 80, String(styled.textAlpha));
     ok('so does the box colour', styled.plateColour === '#55FF55', String(styled.plateColour));
     ok('and the box transparency', styled.plateAlpha === 35, String(styled.plateAlpha));
+    /* THE OPTIONS, BOTH KINDS. The mod stores them as raw JSON tokens and
+       never learns what any of them mean, so this is the assertion that the
+       round trip is genuinely type-blind: a switch comes home a boolean and
+       an enum comes home one of its own declared values. */
+    ok('a switch flipped in game comes home a boolean',
+      fromGame.hud.elements.coords && fromGame.hud.elements.coords.opts.compass === true,
+      JSON.stringify(fromGame.hud.elements.coords && fromGame.hud.elements.coords.opts));
+    ok('and an enum stepped in game comes home as one of its own values',
+      fromGame.hud.elements.helmet && fromGame.hud.elements.helmet.opts.wear === 'percent',
+      JSON.stringify(fromGame.hud.elements.helmet && fromGame.hud.elements.helmet.opts));
     ok('nothing was dropped on the way back', fromGame.dropped === 0);
   } catch (e) {
     ok('the round trip runs', false, e.message.split('\n')[0]);

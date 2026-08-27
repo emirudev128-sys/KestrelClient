@@ -67,6 +67,18 @@ against nine anchors, plus a scale; visibility is resolved launcher-side from th
 (Armor status owns five elements); `module` and `label` travel in the document so the in-game menu
 has no vocabulary of its own.
 
+**Version 5 added PER-ELEMENT OPTIONS.** `compass` used to be a lone boolean on coords; nine more
+elements each wanting a switch would have been eleven more top-level fields for three languages to
+agree about. An element now carries an `opts` map, and what may be in it is DECLARED in `mc/hud.js`
+— a type, a default and the label the in-game menu prints. A top-level `optSpec` names each option
+once (`wear` is shared by all five armour rows). **Add a switch in `mc/hud.js` and it appears in the
+in-game options screen with no Java changing**, the same way `module` and `label` already work.
+
+That change forced a real fix: the mod's hand-rolled parser found an element's closing brace with
+`indexOf('}')`, which was correct only while an element was flat. `opts` is nested, so the first `}`
+is now that object's — the body came out truncated and the loop resumed mid-element. It walks
+matching braces now, string-aware.
+
 **Version 4 added PER-ELEMENT STYLE**: `plate` (is there a box at all), `plateColour`, `plateAlpha`,
 `textColour`, `textAlpha`. Corners and font stay whole-HUD — three sharp plates and one rounded one
 is still a mistake — but colour, transparency and the box are per element, because picking ONE
@@ -217,7 +229,7 @@ and no token on a command line (the launcher refuses rather than leaking on Java
     node tools/phase4check.mjs    loader merge rules (60)
     node tools/phase4check.mjs modern   ... and really install + launch NeoForge 1.21.1 (83)
     node tools/phase5check.mjs    content install
-    node tools/hudcheck.mjs       the HUD contract across markup, JS and Java (147)
+    node tools/hudcheck.mjs       the HUD contract across markup, JS and Java (157)
     node tools/perfcheck.mjs      the performance set: ids, gating, the flag (34)
     node tools/perfcheck.mjs live ... and ask Modrinth whether any of it exists
     node tools/packcheck.mjs      what the packaged build actually contains (47)
@@ -252,11 +264,9 @@ The flag is cleared whatever happened, so a launch never retries four downloads 
 - **Update checking reports but does not apply** — installing the newer version replaces the file.
 - **Mojang has not approved the Azure application** for the Minecraft scopes, so the final token
   exchange will 403 until they do. Form: https://aka.ms/mce-reviewappid
-- **Only two HUD elements are DRAWN (fps, coords).** The screen arranges eleven, the launcher writes
-  eleven, and the menu now lists and toggles all seven modules — the nine undrawn ones are marked
-  `not drawn yet` on their row, and the layout editor shows them as their own label in the muted ink
-  rather than as invented sample data. Positioning them works; they just do not appear in-world.
-  That is the next piece and it is Java: `HudElements.of()` is the one place to add each.
+- **All eleven HUD elements are drawn now.** fps, cps, ping, keystrokes, coords, potion effects and
+  the five armour slots. What is NOT done is `docs/hud-backlog.md` — twenty more features, of which
+  half are not elements at all and need a `features` section in the contract before they can exist.
 - **THE CARD GRID AND THE OPTIONS SCREEN HAVE NOT BEEN SEEN.** The first menu was tested by the user
   and sent back; this replaces it, compiles, and its contract is proved end to end against the
   compiled classes — but nothing can drive Minecraft into a world unattended, so no pixel of the

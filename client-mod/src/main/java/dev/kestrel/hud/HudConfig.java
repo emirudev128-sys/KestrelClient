@@ -94,7 +94,7 @@ import java.util.Map;
  */
 public final class HudConfig {
 
-    static final int VERSION = 4;
+    static final int VERSION = 5;
     /** a config file is a few hundred bytes; the launcher applies the same
      *  ceiling from the other side */
     private static final long MAX_BYTES = 256 * 1024;
@@ -194,8 +194,19 @@ public final class HudConfig {
         public final double x;
         public final double y;
         public final double scale;
-        /** coords only; meaningless and ignored on every other element */
-        public final boolean compass;
+        /* ── THE ELEMENT'S OWN SWITCHES ────────────────────────────────
+           `compass` used to be a lone boolean here, with a comment saying a
+           flag meaning something on one element and nothing on the other ten
+           belongs to that element. Right, and it stopped scaling the moment
+           nine more elements each wanted one.
+
+           Held as the RAW JSON TOKEN per key — `true`, `false`, `"left"` —
+           because the launcher owns the schema. This side round-trips them
+           and asks two questions; giving it a type system would be giving it
+           a second copy of a declaration it does not own, and writing back is
+           then emitting the token verbatim, which cannot change a value by
+           misunderstanding it. */
+        public final Map<String, String> opts;
         /** the launcher's module name — what a toggle switches */
         public final String module;
         /** the launcher's label — what a list calls this one element */
@@ -203,37 +214,58 @@ public final class HudConfig {
         /** how it is painted; never null */
         public final Style style;
 
-        Element(boolean on, String anchor, double x, double y, double scale, boolean compass,
-                String module, String label, Style style) {
+        Element(boolean on, String anchor, double x, double y, double scale,
+                Map<String, String> opts, String module, String label, Style style) {
             this.on = on;
             this.anchor = isAnchor(anchor) ? anchor : "tl";
             this.x = clampPercent(x);
             this.y = clampPercent(y);
             this.scale = clampScale(scale);
-            this.compass = compass;
+            this.opts = opts == null ? new LinkedHashMap<>() : new LinkedHashMap<>(opts);
             this.module = module == null || module.isEmpty() ? "" : module;
             this.label = label == null || label.isEmpty() ? this.module : label;
             this.style = style == null ? Style.defaults() : style;
         }
 
         Element movedTo(String anchor, double x, double y) {
-            return new Element(on, anchor, x, y, scale, compass, module, label, style);
+            return new Element(on, anchor, x, y, scale, opts, module, label, style);
         }
 
         Element scaledTo(double s) {
-            return new Element(on, anchor, x, y, s, compass, module, label, style);
+            return new Element(on, anchor, x, y, s, opts, module, label, style);
         }
 
         Element switchedTo(boolean nowOn) {
-            return new Element(nowOn, anchor, x, y, scale, compass, module, label, style);
-        }
-
-        Element withCompass(boolean nowOn) {
-            return new Element(on, anchor, x, y, scale, nowOn, module, label, style);
+            return new Element(nowOn, anchor, x, y, scale, opts, module, label, style);
         }
 
         Element styled(Style s) {
-            return new Element(on, anchor, x, y, scale, compass, module, label, s);
+            return new Element(on, anchor, x, y, scale, opts, module, label, s);
+        }
+
+        /** true only when the token is exactly `true` — an absent option is
+         *  false, and so is anything unparseable */
+        public boolean flag(String key) {
+            return "true".equals(opts.get(key));
+        }
+
+        /** an enum option with its quotes taken off, or the fallback */
+        public String choice(String key, String fallback) {
+            String v = opts.get(key);
+            if (v == null) return fallback;
+            if (v.length() >= 2 && v.charAt(0) == '"') return v.substring(1, v.length() - 1);
+            return v;
+        }
+
+        /** the option keys this element actually carries, in document order */
+        public List<String> optKeys() {
+            return new ArrayList<>(opts.keySet());
+        }
+
+        Element withOpt(String key, String rawToken) {
+            Map<String, String> next = new LinkedHashMap<>(opts);
+            if (next.containsKey(key)) next.put(key, rawToken);
+            return new Element(on, anchor, x, y, scale, next, module, label, style);
         }
 
         /** the name shown in a list, never blank: an element the launcher
@@ -278,7 +310,29 @@ public final class HudConfig {
     public boolean rounded;
     public boolean kestrelFont;
 
+    /* ── WHAT EACH OPTION IS CALLED ────────────────────────────────────────
+       The menu prints a label beside every switch and steps through the values
+       of every enum, and it is not allowed a table of its own — the same rule
+       that keeps `module` and `label` in the document. The launcher writes
+       this once at the top level, keyed by option name, because `wear` means
+       the same on all five armour rows. */
+    public static final class OptSpec {
+        public final String label;
+        public final List<String> vals;   /* empty for a switch */
+        OptSpec(String label, List<String> vals) {
+            this.label = label == null ? "" : label;
+            this.vals = vals == null ? new ArrayList<>() : vals;
+        }
+        public boolean isEnum() { return !vals.isEmpty(); }
+    }
+
+    private final Map<String, OptSpec> spec;
     private final Map<String, Element> elements;
+
+    /** the spec for one option, or null if the launcher declared none — in
+     *  which case the menu simply does not offer a row for it, which is the
+     *  right failure: better an option nobody can see than a row with no name */
+    public OptSpec spec(String key) { return spec.get(key); }
 
     /** the revision this config was READ at. The next write is this plus one,
      *  which is how the launcher can tell one in-game edit from the next. */
@@ -288,8 +342,10 @@ public final class HudConfig {
      *  edit the player did not make */
     private boolean dirty;
 
-    private HudConfig(Map<String, Element> elements, boolean rounded, boolean kestrelFont, int rev) {
+    private HudConfig(Map<String, Element> elements, Map<String, OptSpec> spec,
+                      boolean rounded, boolean kestrelFont, int rev) {
         this.elements = elements;
+        this.spec = spec == null ? new LinkedHashMap<>() : spec;
         this.rounded = rounded;
         this.kestrelFont = kestrelFont;
         this.rev = rev;
@@ -320,9 +376,9 @@ public final class HudConfig {
      *  two that are useful without being asked for, not all eleven. */
     public static HudConfig defaults() {
         Map<String, Element> m = new LinkedHashMap<>();
-        m.put("fps", new Element(true, "tl", 2.6, 4.2, 1.0, false, "FPS", "FPS", Style.defaults()));
-        m.put("coords", new Element(true, "tl", 2.6, 8.4, 1.0, false, "Coordinates", "Coordinates", Style.defaults()));
-        return new HudConfig(m, false, false, 0);
+        m.put("fps", new Element(true, "tl", 2.6, 4.2, 1.0, null, "FPS", "FPS", Style.defaults()));
+        m.put("coords", new Element(true, "tl", 2.6, 8.4, 1.0, null, "Coordinates", "Coordinates", Style.defaults()));
+        return new HudConfig(m, new LinkedHashMap<>(), false, false, 0);
     }
 
     /** Reads {@code config/kestrel-hud.json} out of the run directory. Never
@@ -344,7 +400,7 @@ public final class HudConfig {
         try {
             Map<String, Element> m = parse(text);
             if (m.isEmpty()) return defaults();
-            return new HudConfig(m,
+            return new HudConfig(m, specOf(text),
                 styleIs(text, "corners", "rounded"),
                 styleIs(text, "font", "kestrel"),
                 revOf(text));
@@ -431,10 +487,20 @@ public final class HudConfig {
             b.append(" \"plateAlpha\": ").append(el.style.plateAlpha).append(',');
             b.append(" \"textColour\": \"").append(hex(el.style.textRgb)).append("\",");
             b.append(" \"textAlpha\": ").append(el.style.textAlpha);
-            /* written only where it means something, exactly as the launcher
-               writes it: a compass flag on a boot icon is noise in a file two
-               programs have to agree about */
-            if (el.compass) b.append(", \"compass\": true");
+            /* WRITTEN ONLY WHERE THERE ARE ANY, and verbatim. An element with
+               no switches gets no `opts` key rather than an empty object —
+               the launcher writes it the same way, and a file two programs
+               have to agree about should not carry noise on ten elements to
+               spare one `if`. */
+            if (!el.opts.isEmpty()) {
+                b.append(", \"opts\": {");
+                int j = 0;
+                for (Map.Entry<String, String> o : el.opts.entrySet()) {
+                    b.append(j++ > 0 ? ", " : " ")
+                     .append('"').append(esc(o.getKey())).append("\": ").append(o.getValue());
+                }
+                b.append(" }");
+            }
             b.append(" }").append(++i < n ? ",\n" : "\n");
         }
         b.append("  }\n}\n");
@@ -500,7 +566,15 @@ public final class HudConfig {
             String name = text.substring(i + 1, nameEnd);
             int open = text.indexOf('{', nameEnd);
             if (open < 0) break;
-            int close = text.indexOf('}', open);
+            /* MATCHING BRACE, NOT THE NEXT ONE. This was indexOf('}', open),
+               which was correct only for as long as an element was flat. An
+               element carries an `opts` object from version 5 on, and the
+               first '}' after the element's own '{' is now the one closing
+               THAT — so the body came out truncated at the nested object and
+               the loop resumed in the middle of the element it had just
+               half-read. Nothing about the old line looked wrong; it simply
+               stopped being true when the shape changed. */
+            int close = matching(text, open);
             if (close < 0) break;
             String body = text.substring(open + 1, close);
 
@@ -521,7 +595,7 @@ public final class HudConfig {
                     numOf(body, "x", 0.0),
                     numOf(body, "y", 0.0),
                     numOf(body, "scale", 1.0),
-                    boolOf(body, "compass"),
+                    optsOf(body),
                     strOf(body, "module"),
                     strOf(body, "label"),
                     st));
@@ -543,6 +617,59 @@ public final class HudConfig {
         return wanted.equals(strOf(text.substring(open + 1, close), key));
     }
 
+    /* ── the option spec, off the top of the document ──────────────────────
+       Two levels of nesting and a string array, which is why matching() had to
+       exist before this could. Anything malformed is simply absent from the
+       map, and an option with no spec gets no row in the menu — the right
+       failure, because a row with no name is worse than a missing one. */
+    private static Map<String, OptSpec> specOf(String text) {
+        Map<String, OptSpec> out = new LinkedHashMap<>();
+        int at = text.indexOf("\"optSpec\"");
+        if (at < 0) return out;
+        int open = text.indexOf('{', at);
+        if (open < 0) return out;
+        int close = matching(text, open);
+        if (close < 0) return out;
+        String inner = text.substring(open + 1, close);
+
+        int i = 0;
+        while (i < inner.length()) {
+            int q = inner.indexOf('"', i);
+            if (q < 0) break;
+            int qe = inner.indexOf('"', q + 1);
+            if (qe < 0) break;
+            String key = inner.substring(q + 1, qe);
+            int o2 = inner.indexOf('{', qe);
+            if (o2 < 0) break;
+            int c2 = matching(inner, o2);
+            if (c2 < 0) break;
+            String body = inner.substring(o2 + 1, c2);
+            if (isPlainName(key)) {
+                List<String> vals = new ArrayList<>();
+                int va = body.indexOf("\"vals\"");
+                if (va >= 0) {
+                    int ab = body.indexOf('[', va);
+                    int ae = ab < 0 ? -1 : body.indexOf(']', ab);
+                    if (ab >= 0 && ae > ab) {
+                        String arr = body.substring(ab + 1, ae);
+                        int k = 0;
+                        while (k < arr.length()) {
+                            int s1 = arr.indexOf('"', k);
+                            if (s1 < 0) break;
+                            int s2 = arr.indexOf('"', s1 + 1);
+                            if (s2 < 0) break;
+                            vals.add(arr.substring(s1 + 1, s2));
+                            k = s2 + 1;
+                        }
+                    }
+                }
+                out.put(key, new OptSpec(strOf(body, "label"), vals));
+            }
+            i = c2 + 1;
+        }
+        return out;
+    }
+
     /* The revision, read off the top of the document rather than out of an
        element. Absent means 0, which loses an ordering and not a layout. */
     private static int revOf(String text) {
@@ -551,6 +678,75 @@ public final class HudConfig {
         double v = numOf(head, "rev", 0.0);
         if (Double.isNaN(v) || v < 0 || v > Integer.MAX_VALUE - 2) return 0;
         return (int) v;
+    }
+
+    /* Walks from an opening brace to the one that closes it, counting depth
+       and skipping anything inside a string so that a '{' in a label cannot
+       throw the count off. Returns -1 if the document ends first, which is
+       the same "give up and use the defaults" every other failure here takes. */
+    private static int matching(String text, int open) {
+        int depth = 0;
+        boolean inStr = false;
+        boolean esc = false;
+        for (int i = open; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (inStr) {
+                if (esc) esc = false;
+                else if (c == '\\') esc = true;
+                else if (c == '"') inStr = false;
+                continue;
+            }
+            if (c == '"') { inStr = true; continue; }
+            if (c == '{') depth++;
+            else if (c == '}') { depth--; if (depth == 0) return i; }
+        }
+        return -1;
+    }
+
+    /* the raw text inside a nested object named `key`, or "" */
+    private static String objOf(String body, String key) {
+        int k = body.indexOf('"' + key + '"');
+        if (k < 0) return "";
+        int open = body.indexOf('{', k);
+        if (open < 0) return "";
+        int close = matching(body, open);
+        return close < 0 ? "" : body.substring(open + 1, close);
+    }
+
+    /* ── THE OPTIONS ON ONE ELEMENT ────────────────────────────────────────
+       Kept as the RAW JSON TOKEN per key — `true`, `false`, `"left"` — and not
+       as a parsed boolean or enum. The launcher declares what every option is;
+       this side only has to round-trip it and answer two questions about it,
+       so teaching it the type system would be teaching it a second copy of a
+       schema it does not own. Writing back is then emitting the token
+       verbatim, which cannot change a value by misunderstanding it. */
+    private static Map<String, String> optsOf(String body) {
+        Map<String, String> out = new LinkedHashMap<>();
+        String inner = objOf(body, "opts");
+        if (inner.isEmpty()) return out;
+        int i = 0;
+        while (i < inner.length()) {
+            int q = inner.indexOf('"', i);
+            if (q < 0) break;
+            int qe = inner.indexOf('"', q + 1);
+            if (qe < 0) break;
+            String key = inner.substring(q + 1, qe);
+            int colon = inner.indexOf(':', qe);
+            if (colon < 0) break;
+            int v = colon + 1;
+            while (v < inner.length() && Character.isWhitespace(inner.charAt(v))) v++;
+            int end;
+            if (v < inner.length() && inner.charAt(v) == '"') {
+                end = inner.indexOf('"', v + 1);
+                end = end < 0 ? inner.length() : end + 1;
+            } else {
+                end = v;
+                while (end < inner.length() && ",}\n\r \t".indexOf(inner.charAt(end)) < 0) end++;
+            }
+            if (isPlainName(key)) out.put(key, inner.substring(v, end).trim());
+            i = end + 1;
+        }
+        return out;
     }
 
     /** an element name is an identifier, and nothing else gets to be one */

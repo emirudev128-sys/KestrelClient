@@ -299,14 +299,14 @@ public class HudMenuScreen extends Screen {
         HudConfig.Element el = config.get(name);
         if (el == null) return;
 
-        List<HudElements.Run> runs = HudElements.of(name, el, this.client,
+        List<List<HudElements.Run>> rows = HudElements.of(name, el, this.client,
             KestrelHudClient.face(config), HudElements.SAMPLE);
-        if (runs == null || runs.isEmpty()) return;
+        if (rows == null || rows.isEmpty()) return;
 
-        int ew = HudRenderer.width(this.textRenderer, runs);
-        int eh = HudRenderer.height();
+        int ew = HudRenderer.width(this.textRenderer, rows);
+        int eh = HudRenderer.height(rows);
         double s = Math.min(1.0, (w - 8.0) / ew);
-        HudRenderer.draw(ctx, this.textRenderer, runs,
+        HudRenderer.draw(ctx, this.textRenderer, rows,
             x + (w - ew * s) / 2.0, y + (h - eh * s) / 2.0, ew, eh, s, config.rounded, el.style);
     }
 

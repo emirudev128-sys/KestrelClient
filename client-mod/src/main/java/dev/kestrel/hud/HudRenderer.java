@@ -34,19 +34,35 @@ final class HudRenderer {
         double cy() { return y + h / 2.0; }
     }
 
-    /** the unscaled width of a row of runs, padding included */
-    static int width(TextRenderer tr, List<HudElements.Run> runs) {
+    /** the unscaled width of one run — text or a bar */
+    private static int runWidth(TextRenderer tr, HudElements.Run r) {
+        return r.isBar() ? r.width : tr.getWidth(r.text);
+    }
+
+    /** the unscaled width of one row, padding included */
+    private static int rowWidth(TextRenderer tr, List<HudElements.Run> runs) {
         int inner = 0;
         for (int i = 0; i < runs.size(); i++) {
-            inner += tr.getWidth(runs.get(i).text);
+            inner += runWidth(tr, runs.get(i));
             if (i < runs.size() - 1) inner += Paint.GAP;
         }
         return inner + Paint.PAD_X * 2;
     }
 
-    /** the unscaled height of any element: one line and its padding */
-    static int height() {
-        return Paint.LINE + Paint.PAD_Y * 2;
+    /** THE WIDEST ROW IS THE ELEMENT'S WIDTH. A plate sized to its first row
+     *  would have its second row hanging out of it, which is the failure this
+     *  is here to prevent — and the layout editor measures with the same call,
+     *  so a dragged box is the size the drawn one will be. */
+    static int width(TextRenderer tr, List<List<HudElements.Run>> rows) {
+        int w = 0;
+        for (List<HudElements.Run> r : rows) w = Math.max(w, rowWidth(tr, r));
+        return w;
+    }
+
+    /** the unscaled height of an element: a line per row, and the padding */
+    static int height(List<List<HudElements.Run>> rows) {
+        int n = Math.max(1, rows.size());
+        return Paint.LINE * n + Paint.PAD_Y * 2;
     }
 
     /* ── forward: anchor + percentage -> pixels ────────────────────────────
@@ -134,7 +150,7 @@ final class HudRenderer {
        plate, its transparency and the text tone are one decision made in one
        place and passing them separately is how three of the four end up
        agreeing and the fourth does not. */
-    static void draw(DrawContext ctx, TextRenderer tr, List<HudElements.Run> runs,
+    static void draw(DrawContext ctx, TextRenderer tr, List<List<HudElements.Run>> rows,
                      double px, double py, int w, int h, double scale,
                      boolean rounded, HudConfig.Style st) {
         ctx.getMatrices().push();
@@ -148,6 +164,8 @@ final class HudRenderer {
            been wired to the fill. */
         if (st.plate) plate(ctx, w, h, rounded, st);
 
+        int y = Paint.PAD_Y;
+        for (List<HudElements.Run> runs : rows) {
         int x = Paint.PAD_X;
         for (HudElements.Run r : runs) {
             /* ── NO SHADOW. NOT OVER A PLATE, AND NOT WITHOUT ONE EITHER ───
@@ -168,9 +186,29 @@ final class HudRenderer {
                at fifteen percent, which costs nothing and works everywhere. A
                shadow nobody asked for is not a third option, it is this
                deciding for them. */
-            ctx.drawText(tr, r.text, x, Paint.PAD_Y,
+            if (r.isBar()) {
+                /* A WEAR BAR, drawn in the element's own ink rather than in a
+                   colour of its own. Two pixels of it sit inside the line so a
+                   bar and the text beside it share a baseline, and the empty
+                   part stays visible at a third alpha — a bar with no track is
+                   a bar you cannot judge a fraction against. */
+                int by = y + 3;
+                int filled = (int) Math.round(r.width * r.fill);
+                int ink = HudElements.colourOf(r.role, st);
+                int track = (ink & 0x00FFFFFF) | (((ink >>> 24) / 3) << 24);
+                ctx.fill(x, by, x + r.width, by + 3, track);
+                if (filled > 0) {
+                    /* nearly gone is the one case worth noticing */
+                    ctx.fill(x, by, x + filled, by + 3, r.fill < 0.15 ? Paint.ACCENT : ink);
+                }
+                x += r.width + Paint.GAP;
+                continue;
+            }
+            ctx.drawText(tr, r.text, x, y,
                 HudElements.colourOf(r.role, st), false);
             x += tr.getWidth(r.text) + Paint.GAP;
+        }
+        y += Paint.LINE;
         }
         ctx.getMatrices().pop();
     }

@@ -59,7 +59,7 @@ public final class RoundTrip {
              .append('\t').append(e.x)
              .append('\t').append(e.y)
              .append('\t').append(e.scale)
-             .append('\t').append(e.compass)
+             .append('\t').append(e.opts)
              .append('\t').append(e.module)
              .append('\t').append(e.label)
              .append('\t').append(e.style.plate)
@@ -89,6 +89,15 @@ public final class RoundTrip {
         c.put(first, e0.movedTo("mr", -12.5, -9.6).scaledTo(1.75)
             .styled(e0.style.withPlate(false).withTextRgb(0xFF5555).withTextAlpha(80)
                             .withPlateRgb(0x55FF55).withPlateAlpha(35)));
+
+        /* AND AN OPTION OF EACH KIND, on the elements that declare them: a
+           switch flipped on, an enum stepped off its default. These are the
+           two shapes the raw-token store has to round-trip without ever
+           learning what either means. */
+        HudConfig.Element co = c.get("coords");
+        if (co != null) c.put("coords", co.withOpt("compass", "true"));
+        HudConfig.Element he = c.get("helmet");
+        if (he != null) c.put("helmet", he.withOpt("wear", "\"percent\""));
         c.rounded = !c.rounded;
         c.kestrelFont = !c.kestrelFont;
         c.touch();

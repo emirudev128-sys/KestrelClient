@@ -134,6 +134,92 @@ function labelOf(name) {
   return ELEMENT_SUB[name] ? mod + ' · ' + ELEMENT_SUB[name].toLowerCase() : mod;
 }
 
+/* ── PER-ELEMENT OPTIONS ──────────────────────────────────────────────────
+   Version 5. `compass` used to be a lone boolean on coords, with a comment
+   saying a flag that means something on one element and nothing on the other
+   ten belongs to that element. That was right, and it stopped scaling the
+   moment nine more elements arrived each wanting its own switch: whether the
+   armour rows show a bar or a number, which buttons the CPS counter counts,
+   whether the keystroke grid includes the mouse.
+
+   Eleven more one-off top-level fields would have been eleven more things for
+   three languages to agree about. So an element carries an `opts` map, and
+   what may be in it is DECLARED here — a type, a default, and the label the
+   in-game menu prints. The mod builds its options rows out of this rather
+   than out of a table of its own, exactly as it already takes `module` and
+   `label` from here; a switch added below appears in game with no Java
+   changing.
+
+   `compass` moved in and is read from its old position on the way through, so
+   a config written before this keeps its setting.
+
+   TYPES ARE 'bool' AND 'enum' AND NOTHING ELSE. A number wants a range, a
+   step, a slider and a decision about units; none of the nine needs one, and
+   the day one does is the day to design it rather than to have left a hole
+   open for it. */
+const ELEMENT_OPTS = {
+  cps: {
+    buttons: { type: 'enum', vals: ['left', 'right', 'both'], def: 'left', label: 'Count' }
+  },
+  ping: {
+    unit: { type: 'bool', def: true, label: 'Show "ms"' }
+  },
+  keys: {
+    mouse: { type: 'bool', def: true, label: 'Show mouse buttons' },
+    space: { type: 'bool', def: true, label: 'Show the spacebar' },
+    cps: { type: 'bool', def: false, label: 'Put CPS on the buttons' }
+  },
+  coords: {
+    compass: { type: 'bool', def: false, label: 'Show the compass' },
+    biome: { type: 'bool', def: false, label: 'Show the biome' },
+    precise: { type: 'bool', def: true, label: 'Show one decimal' }
+  },
+  potion: {
+    duration: { type: 'bool', def: true, label: 'Show time left' },
+    ambient: { type: 'bool', def: false, label: 'Include beacon effects' }
+  },
+  helmet: { wear: { type: 'enum', vals: ['bar', 'percent', 'none'], def: 'bar', label: 'Durability' } },
+  chest: { wear: { type: 'enum', vals: ['bar', 'percent', 'none'], def: 'bar', label: 'Durability' } },
+  legs: { wear: { type: 'enum', vals: ['bar', 'percent', 'none'], def: 'bar', label: 'Durability' } },
+  boots: { wear: { type: 'enum', vals: ['bar', 'percent', 'none'], def: 'bar', label: 'Durability' } },
+  held: { wear: { type: 'enum', vals: ['bar', 'percent', 'none'], def: 'bar', label: 'Durability' } }
+};
+
+/* every distinct option across every element, deduped by name */
+function optSpec() {
+  const out = {};
+  for (const el of Object.keys(ELEMENT_OPTS)) {
+    const spec = ELEMENT_OPTS[el];
+    for (const key of Object.keys(spec)) {
+      if (out[key]) continue;
+      out[key] = spec[key].type === 'enum'
+        ? { label: spec[key].label, vals: spec[key].vals.slice() }
+        : { label: spec[key].label };
+    }
+  }
+  return out;
+}
+
+/* Every option this element declares, defaulted, with anything it does not
+   declare dropped. The same posture as everywhere else here: what arrives
+   from the page — or back off disk from a mod running inside a modded game —
+   is validated against a list rather than trusted. */
+function optsFor(name, raw, legacy) {
+  const spec = ELEMENT_OPTS[name];
+  const out = {};
+  if (!spec) return out;
+  const src = (raw && typeof raw === 'object') ? raw : {};
+  for (const key of Object.keys(spec)) {
+    const s = spec[key];
+    let v = src[key];
+    /* compass lived at the top level before version 5 */
+    if (v === undefined && legacy && Object.prototype.hasOwnProperty.call(legacy, key)) v = legacy[key];
+    if (s.type === 'bool') out[key] = v === undefined ? s.def : v === true;
+    else out[key] = s.vals.indexOf(String(v)) >= 0 ? String(v) : s.def;
+  }
+  return out;
+}
+
 /* the nine the screen offers, and nothing else is an anchor */
 const ANCHORS = ['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br'];
 
@@ -200,7 +286,7 @@ function alpha(v, fallback) {
   return n < 0 ? 0 : (n > 100 ? 100 : Math.round(n));
 }
 
-const VERSION = 4;
+const VERSION = 5;
 const FILE = 'kestrel-hud.json';
 
 /* A config file is a few hundred bytes. Anything past this is not a config
@@ -292,10 +378,12 @@ function build(hud, rev) {
       textColour: colour(e.textColour, TEXT_COLOUR),
       textAlpha: alpha(e.textAlpha, TEXT_ALPHA)
     };
-    /* COMPASS IS COORDS' OWN OPTION, and only coords'. A flag that means
-       something on one element and nothing on the other ten belongs to that
-       element rather than to the document. */
-    if (name === 'coords') elements[name].compass = e.compass === true;
+    /* THE ELEMENT'S OWN SWITCHES, declared in ELEMENT_OPTS and written only
+       for the elements that have any. `e` is passed as the legacy source so
+       a `compass` sitting at the top level of a pre-v5 document is picked up
+       rather than lost. */
+    const opts = optsFor(name, e.opts, e);
+    if (Object.keys(opts).length) elements[name].opts = opts;
   }
 
   const on = Object.keys(elements).filter(function (k) { return elements[k].on; }).length;
@@ -304,6 +392,17 @@ function build(hud, rev) {
     rev: clampRev(rev) + 1,
     by: 'launcher',
     style: style,
+    /* ── WHAT EACH OPTION IS CALLED, WRITTEN ONCE ──────────────────────
+       The in-game menu has to print a label beside every switch and step
+       through the values of every enum, and it is not allowed a table of its
+       own — that is the rule that keeps `module` and `label` travelling in
+       this document rather than being duplicated in Java.
+
+       Written at the TOP LEVEL rather than on each element, because `wear`
+       means the same thing on all five armour rows and repeating its label
+       and its three values five times would be five copies to keep in step.
+       Keyed by option name; the names are globally distinct on purpose. */
+    optSpec: optSpec(),
     elements: elements
   };
   return { doc: doc, dropped: dropped, count: Object.keys(elements).length, on: on };
@@ -351,7 +450,8 @@ function fromDoc(doc) {
       textColour: colour(e.textColour, TEXT_COLOUR),
       textAlpha: alpha(e.textAlpha, TEXT_ALPHA)
     };
-    if (name === 'coords') elements[name].compass = e.compass === true;
+    const back = optsFor(name, e.opts, e);
+    if (Object.keys(back).length) elements[name].opts = back;
 
     const mod = ELEMENT_MODULE[name];
     modules[mod] = (modules[mod] === true) || e.on === true;
@@ -468,7 +568,8 @@ async function write(gameDir, hud, log, rev) {
 
 module.exports = {
   sync, read, write, build, fromDoc, labelOf,
-  ELEMENTS, ELEMENT_MODULE, ELEMENT_SUB, ANCHORS, CORNERS, FONTS, WRITERS,
+  ELEMENTS, ELEMENT_MODULE, ELEMENT_SUB, ELEMENT_OPTS, optsFor, optSpec,
+  ANCHORS, CORNERS, FONTS, WRITERS,
   FILE, VERSION, SCALE_MIN, SCALE_MAX, MAX_BYTES,
   PLATE_COLOUR, PLATE_ALPHA, TEXT_COLOUR, TEXT_ALPHA,
   /* the five per-element style keys, named once so the renderer and the
