@@ -15,11 +15,10 @@ import java.util.List;
  * <p>Reached from {@link HudMenuScreen}, and it hands back there rather than
  * to the world, so the whole session still saves once at the end.
  *
- * <p><b>THE PANEL IS GONE ON PURPOSE.</b> Lunar makes {@code EDIT HUD LAYOUT}
- * a separate mode rather than a tab, and the reason becomes obvious the first
- * time you try to drag something to the middle of the screen with a dialog
- * sitting there. Nothing here but the HUD, a thin bar at the bottom, and the
- * world behind it.
+ * <p><b>THE PANEL IS GONE ON PURPOSE.</b> The layout editor is its own mode
+ * rather than a tab, and the reason becomes obvious the first time you try to
+ * drag something to the middle of the screen with a dialog sitting there.
+ * Nothing here but the HUD, a thin bar at the bottom, and the world behind it.
  *
  * <p><b>THE MAGNET.</b> Asked for by name, and what it snaps to is in
  * priority order the thing that survives longest:
@@ -126,7 +125,7 @@ public class HudLayoutScreen extends Screen {
            contrast problem the plates exist to solve. */
         for (Placed p : placed) {
             HudRenderer.draw(ctx, this.textRenderer, p.runs, p.box.x, p.box.y, p.w, p.h,
-                p.el.scale, config.rounded);
+                p.el.scale, config.rounded, p.el.style);
         }
 
         for (Placed p : placed) {

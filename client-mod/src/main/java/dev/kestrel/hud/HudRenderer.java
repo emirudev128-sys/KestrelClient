@@ -129,21 +129,37 @@ final class HudRenderer {
         return new Box(x, y, b.w, b.h);
     }
 
-    /* ── drawing one element ─────────────────────────────────────────────── */
+    /* ── drawing one element ──────────────────────────────────────────────
+       Takes the element's Style rather than a pile of colours, because the
+       plate, its transparency and the text tone are one decision made in one
+       place and passing them separately is how three of the four end up
+       agreeing and the fourth does not. */
     static void draw(DrawContext ctx, TextRenderer tr, List<HudElements.Run> runs,
-                     double px, double py, int w, int h, double scale, boolean rounded) {
+                     double px, double py, int w, int h, double scale,
+                     boolean rounded, HudConfig.Style st) {
         ctx.getMatrices().push();
         ctx.getMatrices().translate(px, py, 0);
         if (scale != 1.0) ctx.getMatrices().scale((float) scale, (float) scale, 1.0f);
 
-        plate(ctx, w, h, rounded);
+        /* NO PLATE IS A REAL CHOICE, not a plate at zero alpha. Turning it
+           off skips the outline too — an element with an invisible box and a
+           visible 1px frame around it is the worst of both, and it is what
+           "remove the background" would have produced if the flag had only
+           been wired to the fill. */
+        if (st.plate) plate(ctx, w, h, rounded, st);
 
         int x = Paint.PAD_X;
         for (HudElements.Run r : runs) {
-            /* NO SHADOW: the plate already holds the text apart from the
-               world, and over a plate a shadow is a smeared second copy of
-               every glyph — blur pretending to be depth. */
-            ctx.drawText(tr, r.text, x, Paint.PAD_Y, r.colour, false);
+            /* NO SHADOW OVER A PLATE: it already holds the text apart from
+               the world, and over a plate a shadow is a smeared second copy
+               of every glyph — blur pretending to be depth.
+
+               WITHOUT A PLATE THE SHADOW COMES BACK, because it is the only
+               thing left holding white text off snow. That is what vanilla
+               does and why it does it; dropping the box is a choice about
+               looks, not a licence to be unreadable. */
+            ctx.drawText(tr, r.text, x, Paint.PAD_Y,
+                HudElements.colourOf(r.role, st), !st.plate);
             x += tr.getWidth(r.text) + Paint.GAP;
         }
         ctx.getMatrices().pop();
@@ -158,23 +174,25 @@ final class HudRenderer {
        drawn as three fills instead of one. Minecraft has no rounded-rectangle
        primitive, and faking one with a texture would mean shipping an asset
        for a single pixel. */
-    static void plate(DrawContext ctx, int w, int h, boolean rounded) {
+    static void plate(DrawContext ctx, int w, int h, boolean rounded, HudConfig.Style st) {
+        int fill = st.plateArgb();
+        int edge = st.edgeArgb();
         if (!rounded) {
-            ctx.fill(0, 0, w, h, Paint.PLATE);
-            ctx.fill(0, 0, w, 1, Paint.EDGE);
-            ctx.fill(0, h - 1, w, h, Paint.EDGE);
-            ctx.fill(0, 1, 1, h - 1, Paint.EDGE);
-            ctx.fill(w - 1, 1, w, h - 1, Paint.EDGE);
+            ctx.fill(0, 0, w, h, fill);
+            ctx.fill(0, 0, w, 1, edge);
+            ctx.fill(0, h - 1, w, h, edge);
+            ctx.fill(0, 1, 1, h - 1, edge);
+            ctx.fill(w - 1, 1, w, h - 1, edge);
             return;
         }
-        ctx.fill(1, 0, w - 1, 1, Paint.PLATE);
-        ctx.fill(0, 1, w, h - 1, Paint.PLATE);
-        ctx.fill(1, h - 1, w - 1, h, Paint.PLATE);
+        ctx.fill(1, 0, w - 1, 1, fill);
+        ctx.fill(0, 1, w, h - 1, fill);
+        ctx.fill(1, h - 1, w - 1, h, fill);
 
-        ctx.fill(1, 0, w - 1, 1, Paint.EDGE);
-        ctx.fill(1, h - 1, w - 1, h, Paint.EDGE);
-        ctx.fill(0, 1, 1, h - 1, Paint.EDGE);
-        ctx.fill(w - 1, 1, w, h - 1, Paint.EDGE);
+        ctx.fill(1, 0, w - 1, 1, edge);
+        ctx.fill(1, h - 1, w - 1, h, edge);
+        ctx.fill(0, 1, 1, h - 1, edge);
+        ctx.fill(w - 1, 1, w, h - 1, edge);
     }
 
     /** a 1px outline around an already-placed box, in screen pixels rather

@@ -1,107 +1,128 @@
-# The in-game menu — what the references actually showed
+# The in-game menu — the design, and why each part is the way it is
 
-**LOOK AT THE SCREENSHOTS, NOT AT THIS FILE.** They are in **`hud-inspos/`** at the repository root
-— gitignored, because they are other people's product UI and do not belong in a public repo, but
-present on the machine. Open them first; this file is a reading of them, and a reading is not the
-thing. Where the two disagree, the images win.
+The brief was: *"open, close, configure them in game"*, *"HUD moving elements freely"*, *"don't
+forget magnet while moving"* — and later, per element: *"if I go to coordinates I should be able to
+make that one bigger while keeping others the same"*, remove the background box, change its
+transparency, change the colour of the text or the box.
 
-What follows is what was taken from each, so the reasoning behind Phase 2 is recoverable if the
-folder is ever empty.
-
-The brief was: *"inspired by mod menus and Lunar Client"*, *"open, close, configure them in game"*,
-*"HUD moving elements freely"*, *"don't forget magnet while moving"*.
-
----
-
-## 1. Lunar Client — the mod list
-
-A centred dark panel over a **blurred** game, with the world still visible behind it.
-
-- **Left rail: profiles.** `Default`, `UHC`, `Hypixel Skyblock`, `Survival`, each with a pencil to
-  rename, and `SAVE AS NEW PROFILE` pinned at the bottom. A separate `EDIT HUD LAYOUT` button sits
-  below that — **the layout editor is a distinct mode, not a tab.**
-- **Filter row across the top:** `ALL` `NEW` `HUD` `SERVER` `MECHANIC`, plus grid/list toggles and a
-  search field. So the list is expected to get long enough to need filtering.
-- **The body is a grid of cards**, three across. Each card is an icon, a name, then two controls:
-  `OPTIONS` (with a gear) and a full-width **`ENABLED`** button in green. One click to toggle, one
-  click to configure — the two are never the same control.
-- **The HUD is still drawn while the menu is open**, around the panel: FPS top-left, coordinates
-  top-right with a compass letter, potion effects on the left, a `[Sprinting]` tag. You can see what
-  you are configuring.
-
-**What to take:** the enable/configure split per element; the world visible behind; the layout
-editor as its own mode; the HUD staying drawn while you configure it.
-
-**What not to take:** the green. Kestrel has one accent (`--go`) and green appears nowhere in the
-palette. An enabled state should read as *on*, not as *approved*.
-
-## 2. Sodium / Iris — the settings screen
-
-A left rail of sections (`General`, `Quality`, `Performance`, `Advanced`) and a right pane of rows.
-
-- Every row is **label left, value right**, and the value is the control — `20 Chunks`, `Bright`,
-  `3x`, a checkbox, `Unlimited`. No sliders competing with numbers.
-- Sections are headed inline (`◆ General`, `◆ Quality`) inside the scrolling pane rather than being
-  separate screens.
-- `Apply` and `Done` sit bottom-right, with **Apply greyed out until something changes.**
-- The left rail groups by MOD, not by section: `Sodium 0.8.2` with General/Quality/Performance/
-  Advanced under it, then `Iris 1.10.4` with Shader Packs/Settings under that. Each mod brings its
-  own sections. A search field spans the top.
-
-**What to take:** the label-left / value-right row, which is exactly what Kestrel's own settings
-screens already do; and disabling a commit button until there is something to commit.
-
-## 3. NoRisk — the Host World dialog
-
-The smallest and most Kestrel-like of the three.
-
-- A titled panel with an `X`, **collapsible groups** (`WORLD OPTIONS ⌄`, `NORISK CLIENT OPTIONS ⌄`),
-  a slider paired with a numeric field, checkboxes, and a `‹ INVITE ONLY ›` stepper for an enum.
-- Two full-width actions stacked at the bottom.
-- Square corners, thin borders, generous line height. **This is the closest to the launcher's own
-  visual language.**
-
-**What to take:** the enum stepper (`‹ SHARP ›` / `‹ ROUNDED ›` reads better than a dropdown at this
-size), collapsible groups, and the square-cornered panel — which is what Phase 1 just made the HUD
-plates default to.
+Reference screenshots the user supplied are in **`hud-inspos/`**, which is **gitignored and stays
+that way** — they are other people's product UI and do not belong in a public repository. Neither do
+descriptions of them. **This file records the decisions on their own terms**: what was built, what
+was rejected, and the reason in each case, so the reasoning survives without carrying anybody else's
+name into a repo that anyone can read.
 
 ---
 
-## What this means for Kestrel's menu
+## The shape
 
-**Right Shift opens it.** Escape closes it, like every other Minecraft screen.
+**Right Shift opens it, in a world.** Escape closes it, like every other Minecraft screen. It is
+registered through the ordinary keybinding API, so it appears in Minecraft's own Controls screen and
+can be rebound — more than a hard-coded key check in a tick handler would have given anyone.
 
-**Two modes, not one screen.** Lunar separates the mod list from `EDIT HUD LAYOUT`, and it is right:
-toggling things and dragging things want different screens. Toggle/configure in the panel; drag with
-the panel gone and the HUD alone on screen.
+**Two modes, not one screen.** Toggling things and dragging things want different screens: a panel
+in the middle of the display is exactly the wrong thing to have on top of what you are positioning.
+So the menu toggles and configures, and `EDIT HUD LAYOUT` drops into a separate screen with the
+panel gone and the HUD alone on screen.
 
-**The palette is Kestrel's**, not Lunar's. `Paint.java` already holds the values; the menu should use
-the same plate, edge, ink and meta so the menu and the HUD it configures look like one thing.
+**A grid of cards, one per module.** The first build was a list of rows with a toggle on the right.
+It worked, and it was sent back after testing. The card is right for a reason worth stating plainly:
+**enable and configure are two different controls, and a row with one toggle has nowhere to put the
+second one.** Each card carries `OPTIONS` and `ENABLED`.
 
-**Magnet snapping**, which the user asked for specifically. What it should snap to, roughly in
-priority order:
+**A card is a MODULE, not an element.** "Armor status" owns five elements and the launcher's own
+screen switches them together. Five armour cards would be a second model of visibility disagreeing
+with the first. Where a module owns more than one element, the options screen steps between them
+with `< HELMET >`.
 
-1. the nine anchors already in the contract — dragging near a corner should *land* on that anchor
-   rather than at some x/y that happens to be close to it, because anchors are what the config
-   stores and what survives a resolution change;
-2. the edges of other elements, so a stack lines up;
-3. screen centre lines.
+**Every card draws the real element, not an icon.** The obvious thing was a small glyph per module.
+Drawing the element itself — through the same renderer the world uses, at whatever colour,
+transparency and plate setting it currently has — makes the grid a contact sheet of your own HUD, so
+a colour change shows up before you close the menu. An invented icon would have been more work and
+told you less.
 
-A snap threshold of a few pixels, and it should be possible to hold a modifier to suppress it — a
-magnet you cannot switch off is a magnet that fights you.
+**The HUD stays drawn while the menu is open.** It is what you are configuring. Flipping a module
+off should show you the element vanishing from the corner it was in; that is the whole reason to do
+this in the game rather than in the launcher, where it was already possible.
 
-**Configure what Phase 1 added:** corners (sharp/rounded), font (Minecraft/Kestrel), compass on
-coords, and per-element anchor, offset and scale.
+## The per-element screen
 
-## The blocker, settled
+`OPTIONS` opens one element: size, anchor, show-the-box, box colour, box opacity, text colour, text
+opacity, and the compass — which lives here rather than in the whole-HUD section, since it means
+something on exactly one element.
+
+**The preview lets the world through.** "Does this plate read at 30%" is a question about the world.
+A preview on flat grey answers a different question.
+
+**Colour comes from swatches.** No wheel — that needs a shader. No hex field — that needs a focus
+model and a validation state for a value that is wrong most of the time you are typing it. Fourteen
+squares: Kestrel's own four first, so "put it back how it was" is one click, then Minecraft's chat
+colours, which are the ones players already have names for.
+
+**Alpha is a slider; everything else is a stepper.** Transparency is the one genuinely continuous
+value on these screens — nobody wants 72 rather than 71, they want "fainter than that", and the only
+way to say that is to drag it and watch. The number is still shown, because two elements set to
+"about the same" by eye cannot be made identical later without it.
+
+**Size is a slider here and a wheel in the layout editor.** Both write the same field. The wheel is
+right when the element is under your cursor and you are judging it against its neighbours; the
+slider is right when you are looking at one thing and want 1.75 exactly.
+
+## The magnet
+
+Asked for by name. What it snaps to, in priority order — the thing that survives longest first:
+
+1. **The nine anchors** — flush to an edge, on a centre line, or at the stock inset the default
+   layout uses. These are what the config actually stores, so landing *on* one means the element is
+   still in the corner on somebody else's monitor rather than at a pixel count that happened to look
+   right on this one.
+2. **The edges of other elements** — leading edges, trailing edges, centres, and the two positions
+   that sit an element directly beside or beneath another with one gap between, so a stack lines up.
+3. **Screen centre lines**, for the same reason as the first.
+
+Five pixels of pull, a guide line drawn at whatever it caught on, and **Alt suppresses it** — a
+magnet you cannot switch off is a magnet that fights you, and the one place you always need it off
+is the one place snapping is strongest, next to something else.
+
+**Nothing stacks itself in the editor.** The live HUD pushes a colliding element clear of its
+neighbour; the editor does not. Automatic stacking rescues a layout nobody is watching. While you
+are dragging, an element that jumps out from under the cursor is one you cannot place.
+
+## What was rejected, and why
+
+**Green for the enabled state.** The conventional answer is a button that turns green. Kestrel has
+one accent and green appears nowhere in its palette; an enabled state should read as *on*, not as
+*approved*.
+
+**A blur behind the panel.** Blur is a shader pass whose API has moved in every recent Minecraft
+version, and it would have to be re-checked at every version bump for a visual nicety. A fill works,
+and the world stays legible behind it, which was the point.
+
+**Collapsible sections.** Worth it at four groups. This has two and ten rows, and a disclosure
+triangle over five rows costs a click to see what already fits on screen.
+
+**Single guillemets in the stepper.** `‹ SHARP ›` reads better than `< SHARP >` and is exactly the
+kind of character that comes out as a missing-glyph box under some resource packs. A control whose
+arrows might not render is not a control.
+
+**Vanilla's `ButtonWidget` and friends.** They carry vanilla's look — the beveled nine-slice button,
+the 20px height. Kestrel's screens are square-cornered, thin-bordered and 14px to a row, and a menu
+that configures a Kestrel HUD while wearing Minecraft's chrome would read as two products in one
+window.
+
+**Invented sample data for the elements that are not drawn yet.** A plate reading `21 ms` on top of
+the world is indistinguishable from a ping display that works, and you would find out it never
+appears in-world by closing the editor. The muted label cannot be mistaken for a reading, and the
+card says `not drawn yet` outright.
+
+## The ownership question, settled
 
 The mod used to only read the config; `mc/hud.js` rewrote it from `settings.hud` on **every launch**,
 so an in-game editor that saved a layout would have had it clobbered at the next start.
 
-**The user chose read-back with provenance, and it is built.** Document version 3 carries `rev` and
-`by`. The mod stamps `by: "game"`; on the next launch `hud.sync()` reads first, folds a game-written
-document back into `settings.hud`, and only then writes — stamped `by: "launcher"` again, which is
-what makes the import happen exactly once.
+**The user chose read-back with provenance.** The document carries `rev` and `by`. The mod stamps
+`by: "game"`; on the next launch `hud.sync()` reads first, folds a game-written document back into
+`settings.hud`, and only then writes — stamped `by: "launcher"` again, which is what makes the
+import happen exactly once.
 
 **One refinement on the proposal as it was put.** The obvious rule is "import if the file's rev is
 newer than the one we last wrote", and that has a hole: `settings.hud` is ONE global object while the
@@ -116,29 +137,40 @@ so the mod has no vocabulary of its own, and a twelfth element added to the HUD 
 the in-game menu with no Java changing. What the mod gained is an *editor for the document*, not a
 second model of it.
 
-## What got built
+## Per-element style, and the constant that had to go
 
-`HudMenuScreen` (the panel) and `HudLayoutScreen` (drag and magnet), with `HudRenderer`,
-`HudElements` and `Ui` split out so the live HUD and the editor draw from one source. Right Shift is
-registered through the ordinary keybinding API, so it shows up in Minecraft's Controls screen and can
-be rebound.
+Version 4 added `plate`, `plateColour`, `plateAlpha`, `textColour`, `textAlpha` per element. Corners
+and font stay whole-HUD — three sharp plates and one rounded one is not a configuration, it is a
+mistake — but colour and the box are per element, because picking **one** element out of the rest is
+the entire reason anybody opens this menu.
 
-**Departures from the notes above, and why.** No collapsible sections — NoRisk collapses because it
-has four groups; this has two and ten rows, and a disclosure triangle over five rows costs a click to
-see what already fits. No blur behind the panel — Lunar blurs, but blur is a shader pass whose API
-has moved in every recent Minecraft version, and a fill that works beats a blur that compiles today.
-ASCII `< >` in the stepper rather than `‹ ›`, because single guillemets are exactly the character
-that comes out as a missing-glyph box under some resource packs.
+**Every default is the old hard-coded constant to the byte**, so an unstyled HUD is pixel-identical
+to what it was before the fields existed.
 
-**A bug fell out of the drag maths.** Both sides clamped percentages to `0..100`, but a centre or
-middle anchor offsets in *both* directions from the middle — the HUD screen's own `place()` writes
-`top: calc(50% + Y%)`. The stock layout has one, `helmet` at `mr` / `-9.6`, so every launch was
-writing that element as `0` and dropping the helmet icon into the vertical centre. Invisible until
-now only because the mod does not draw armour. Both sides clamp `-100..100` now.
+**The label tone had to stop being a constant.** The typography of this HUD is that the VALUE is
+what you glance at and the LABEL only says what it is, and one weight of one bitmap font cannot
+express that — so it was two hard-coded greys. Two hard-coded greys cannot survive somebody picking
+red. A label is now its element's own colour at 58% alpha, which over the default plate blends to
+`#909294` — the grey it replaces. The ACCENT does *not* follow: it marks the case worth noticing,
+and a "worth noticing" the same colour as everything around it has stopped noticing anything.
+
+## Two bugs this work turned up
+
+**Percentages were clamped to `0..100` on both sides.** Against a centre or middle anchor the offset
+runs both ways from the middle — the HUD screen's own `place()` writes `top: calc(50% + Y%)` — and
+the stock layout has one, `helmet` at `mr` / `-9.6`. Every launch was writing that element as `0`,
+dropping the helmet icon into the vertical centre. Invisible only because the mod does not draw
+armour yet. Both sides clamp `-100..100` now.
+
+**The launcher's HUD screen was write-only.** `saveHud()` wrote `settings.hud` and nothing ever read
+it back: `ST` was built from the markup's `data-` attributes and `host.settings.get()` was never
+called for the HUD at all. The launcher forgot its own layout every session, and the first drag on
+that screen wrote the stock arrangement over whatever had been set in game. Per-element style made
+that fatal rather than annoying, since `store.js` merges at the top level only and `{hud: …}` swapped
+the whole object. `loadHud()` now reads at startup and `saveHud()` merges instead of replacing.
 
 ## Still not drawn
 
-Nine of the eleven elements are arranged, carried, listed and toggled — and not drawn. The menu says
-so on the rows it cannot honour, and the layout editor shows those elements as their own label in the
-muted ink rather than as invented sample data, because a plate reading `21 ms` on top of the world
-would be indistinguishable from a ping display that works.
+Nine of the eleven elements are arranged, carried, listed, toggled and styleable — and not drawn in
+the world. The cards say so on the rows they cannot honour, and the layout editor shows those
+elements as their own label in the muted ink. `HudElements.of()` is the single place to add each.

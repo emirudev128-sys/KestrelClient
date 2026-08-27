@@ -6,75 +6,64 @@ import net.minecraft.text.Text;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * THE MENU. Right Shift opens it.
  *
- * <p>Toggles what the HUD shows and sets the two choices that apply to all of
- * it, and hands off to {@link HudLayoutScreen} for anything positional.
+ * <p>A grid of cards, one per module, each with its own {@code OPTIONS} and an
+ * {@code ENABLED} button. The first version of this screen was a list of rows
+ * with a toggle on the right; it worked and it was not what was asked for. The
+ * card is better for a reason worth stating on its own: <b>the enable and the
+ * configure are two different controls</b>, and a row with one toggle has
+ * nowhere to put the second one.
  *
- * <p><b>TWO MODES, NOT ONE SCREEN.</b> Lunar Client separates its mod list
- * from {@code EDIT HUD LAYOUT} and is right to: toggling things and dragging
- * things want different screens, and a panel in the middle of the display is
- * exactly the wrong thing to have on top of you while you position what is
- * underneath it. So this screen keeps the enable/configure split Lunar makes
- * per card — the toggle and the layout are never the same control — and
- * expresses it as two screens rather than two buttons on a card.
+ * <p><b>EVERY CARD SHOWS THE REAL ELEMENT, NOT AN ICON.</b> The obvious thing
+ * was a little glyph per module. This draws the element itself instead, at
+ * whatever colour, transparency and plate setting it currently has, using the
+ * same renderer the world does — so the grid is a contact sheet of your HUD,
+ * and picking a red for the coordinates shows up here before you close the
+ * menu. An invented icon would have been more work and told you less.
+ *
+ * <p><b>TWO MODES, NOT ONE SCREEN.</b> The list and {@code EDIT HUD LAYOUT} are
+ * separate screens: toggling things and dragging things want different ones,
+ * and a panel in the middle of the display is exactly the wrong thing to have
+ * on top of what you are positioning.
  *
  * <p><b>THE HUD STAYS DRAWN WHILE THIS IS OPEN.</b> {@code KestrelHudClient}
- * lets its render callback through for this screen specifically, so flipping
- * a module off shows you the element vanishing from the corner it was in.
- * That is the whole reason to configure a HUD from inside the game rather
- * than from the launcher, where it was already possible.
+ * lets its render callback through for this screen specifically, so flipping a
+ * module off shows you the element vanishing from the corner it was in.
  *
- * <p><b>A TOGGLE SWITCHES A MODULE, NOT AN ELEMENT.</b> "Armor status" owns
- * five elements and the launcher's own screen switches them together; a menu
- * that offered five separate armour toggles would be a second model of
- * visibility, disagreeing with the first. The module names come off the
- * config file, which is to say out of the launcher, so this screen has no
- * list of its own to fall out of date.
- *
- * <p><b>NO COLLAPSIBLE SECTIONS, THOUGH THE REFERENCE HAS THEM.</b> NoRisk
- * collapses its groups because it has four; this has two and ten rows. A
- * disclosure triangle over five rows costs a click to see what fits on screen
- * already.
+ * <p><b>A CARD IS A MODULE, NOT AN ELEMENT.</b> "Armor status" owns five
+ * elements and the launcher's own screen switches them together; five armour
+ * cards would be a second model of visibility, disagreeing with the first.
+ * Where a module owns more than one element, {@link HudElementScreen} steps
+ * between them.
  */
 public class HudMenuScreen extends Screen {
 
-    /* row kinds. An int and a switch rather than a class hierarchy: there are
-       five, they have no behaviour in common worth abstracting, and the whole
-       list is built and read in this one file. */
-    private static final int HEAD = 0;
-    private static final int MODULE = 1;
-    private static final int CORNERS = 2;
-    private static final int FONT = 3;
-    private static final int COMPASS = 4;
+    private static final int CARD_W = 76;
+    private static final int CARD_H = 62;
+    private static final int CARD_GAP = 6;
+    private static final int COLS = 3;
 
-    private static final class Row {
-        final int kind;
-        final String label;
-        /** MODULE only: the module name a toggle switches */
-        final String module;
-        /** MODULE only: false when this mod cannot yet draw any of it */
-        final boolean drawable;
-        Row(int kind, String label, String module, boolean drawable) {
-            this.kind = kind; this.label = label; this.module = module; this.drawable = drawable;
-        }
-    }
-
-    private static final int PANEL_W = 232;
+    private static final int PANEL_W = CARD_W * COLS + CARD_GAP * (COLS - 1) + Paint.PANEL_PAD * 2;
     private static final int TITLE_H = 18;
     private static final int FOOT_H = 39;
-    private static final int VALUE_W = 62;   /* the stepper column */
+    private static final int VALUE_W = 62;
 
     private final HudConfig config;
     private final Path runDir;
-    private final List<Row> rows = new ArrayList<>();
 
-    private int px, py, ph;       /* the panel */
-    private int viewTop, viewH;   /* the scrolling region */
+    /** the modules, in the order the launcher wrote their elements, each
+     *  with the element names it owns */
+    private final Map<String, List<String>> modules = new LinkedHashMap<>();
+    private final List<String> order = new ArrayList<>();
+
+    private int px, py, ph;
+    private int viewTop, viewH;
     private int scroll;
 
     public HudMenuScreen(HudConfig config, Path runDir) {
@@ -83,122 +72,106 @@ public class HudMenuScreen extends Screen {
         this.runDir = runDir;
     }
 
-    /* ── the list, built once from the config ─────────────────────────────
-       Order is the order the launcher wrote its elements, which is the order
-       its own HUD screen lists them in. Preserving it means the two screens
-       read the same way round, which matters more than any sorting this side
-       could invent. */
     @Override
     protected void init() {
-        rows.clear();
-        rows.add(new Row(HEAD, "ELEMENTS", null, true));
-
-        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        modules.clear();
+        order.clear();
         for (String name : config.names()) {
             HudConfig.Element el = config.get(name);
             if (el == null) continue;
             String mod = el.module.isEmpty() ? el.display(name) : el.module;
-            if (!seen.add(mod)) continue;
-            rows.add(new Row(MODULE, mod, mod, moduleDrawn(mod)));
+            if (!modules.containsKey(mod)) { modules.put(mod, new ArrayList<>()); order.add(mod); }
+            modules.get(mod).add(name);
         }
 
-        rows.add(new Row(HEAD, "APPEARANCE", null, true));
-        rows.add(new Row(CORNERS, "Corners", null, true));
-        rows.add(new Row(FONT, "Font", null, true));
-        /* offered only where it means something: compass belongs to coords */
-        if (config.get("coords") != null) {
-            rows.add(new Row(COMPASS, "Compass on coordinates", null, true));
-        }
-
-        int content = 0;
-        for (Row r : rows) content += rowH(r);
-
-        ph = Math.min(TITLE_H + content + Paint.PANEL_PAD * 2 + FOOT_H, this.height - 40);
+        int content = gridH() + Paint.SECTION_GAP + Paint.ROW + Paint.ROW * 2;
+        ph = Math.min(TITLE_H + content + Paint.PANEL_PAD * 2 + FOOT_H, this.height - 24);
         px = (this.width - PANEL_W) / 2;
         py = (this.height - ph) / 2;
         viewTop = py + TITLE_H + Paint.PANEL_PAD;
         viewH = ph - TITLE_H - FOOT_H - Paint.PANEL_PAD * 2;
-        clampScroll(content);
+        clampScroll();
     }
 
-    private int rowH(Row r) {
-        return r.kind == HEAD ? Paint.ROW + Paint.SECTION_GAP : Paint.ROW;
-    }
+    private int rows() { return (order.size() + COLS - 1) / COLS; }
+    private int gridH() { return rows() == 0 ? 0 : rows() * CARD_H + (rows() - 1) * CARD_GAP; }
 
     private int contentH() {
-        int c = 0;
-        for (Row r : rows) c += rowH(r);
-        return c;
+        /* the grid, then the two whole-HUD choices under a heading */
+        return gridH() + Paint.SECTION_GAP + Paint.ROW + Paint.ROW * 2;
     }
 
-    private void clampScroll(int content) {
-        int max = Math.max(0, content - viewH);
+    private void clampScroll() {
+        int max = Math.max(0, contentH() - viewH);
         if (scroll > max) scroll = max;
         if (scroll < 0) scroll = 0;
     }
 
-    /** a module counts as drawn if this mod can produce a value for any of
-     *  its elements — so "Armor status" is honest about all five at once */
-    private boolean moduleDrawn(String mod) {
-        for (String name : config.names()) {
-            HudConfig.Element el = config.get(name);
-            if (el != null && mod.equals(el.module) && HudElements.drawn(name)) return true;
+    /* ── geometry, computed once and read by BOTH the render pass and the
+       click handler. The version of this that keeps two tables of rectangles
+       in step is the version that stops being in step. ─────────────────── */
+    private int cardX(int i) { return px + Paint.PANEL_PAD + (i % COLS) * (CARD_W + CARD_GAP); }
+    private int cardY(int i) { return viewTop - scroll + (i / COLS) * (CARD_H + CARD_GAP); }
+    private int optionsY(int cardTop) { return cardTop + 3 + 22 + 10; }
+    private int enabledY(int cardTop) { return optionsY(cardTop) + 11 + 2; }
+    private int appearY() { return viewTop - scroll + gridH() + Paint.SECTION_GAP; }
+    private int cornersY() { return appearY() + Paint.ROW; }
+    private int fontY() { return cornersY() + Paint.ROW; }
+    private int editY() { return py + ph - FOOT_H + 5; }
+    private int doneY() { return py + ph - FOOT_H + 22; }
+    private int closeX() { return px + PANEL_W - Paint.PANEL_PAD - 11; }
+    private int closeY() { return py + 4; }
+
+    private boolean moduleOn(String mod) {
+        for (String n : modules.getOrDefault(mod, List.of())) {
+            HudConfig.Element el = config.get(n);
+            if (el != null && el.on) return true;
         }
         return false;
     }
 
-    private boolean moduleOn(String mod) {
-        for (String name : config.names()) {
-            HudConfig.Element el = config.get(name);
-            if (el != null && mod.equals(el.module) && el.on) return true;
-        }
+    private boolean moduleDrawn(String mod) {
+        for (String n : modules.getOrDefault(mod, List.of())) if (HudElements.drawn(n)) return true;
         return false;
     }
 
     private void flipModule(String mod) {
         boolean next = !moduleOn(mod);
-        for (String name : config.names()) {
-            HudConfig.Element el = config.get(name);
-            if (el != null && mod.equals(el.module)) config.put(name, el.switchedTo(next));
+        for (String n : modules.getOrDefault(mod, List.of())) {
+            HudConfig.Element el = config.get(n);
+            if (el != null) config.put(n, el.switchedTo(next));
         }
     }
 
-    /* ── drawing ──────────────────────────────────────────────────────────
-       The scrim is a fill rather than Lunar's blur. Blur is a shader pass
-       whose API has moved in every recent Minecraft version, and it would
-       have to be re-checked at every version bump for a visual nicety; the
-       fill works and the world stays legible behind it, which was the point.
-       Deliberately light enough that the HUD elements drawn around the panel
-       — the things being configured — stay readable. */
+    /* ── drawing ────────────────────────────────────────────────────────── */
     @Override
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
         ctx.fill(0, 0, this.width, this.height, Paint.SCRIM);
 
         Ui.panel(ctx, px, py, PANEL_W, ph);
         Ui.left(ctx, this.textRenderer, "KESTREL HUD", px + Paint.PANEL_PAD, py + 6, Paint.VALUE);
-        boolean overClose = Ui.hit(mouseX, mouseY, closeX(), closeY(), 11, 11);
-        Ui.close(ctx, closeX(), closeY(), 11, overClose);
+        Ui.close(ctx, closeX(), closeY(), 11, Ui.hit(mouseX, mouseY, closeX(), closeY(), 11, 11));
         Ui.rule(ctx, px + 1, py + TITLE_H - 1, PANEL_W - 2);
 
-        int listX = px + Paint.PANEL_PAD;
-        int listW = PANEL_W - Paint.PANEL_PAD * 2;
-
         ctx.enableScissor(px + 1, viewTop, px + PANEL_W - 1, viewTop + viewH);
-        int y = viewTop - scroll;
-        for (Row r : rows) {
-            int h = rowH(r);
-            if (y + h > viewTop - Paint.ROW && y < viewTop + viewH) {
-                drawRow(ctx, r, listX, y, listW, mouseX, mouseY);
+        for (int i = 0; i < order.size(); i++) {
+            int cx = cardX(i), cy = cardY(i);
+            if (cy + CARD_H > viewTop - CARD_H && cy < viewTop + viewH) {
+                card(ctx, order.get(i), cx, cy, mouseX, mouseY);
             }
-            y += h;
         }
+
+        int lx = px + Paint.PANEL_PAD;
+        int lw = PANEL_W - Paint.PANEL_PAD * 2;
+        Ui.heading(ctx, this.textRenderer, "APPEARANCE", lx, appearY() + 3, lw);
+        stepRow(ctx, "Corners", config.rounded ? "ROUNDED" : "SHARP", lx, cornersY(), lw, mouseX, mouseY);
+        stepRow(ctx, "Font", config.kestrelFont ? "KESTREL" : "MINECRAFT", lx, fontY(), lw, mouseX, mouseY);
         ctx.disableScissor();
 
-        /* the list is longer than the panel: say so at the edge it runs past,
-           rather than leaving a row sliced in half as the only clue */
-        int content = contentH();
         if (scroll > 0) ctx.fill(px + 1, viewTop, px + PANEL_W - 1, viewTop + 1, Paint.DEFINE);
-        if (scroll < content - viewH) ctx.fill(px + 1, viewTop + viewH - 1, px + PANEL_W - 1, viewTop + viewH, Paint.DEFINE);
+        if (scroll < contentH() - viewH) {
+            ctx.fill(px + 1, viewTop + viewH - 1, px + PANEL_W - 1, viewTop + viewH, Paint.DEFINE);
+        }
 
         Ui.rule(ctx, px + 1, py + ph - FOOT_H, PANEL_W - 2);
         int bx = px + Paint.PANEL_PAD;
@@ -209,75 +182,82 @@ public class HudMenuScreen extends Screen {
             Ui.hit(mouseX, mouseY, bx, doneY(), bw, 14), true);
     }
 
-    private void drawRow(DrawContext ctx, Row r, int x, int y, int w, int mouseX, int mouseY) {
-        if (r.kind == HEAD) {
-            Ui.heading(ctx, this.textRenderer, r.label, x, y + Paint.SECTION_GAP + 3, w);
-            return;
+    private void stepRow(DrawContext ctx, String label, String value, int x, int y, int w, int mx, int my) {
+        if (my >= y && my < y + Paint.ROW && mx >= x && mx < x + w) Ui.rowHover(ctx, x - 2, y, w + 4, Paint.ROW);
+        Ui.left(ctx, this.textRenderer, label, x, y + 3, Paint.BODY);
+        int sx = x + w - VALUE_W;
+        int sy = y + (Paint.ROW - 11) / 2;
+        Ui.stepper(ctx, this.textRenderer, sx, sy, VALUE_W, 11, value,
+            Ui.hit(mx, my, sx, sy, Ui.STEP_ARROW, 11),
+            Ui.hit(mx, my, sx + VALUE_W - Ui.STEP_ARROW, sy, Ui.STEP_ARROW, 11));
+    }
+
+    private void card(DrawContext ctx, String mod, int x, int y, int mx, int my) {
+        boolean on = moduleOn(mod);
+        ctx.fill(x, y, x + CARD_W, y + CARD_H, Paint.RAISE);
+        Ui.border(ctx, x, y, CARD_W, CARD_H, Paint.REGION);
+
+        preview(ctx, mod, x, y + 3, CARD_W, 22);
+
+        /* the module name, clipped rather than wrapped: "Potion effects" fits
+           and anything that does not is a name the launcher should shorten,
+           not a line this should break */
+        String name = mod;
+        while (this.textRenderer.getWidth(name) > CARD_W - 6 && name.length() > 3) {
+            name = name.substring(0, name.length() - 1);
         }
+        if (!name.equals(mod)) name = name.substring(0, Math.max(1, name.length() - 1)) + "…";
+        Ui.centred(ctx, this.textRenderer, name, x, CARD_W, y + 3 + 22 + 1,
+            moduleDrawn(mod) ? Paint.VALUE : Paint.MUTE);
 
-        boolean over = mouseY >= y && mouseY < y + Paint.ROW && mouseX >= x && mouseX < x + w;
-        if (over) Ui.rowHover(ctx, x - 2, y, w + 4, Paint.ROW);
+        int bx = x + 3;
+        int bw = CARD_W - 6;
+        int oy = optionsY(y);
+        boolean overOpt = Ui.hit(mx, my, bx, oy, bw, 11);
+        ctx.fill(bx, oy, bx + bw, oy + 11, overOpt ? Paint.HOVER : Paint.PANEL);
+        Ui.border(ctx, bx, oy, bw, 11, Paint.DEFINE);
+        Ui.centred(ctx, this.textRenderer, "OPTIONS", bx - 5, bw, oy + 2, overOpt ? Paint.VALUE : Paint.BODY);
+        Ui.gear(ctx, bx + bw - 12, oy + 2, overOpt ? Paint.ACCENT : Paint.MUTE);
 
-        int textY = y + 3;
-        int rightX = x + w;
+        /* ENABLED IS THE ACCENT, NOT GREEN. Green appears nowhere in
+           Kestrel's palette, and an enabled state should read as ON rather
+           than as APPROVED. */
+        int ey = enabledY(y);
+        boolean overEn = Ui.hit(mx, my, bx, ey, bw, 11);
+        Ui.button(ctx, this.textRenderer, bx, ey, bw, 11, on ? "ENABLED" : "DISABLED", overEn, on);
 
-        switch (r.kind) {
-            case MODULE: {
-                boolean on = moduleOn(r.module);
-                Ui.left(ctx, this.textRenderer, r.label, x, textY, r.drawable ? Paint.BODY : Paint.MUTE);
-                /* SAID PLAINLY, NOT HIDDEN. Nine of the eleven elements are
-                   arranged by the launcher and not yet drawn by this mod. A
-                   toggle that appears to work and changes nothing on screen
-                   is the worse failure; the toggle does work — it reaches the
-                   config and the launcher — and the row says what will not
-                   happen yet. */
-                if (!r.drawable) {
-                    Ui.right(ctx, this.textRenderer, "not drawn yet",
-                        rightX - Ui.TOGGLE_W - 6, textY, Paint.FAINT);
-                }
-                int tx = rightX - Ui.TOGGLE_W;
-                int ty = y + (Paint.ROW - Ui.TOGGLE_H) / 2;
-                Ui.toggle(ctx, this.textRenderer, tx, ty, on,
-                    Ui.hit(mouseX, mouseY, tx, ty, Ui.TOGGLE_W, Ui.TOGGLE_H), true);
-                break;
-            }
-            case CORNERS:
-            case FONT: {
-                Ui.left(ctx, this.textRenderer, r.label, x, textY, Paint.BODY);
-                int sx = rightX - VALUE_W;
-                int sy = y + (Paint.ROW - 11) / 2;
-                String value = r.kind == CORNERS
-                    ? (config.rounded ? "ROUNDED" : "SHARP")
-                    : (config.kestrelFont ? "KESTREL" : "MINECRAFT");
-                Ui.stepper(ctx, this.textRenderer, sx, sy, VALUE_W, 11, value,
-                    Ui.hit(mouseX, mouseY, sx, sy, Ui.STEP_ARROW, 11),
-                    Ui.hit(mouseX, mouseY, sx + VALUE_W - Ui.STEP_ARROW, sy, Ui.STEP_ARROW, 11));
-                break;
-            }
-            case COMPASS: {
-                HudConfig.Element co = config.get("coords");
-                Ui.left(ctx, this.textRenderer, r.label, x, textY, Paint.BODY);
-                int cx = rightX - Ui.BOX;
-                int cy = y + (Paint.ROW - Ui.BOX) / 2;
-                Ui.check(ctx, cx, cy, co != null && co.compass,
-                    Ui.hit(mouseX, mouseY, cx, cy, Ui.BOX, Ui.BOX));
-                break;
-            }
-            default:
-                break;
+        if (!moduleDrawn(mod)) {
+            /* SAID PLAINLY. Nine of the eleven elements are arranged, carried
+               and toggled but not yet drawn in the world. The toggle really
+               does work — it reaches the config and the launcher — so the
+               card says what will not happen rather than pretending. */
+            Ui.centred(ctx, this.textRenderer, "not drawn yet", x, CARD_W, y + 3 + 9, Paint.FAINT);
         }
     }
 
-    private int closeX() { return px + PANEL_W - Paint.PANEL_PAD - 11; }
-    private int closeY() { return py + 4; }
-    private int editY() { return py + ph - FOOT_H + 5; }
-    private int doneY() { return py + ph - FOOT_H + 22; }
+    /* THE CARD'S PICTURE IS THE ELEMENT ITSELF, drawn by the same code the
+       world uses and scaled down to fit. Anything wider than the card is
+       shrunk rather than clipped: a coordinate readout cut off after "X 12"
+       would misrepresent the width of the thing you are about to place. */
+    private void preview(DrawContext ctx, String mod, int x, int y, int w, int h) {
+        List<String> owned = modules.getOrDefault(mod, List.of());
+        if (owned.isEmpty() || this.client == null) return;
+        String name = owned.get(0);
+        HudConfig.Element el = config.get(name);
+        if (el == null) return;
 
-    /* ── clicking ─────────────────────────────────────────────────────────
-       Walks the same list, with the same row heights and the same scroll
-       offset the render pass used. Not a copy of that geometry — the same
-       rowH() and the same loop — because the version of this that keeps two
-       tables of rectangles in step is the version that stops being in step. */
+        List<HudElements.Run> runs = HudElements.of(name, el, this.client, KestrelHudClient.face(config), true);
+        if (runs == null || runs.isEmpty()) return;
+
+        int ew = HudRenderer.width(this.textRenderer, runs);
+        int eh = HudRenderer.height();
+        double s = Math.min(1.0, (w - 8.0) / ew);
+        double dx = x + (w - ew * s) / 2.0;
+        double dy = y + (h - eh * s) / 2.0;
+        HudRenderer.draw(ctx, this.textRenderer, runs, dx, dy, ew, eh, s, config.rounded, el.style);
+    }
+
+    /* ── clicking ───────────────────────────────────────────────────────── */
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button != 0) return super.mouseClicked(mouseX, mouseY, button);
@@ -294,56 +274,34 @@ public class HudMenuScreen extends Screen {
 
         if (mouseY < viewTop || mouseY >= viewTop + viewH) return super.mouseClicked(mouseX, mouseY, button);
 
-        int listX = px + Paint.PANEL_PAD;
-        int listW = PANEL_W - Paint.PANEL_PAD * 2;
-        int rightX = listX + listW;
-        int y = viewTop - scroll;
-
-        for (Row r : rows) {
-            int h = rowH(r);
-            if (r.kind != HEAD && mouseY >= y && mouseY < y + h) {
-                switch (r.kind) {
-                    case MODULE:
-                        if (Ui.hit(mouseX, mouseY, rightX - Ui.TOGGLE_W,
-                                   y + (Paint.ROW - Ui.TOGGLE_H) / 2, Ui.TOGGLE_W, Ui.TOGGLE_H)) {
-                            flipModule(r.module);
-                            click();
-                            return true;
-                        }
-                        break;
-                    case CORNERS:
-                    case FONT: {
-                        int sx = rightX - VALUE_W;
-                        int sy = y + (Paint.ROW - 11) / 2;
-                        /* EITHER ARROW FLIPS IT, and so does the middle. Two
-                           values make "next" and "previous" the same move, and
-                           a stepper that only responds on nine pixels of arrow
-                           is a stepper people think is broken. */
-                        if (Ui.hit(mouseX, mouseY, sx, sy, VALUE_W, 11)) {
-                            if (r.kind == CORNERS) config.rounded = !config.rounded;
-                            else config.kestrelFont = !config.kestrelFont;
-                            config.touch();
-                            click();
-                            return true;
-                        }
-                        break;
-                    }
-                    case COMPASS: {
-                        int cx = rightX - Ui.BOX;
-                        int cy = y + (Paint.ROW - Ui.BOX) / 2;
-                        if (Ui.hit(mouseX, mouseY, cx, cy, Ui.BOX, Ui.BOX)) {
-                            HudConfig.Element co = config.get("coords");
-                            if (co != null) config.put("coords", co.withCompass(!co.compass));
-                            click();
-                            return true;
-                        }
-                        break;
-                    }
-                    default:
-                        break;
+        for (int i = 0; i < order.size(); i++) {
+            int cx = cardX(i), cy = cardY(i);
+            int ibx = cx + 3, ibw = CARD_W - 6;
+            if (Ui.hit(mouseX, mouseY, ibx, optionsY(cy), ibw, 11)) {
+                if (this.client != null) {
+                    this.client.setScreen(new HudElementScreen(config, runDir, this,
+                        order.get(i), modules.get(order.get(i))));
                 }
+                return true;
             }
-            y += h;
+            if (Ui.hit(mouseX, mouseY, ibx, enabledY(cy), ibw, 11)) {
+                flipModule(order.get(i));
+                click();
+                return true;
+            }
+        }
+
+        int lx = px + Paint.PANEL_PAD;
+        int lw = PANEL_W - Paint.PANEL_PAD * 2;
+        int sx = lx + lw - VALUE_W;
+        /* EITHER ARROW FLIPS IT, and so does the middle. Two values make
+           "next" and "previous" the same move, and a stepper that responds
+           only on nine pixels of arrow is one people think is broken. */
+        if (Ui.hit(mouseX, mouseY, sx, cornersY() + (Paint.ROW - 11) / 2, VALUE_W, 11)) {
+            config.rounded = !config.rounded; config.touch(); click(); return true;
+        }
+        if (Ui.hit(mouseX, mouseY, sx, fontY() + (Paint.ROW - 11) / 2, VALUE_W, 11)) {
+            config.kestrelFont = !config.kestrelFont; config.touch(); click(); return true;
         }
         return super.mouseClicked(mouseX, mouseY, button);
     }
@@ -358,30 +316,27 @@ public class HudMenuScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
-        int content = contentH();
-        if (content > viewH) {
+        if (contentH() > viewH) {
             scroll -= (int) (vertical * Paint.ROW);
-            clampScroll(content);
+            clampScroll();
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, horizontal, vertical);
     }
 
     /* ── SAVED ON THE WAY OUT, AND ONLY IF SOMETHING CHANGED ──────────────
-       This is the one exit. The layout editor hands back here rather than to
-       the world, so a session of dragging and toggling produces exactly one
-       write — and opening the menu to look at it produces none, because
-       HudConfig.save() is a no-op on a document nobody edited. A launcher
-       that saw a game-written file after every glance would import a "change"
-       on every launch. */
+       This is the one exit. The layout editor and the per-element screen both
+       hand back here rather than to the world, so a session of dragging,
+       toggling and recolouring produces exactly one write — and opening the
+       menu to look at it produces none, because HudConfig.save() is a no-op
+       on a document nobody edited. A launcher that saw a game-written file
+       after every glance would import a "change" on every launch. */
     @Override
     public void close() {
         config.save(runDir);
         if (this.client != null) this.client.setScreen(null);
     }
 
-    /* The world keeps running. Pausing would freeze the FPS counter being
-       positioned, and in multiplayer a paused screen is a fiction anyway. */
     @Override
     public boolean shouldPause() {
         return false;

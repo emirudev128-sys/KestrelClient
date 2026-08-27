@@ -56,12 +56,10 @@ final class Paint {
     static final int STACK_GAP = 2;
 
     /* ══ THE MENU ═════════════════════════════════════════════════════════
-       Right Shift opens a screen over the world. Three references were read
-       before any of this was drawn — Lunar Client's mod list, Sodium's
-       settings, NoRisk's Host World dialog — and NoRisk's is the one this
-       follows, because its square-cornered panel with thin borders and
-       generous line height is already how Kestrel's own screens look. See
-       docs/hud-menu-design.md, and the screenshots it points at. */
+       Right Shift opens a screen over the world, and it is painted from the
+       same values the HUD is: a square-cornered panel, thin borders and
+       generous line height, which is already how Kestrel's own screens look.
+       See docs/hud-menu-design.md. */
 
     /* THE PANEL IS NEARLY OPAQUE where the HUD plate is not. A plate has to
        let the world through — it sits on top of the game you are playing. A
@@ -71,9 +69,10 @@ final class Paint {
     static final int PANEL = 0xF212151B;
     /* --s-well #040609 at 55%: enough to push the world back without hiding
        the HUD elements drawn around the panel, which are the things being
-       configured and have to stay visible. Lunar blurs instead; blur is a
-       shader pass whose API has moved in every recent Minecraft version, and
-       a fill that works is worth more than a blur that compiles today. */
+       configured and have to stay visible. A BLUR WAS THE OTHER OPTION and
+       was not taken: blur is a shader pass whose API has moved in every
+       recent Minecraft version, and a fill that works is worth more than a
+       blur that compiles today. */
     static final int SCRIM = 0x8C040609;
 
     static final int RAISE = 0xFF1B1F25;   /* --s-raise: a control ON the panel */

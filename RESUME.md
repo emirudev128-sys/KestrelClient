@@ -51,36 +51,75 @@ a home directory names its owner — the same rule as the rest of the never-comm
 Install by copying that jar into `<instance>/minecraft/mods/`. Fabric API installs itself now
 (mc/deps.js reads what the jars declare). Verified on 1.21.4: builds, loads, draws.
 
-**The contract** is one file, `<instance>/config/kestrel-hud.json`, **version 3**, written by
+**The contract** is one file, `<instance>/config/kestrel-hud.json`, **version 4**, written by
 `mc/hud.js` and read AND WRITTEN by `HudConfig.java`. `tools/hudcheck.mjs` asserts the three
-languages agree — markup, JS, Java — in 91 assertions, the last eleven of which run the compiled mod
-against a document the launcher just wrote and read back what it wrote. Positions are percentages
+languages agree — markup, JS, Java — in 121 assertions, the last twenty of which run the compiled
+mod against a document the launcher just wrote and read back what it wrote. Positions are percentages
 against nine anchors, plus a scale; visibility is resolved launcher-side from the seven MODULES
 (Armor status owns five elements); `module` and `label` travel in the document so the in-game menu
 has no vocabulary of its own.
 
+**Version 4 added PER-ELEMENT STYLE**: `plate` (is there a box at all), `plateColour`, `plateAlpha`,
+`textColour`, `textAlpha`. Corners and font stay whole-HUD — three sharp plates and one rounded one
+is still a mistake — but colour, transparency and the box are per element, because picking ONE
+element out of the rest is the entire reason anybody opens the menu. **Every default is the old
+hard-coded constant to the byte** (`#0A0E13` at 72% is `Paint.PLATE`, `#F1F4F7` is `Paint.VALUE`),
+so an unstyled HUD is pixel-identical to before.
+
+The label tone used to be a second hard-coded grey (`#929497`). Two hard-coded greys cannot survive
+somebody picking red, so a label is now its element's own colour at 58% alpha — which over the
+default plate blends to `#909294`, the grey it replaces. The ACCENT (low fps, the compass letter)
+deliberately does NOT follow the element colour: it marks the case worth noticing, and a "worth
+noticing" the same colour as everything around it has stopped noticing anything.
+
 ## Phase 2 is built: the in-game menu
 
-**Right Shift opens it, in a world.** `HudMenuScreen` toggles the seven modules and sets corners,
-font and the coords compass; `EDIT HUD LAYOUT` drops into `HudLayoutScreen`, which is the HUD alone
-on screen with drag, **magnet snapping**, wheel-to-scale, arrow-nudge and Alt to suppress the magnet.
-The layout screen hands back to the menu, and the menu is the single exit — so a whole session of
-dragging produces exactly one write, and opening the menu to look at it produces none.
+**Right Shift opens it, in a world.** `HudMenuScreen` is **a grid of cards, one per module**, each
+with its own `OPTIONS` and `ENABLED`. The first version was a list of rows with a toggle on the
+right; it worked and it was not what was asked for. The card is right because **enable and configure
+are two different controls**, and a row with one toggle has nowhere to put the second.
+
+**Every card draws the real element** — actual colours, actual transparency, actual plate setting,
+through the same renderer the world uses. The grid is a contact sheet of your HUD. An invented icon
+would have been more work and told you less.
+
+`OPTIONS` opens **`HudElementScreen`**: size (slider), anchor, show-the-box, box colour, box
+opacity, text colour, text opacity, and the compass on coords. A live preview sits at the top with
+the WORLD showing through behind it, because "does this read at 30%" is a question about the world
+and a preview on flat grey answers a different one. Where a module owns more than one element
+(Armor status owns five) a `< HELMET >` stepper moves between them.
+
+`EDIT HUD LAYOUT` drops into `HudLayoutScreen`: the HUD alone on screen with drag, **magnet
+snapping**, wheel-to-scale, arrow-nudge and Alt to suppress the magnet. Both sub-screens hand back
+to the menu, and the menu is the single exit — so a whole session of dragging, toggling and
+recolouring produces exactly one write, and opening the menu to look at it produces none.
 
 The magnet snaps, in this order: the nine anchors (flush, the launcher's stock 2.6%/4.2% inset, and
 the centre lines), then other elements' leading edges, trailing edges, centres, and the two positions
 that sit one element directly beside or beneath another. Five pixels of pull, and a guide line is
 drawn at whatever it caught on.
 
-**Files:** `HudMenuScreen`, `HudLayoutScreen`, `Ui` (the furniture, drawn by hand rather than from
-`ButtonWidget` — vanilla's widgets carry vanilla's look), plus `HudRenderer` and `HudElements` split
-out of the render callback so the live HUD and the editor draw from ONE source. An editor arranging
-boxes of a different width from the ones the game will draw is an editor that lies.
+**Files:** `HudMenuScreen`, `HudElementScreen`, `HudLayoutScreen`, `Ui` (the furniture — panel,
+card, stepper, checkbox, slider, colour swatches, gear — drawn by hand rather than from
+`ButtonWidget`, because vanilla's widgets carry vanilla's look), plus `HudRenderer` and `HudElements`
+split out of the render callback so the live HUD, the cards, the preview and the editor all draw
+from ONE source. An editor arranging boxes of a different width from the ones the game will draw is
+an editor that lies.
 
-**Look at `hud-inspos/` first** if you touch the visuals — the three reference screenshots the user
-supplied: Lunar Client's mod list, Sodium's settings, NoRisk's Host World dialog. The folder is
-gitignored (other people's product UI) but is on the machine. `docs/hud-menu-design.md` reads them,
-and now also records what was deliberately NOT taken from each and why.
+**Colour is picked from swatches, not a wheel or a hex field.** A hex field needs a focus model and a
+validation state for a value that is wrong most of the time you are typing it; a wheel needs a
+shader. Fourteen squares: Kestrel's own four first, so "put it back" is a click, then Minecraft's
+chat colours, which are the ones players already have names for.
+
+**`HudElements.Run` carries a ROLE, not a colour** (`VALUE`/`LABEL`/`ACCENT`). It used to carry a
+resolved colour, which was fine while the colours were two constants — but a run that had already
+decided it was `#F1F4F7` cannot be repainted when somebody picks red.
+
+**Reference screenshots the user supplied live in `hud-inspos/`**, which is gitignored and stays
+that way — they are other people's product UI. Look at them before touching the visuals; do not
+describe them, name them or quote them in anything tracked. `docs/hud-menu-design.md` holds the
+design decisions on their own terms, with the reasoning and without the attributions, which is the
+form they belong in for a public repository.
 
 ### The ownership question, settled
 
@@ -94,6 +133,24 @@ compiled jar's classes, including the second launch importing nothing.
 on "is this rev newer than the one we last wrote". `settings.hud` is one GLOBAL object and the config
 file is PER INSTANCE, so revs across instances are not a total order — edit in-game in A, launch B,
 return to A, and a rev comparison discards A's edit silently. `rev` stays for the log line.
+
+### The launcher screen was write-only, and that had to be fixed to ship this
+
+`saveHud()` wrote `settings.hud` and **nothing ever read it back**. `ST` was built from the markup's
+`data-` attributes at startup ([app.js:1289](ui/scripts/app.js:1289)) and `host.settings.get()` was
+never called for the HUD at all — so the launcher forgot its own layout every session, and the first
+drag on that screen wrote the STOCK arrangement over whatever had been set in game.
+
+Version 4 made that fatal rather than annoying: `store.js` merges patches at the top level only, so
+`{hud: …}` swapped the whole object and every per-element colour, transparency and plate setting went
+with it. One drag in the launcher and an evening's work in game was gone, with a "Saved" flashing to
+confirm it.
+
+Both halves fixed. `loadHud()` reads the stored layout into `ST` at startup and the stored module
+state into `MODG` (via the same field `eff()` reads, not through `setVal()`, which would mark every
+row dirty — dirty means *changed from default*, not *restored from disk*). `saveHud()` now reads,
+lays this screen's four fields over what is stored, and writes back: `a/x/y/s` are what it owns and
+may overwrite; everything else travels through untouched.
 
 ### A bug this turned up
 
@@ -152,7 +209,7 @@ and no token on a command line (the launcher refuses rather than leaking on Java
     node tools/phase4check.mjs    loader merge rules (60)
     node tools/phase4check.mjs modern   ... and really install + launch NeoForge 1.21.1 (83)
     node tools/phase5check.mjs    content install
-    node tools/hudcheck.mjs       the HUD contract across markup, JS and Java (91)
+    node tools/hudcheck.mjs       the HUD contract across markup, JS and Java (121)
     node tools/packcheck.mjs      what the packaged build actually contains (47)
     bash  tools/scan.sh           Electronegativity + semgrep + npm audit + token containment
 
@@ -169,10 +226,11 @@ and nothing else.
   `not drawn yet` on their row, and the layout editor shows them as their own label in the muted ink
   rather than as invented sample data. Positioning them works; they just do not appear in-world.
   That is the next piece and it is Java: `HudElements.of()` is the one place to add each.
-- **THE MENU HAS NOT BEEN SEEN ON SCREEN.** It compiles, and the contract it reads and writes is
-  proved end to end against the compiled classes — but nothing can drive Minecraft into a world
-  unattended, so no pixel of `HudMenuScreen` or `HudLayoutScreen` has been looked at, and the feel of
-  the magnet is a guess until somebody drags something. Press Right Shift in a world and judge it.
+- **THE CARD GRID AND THE OPTIONS SCREEN HAVE NOT BEEN SEEN.** The first menu was tested by the user
+  and sent back; this replaces it, compiles, and its contract is proved end to end against the
+  compiled classes — but nothing can drive Minecraft into a world unattended, so no pixel of the
+  cards, the swatches, the sliders or the preview strip has been looked at. Card sizes (76x62, three
+  across), the 14-colour palette and the preview strip height are all picked blind.
 - `HudRenderCallback` is **deprecated** in Fabric's 1.21.4 API (`-Xlint:deprecation` names it, and it
   is the only warning in the build). It still works — it is what has been drawing on screen — but a
   future API version will drop it for `HudLayerRegistrationCallback`. Left alone deliberately: it is

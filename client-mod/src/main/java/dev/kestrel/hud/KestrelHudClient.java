@@ -141,7 +141,7 @@ public class KestrelHudClient implements ClientModInitializer {
             box = HudRenderer.onScreen(box, sw, sh);
             placed.add(box);
 
-            HudRenderer.draw(ctx, client.textRenderer, runs, box.x, box.y, w, h, el.scale, config.rounded);
+            HudRenderer.draw(ctx, client.textRenderer, runs, box.x, box.y, w, h, el.scale, config.rounded, el.style);
         }
     }
 }

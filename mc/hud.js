@@ -161,7 +161,46 @@ const WRITERS = ['launcher', 'game'];
 const SCALE_MIN = 0.25;
 const SCALE_MAX = 4;
 
-const VERSION = 3;
+/* ── PER-ELEMENT STYLE ────────────────────────────────────────────────────
+   Version 4. Corners and font stay whole-HUD choices — three sharp plates and
+   one rounded one is still a mistake — but colour and the plate itself are
+   now per element, because the thing people actually want is one element
+   picked out from the rest: coordinates bigger, ping in red, the fps counter
+   with no box behind it at all.
+
+   THE DEFAULTS ARE EXACTLY WHAT THE HUD ALREADY LOOKED LIKE. #0A0E13 at 72%
+   is Paint.PLATE to the byte, #F1F4F7 is Paint.VALUE. An element nobody has
+   styled is drawn by the same numbers as before this existed, so nothing
+   moves under anyone who has not asked for it to.
+
+   COLOURS ARE #RRGGBB AND ALPHA IS A SEPARATE 0..100. Packing them into one
+   #AARRGGBB would have been fewer fields and worse: alpha is the control
+   people reach for most ("make the box fainter"), it wants a slider of its
+   own, and hiding it in the top two characters of a hex string makes it the
+   hardest thing on the screen to change. */
+const PLATE_COLOUR = '#0A0E13';   /* --s-app */
+const PLATE_ALPHA = 72;
+const TEXT_COLOUR = '#F1F4F7';    /* --ink */
+const TEXT_ALPHA = 100;
+
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+/* Normalised to upper case so that #e3b439 and #E3B439 are one value rather
+   than two that compare unequal — the mod writes one form, a hand-edited file
+   may hold the other, and a round trip that changes the case of a colour
+   looks like an edit nobody made. */
+function colour(v, fallback) {
+  const s = String(v);
+  return HEX_RE.test(s) ? '#' + s.slice(1).toUpperCase() : fallback;
+}
+
+function alpha(v, fallback) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  return n < 0 ? 0 : (n > 100 ? 100 : Math.round(n));
+}
+
+const VERSION = 4;
 const FILE = 'kestrel-hud.json';
 
 /* A config file is a few hundred bytes. Anything past this is not a config
@@ -242,7 +281,16 @@ function build(hud, rev) {
       anchor: anchor,
       x: clampPercent(e.x),
       y: clampPercent(e.y),
-      scale: clampScale(e.s)
+      scale: clampScale(e.s),
+      /* PLATE DEFAULTS TO ON, and the test is `!== false` rather than
+         `=== true`: an element written before this field existed has no
+         opinion, and the answer for "no opinion" has to be the way it already
+         looked, which was with a box. */
+      plate: e.plate !== false,
+      plateColour: colour(e.plateColour, PLATE_COLOUR),
+      plateAlpha: alpha(e.plateAlpha, PLATE_ALPHA),
+      textColour: colour(e.textColour, TEXT_COLOUR),
+      textAlpha: alpha(e.textAlpha, TEXT_ALPHA)
     };
     /* COMPASS IS COORDS' OWN OPTION, and only coords'. A flag that means
        something on one element and nothing on the other ten belongs to that
@@ -292,7 +340,16 @@ function fromDoc(doc) {
       a: ANCHORS.indexOf(String(e.anchor)) >= 0 ? String(e.anchor) : 'tl',
       x: clampPercent(e.x),
       y: clampPercent(e.y),
-      s: clampScale(e.scale)
+      s: clampScale(e.scale),
+      /* THE STYLE COMES HOME TOO. Without these five the round trip would
+         carry a dragged position back and quietly drop the colour that was
+         picked in the same sitting — which reads as "the menu forgot", not as
+         "that field is not supported yet". */
+      plate: e.plate !== false,
+      plateColour: colour(e.plateColour, PLATE_COLOUR),
+      plateAlpha: alpha(e.plateAlpha, PLATE_ALPHA),
+      textColour: colour(e.textColour, TEXT_COLOUR),
+      textAlpha: alpha(e.textAlpha, TEXT_ALPHA)
     };
     if (name === 'coords') elements[name].compass = e.compass === true;
 
@@ -412,5 +469,9 @@ async function write(gameDir, hud, log, rev) {
 module.exports = {
   sync, read, write, build, fromDoc, labelOf,
   ELEMENTS, ELEMENT_MODULE, ELEMENT_SUB, ANCHORS, CORNERS, FONTS, WRITERS,
-  FILE, VERSION, SCALE_MIN, SCALE_MAX, MAX_BYTES
+  FILE, VERSION, SCALE_MIN, SCALE_MAX, MAX_BYTES,
+  PLATE_COLOUR, PLATE_ALPHA, TEXT_COLOUR, TEXT_ALPHA,
+  /* the five per-element style keys, named once so the renderer and the
+     checks can iterate them instead of each keeping a list */
+  STYLE_KEYS: ['plate', 'plateColour', 'plateAlpha', 'textColour', 'textAlpha']
 };

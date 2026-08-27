@@ -1342,14 +1342,83 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     }
     return out;
   }
+  /* ── AND MERGED, NOT REPLACED ─────────────────────────────────────────────
+     This used to send `{hud: {elements: ST, modules: …}}` and store.js merges
+     patches at the TOP level only — so `hud` was swapped wholesale and every
+     field of it this screen does not model was destroyed on the way past.
+
+     That was survivable while this screen modelled everything there was. It
+     stopped being survivable the moment the in-game menu could set a per
+     element colour, a transparency, whether the element has a box at all, and
+     the compass — none of which exist on this screen, all of which live in
+     the same `hud.elements[name]` object. One drag here and the whole of an
+     evening's work in game was gone, with a "Saved" flashing to confirm it.
+
+     So the save now reads what is stored, lays this screen's four fields over
+     it, and writes the result back. `a/x/y/s` are what this screen owns and
+     what it is entitled to overwrite; everything else is somebody else's and
+     travels through untouched — including `style`, which nothing on this
+     screen has ever set. */
+  var HUD_OWNS = { a: 1, x: 1, y: 1, s: 1 };
+
   function saveHud() {
     if (!host || !host.settings) return;   /* the browser build has nowhere to put it */
     clearTimeout(saveHudT);
     saveHudT = setTimeout(function () {
-      host.settings.set({ hud: { elements: JSON.parse(snapshot()), modules: hudModules() } })
-        .catch(function (err) { say('The HUD layout could not be saved. ' + esc(err.message)); });
+      host.settings.get().then(function (cur) {
+        var prev = (cur && cur.hud && typeof cur.hud === 'object') ? cur.hud : {};
+        var prevEls = (prev.elements && typeof prev.elements === 'object') ? prev.elements : {};
+        var els = {};
+        Object.keys(ST).forEach(function (k) {
+          els[k] = Object.assign({}, prevEls[k], ST[k]);
+        });
+        return host.settings.set({
+          hud: Object.assign({}, prev, { elements: els, modules: hudModules() })
+        });
+      }).catch(function (err) { say('The HUD layout could not be saved. ' + esc(err.message)); });
     }, 350);
   }
+
+  /* ── AND LOADED BACK, WHICH IT NEVER WAS ──────────────────────────────────
+     saveHud() was write-only. ST is built from the markup's data attributes
+     at startup and nothing ever read the saved layout into it, so this screen
+     opened on the stock arrangement every session — the launcher forgot its
+     own HUD, and worse, the first drag wrote that stock arrangement over
+     whatever had been set in game.
+
+     THE MODULE SWITCHES ARE LOADED TOO, and by the same route a click takes:
+     MODG[k].on is what eff() reads and paintRow() paints, and modKey() is the
+     row's visible name, which is the same string the contract uses for a
+     module. Setting it directly rather than through setVal() is deliberate —
+     setVal marks the row DIRTY, and "dirty" means changed from the default,
+     not restored from disk.
+
+     FAILURE IS SILENT AND HARMLESS. No settings, an unreadable file, or the
+     browser build with no host at all: ST keeps the markup's defaults, which
+     is exactly where this screen was before any of this existed. */
+  function loadHud() {
+    if (!host || !host.settings) return Promise.resolve();
+    return host.settings.get().then(function (cur) {
+      var hud = (cur && cur.hud && typeof cur.hud === 'object') ? cur.hud : {};
+      var els = (hud.elements && typeof hud.elements === 'object') ? hud.elements : {};
+      Object.keys(els).forEach(function (k) {
+        var e = els[k];
+        if (!ST[k] || !e || typeof e !== 'object') return;
+        Object.keys(HUD_OWNS).forEach(function (f) {
+          if (f === 'a') { if (typeof e.a === 'string') ST[k].a = e.a; return; }
+          if (typeof e[f] === 'number' && isFinite(e[f])) ST[k][f] = e[f];
+        });
+      });
+      var mods = (hud.modules && typeof hud.modules === 'object') ? hud.modules : {};
+      Object.keys(mods).forEach(function (k) {
+        if (MODG[k] && typeof mods[k] === 'boolean') MODG[k].on = mods[k];
+      });
+      MODROWS.forEach(paintRow);
+      paintAll();
+      checkClash();
+    }).catch(function () { /* the stock layout is a fine thing to fall back to */ });
+  }
+  loadHud();
 
   function place(el) {
     var s = ST[el.dataset.el];

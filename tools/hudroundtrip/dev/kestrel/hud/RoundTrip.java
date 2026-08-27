@@ -32,6 +32,10 @@ import java.nio.file.Paths;
  */
 public final class RoundTrip {
 
+    private static String hex6(int rgb) {
+        return String.format(java.util.Locale.ROOT, "#%06X", rgb & 0xFFFFFF);
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
             System.err.println("usage: RoundTrip <instance-dir> <report-file>");
@@ -58,6 +62,11 @@ public final class RoundTrip {
              .append('\t').append(e.compass)
              .append('\t').append(e.module)
              .append('\t').append(e.label)
+             .append('\t').append(e.style.plate)
+             .append('\t').append(hex6(e.style.plateRgb))
+             .append('\t').append(e.style.plateAlpha)
+             .append('\t').append(hex6(e.style.textRgb))
+             .append('\t').append(e.style.textAlpha)
              .append('\n');
         }
         /* WRITTEN TO A FILE, NOT PRINTED. A label carries a middle dot, and
@@ -69,13 +78,17 @@ public final class RoundTrip {
         Files.writeString(report, r.toString(), java.nio.charset.StandardCharsets.UTF_8);
 
         /* ── and then what the editor would do to it ─────────────────────
-           A negative offset against a middle anchor, a non-integer scale and
-           both style flips: the three things most likely to be mangled on the
-           way back out, chosen for that rather than for looking like a
+           A negative offset against a middle anchor, a non-integer scale,
+           both whole-HUD style flips, and every one of the five per-element
+           style fields set to something that is NOT its default — including a
+           plate turned off, which has to survive as `false` rather than being
+           mistaken for absent. Chosen to be mangled, not to look like a
            plausible layout. */
         String first = c.names().get(0);
         HudConfig.Element e0 = c.get(first);
-        c.put(first, e0.movedTo("mr", -12.5, -9.6).scaledTo(1.75));
+        c.put(first, e0.movedTo("mr", -12.5, -9.6).scaledTo(1.75)
+            .styled(e0.style.withPlate(false).withTextRgb(0xFF5555).withTextAlpha(80)
+                            .withPlateRgb(0x55FF55).withPlateAlpha(35)));
         c.rounded = !c.rounded;
         c.kestrelFont = !c.kestrelFont;
         c.touch();

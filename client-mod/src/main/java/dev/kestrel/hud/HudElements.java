@@ -41,14 +41,39 @@ final class HudElements {
         Text of(String s);
     }
 
-    /** one run of text in one colour; an element is a few of these in a row */
+    /* ── WHAT A RUN IS FOR, NOT WHAT COLOUR IT IS ─────────────────────────
+       These used to carry a resolved colour, which was fine while the colours
+       were two constants. They are per element now, so a run that had already
+       decided it was #F1F4F7 could not be repainted when somebody picked red
+       — every element would have come out in the launcher's greys whatever
+       the config said.
+
+       So a run says what it IS and the renderer decides what that looks like
+       against the element's own style. Three roles, and they are the same
+       three the typography always had. */
+    static final int VALUE = 0;   /* the thing you glance at */
+    static final int LABEL = 1;   /* the word that says what it is */
+    static final int ACCENT = 2;  /* worth noticing; see below */
+
+    /** one run of text in one role; an element is a few of these in a row */
     static final class Run {
         final Text text;
-        final int colour;
-        Run(Face face, String text, int colour) {
+        final int role;
+        Run(Face face, String text, int role) {
             this.text = face.of(text);
-            this.colour = colour;
+            this.role = role;
         }
+    }
+
+    /* THE ACCENT STAYS THE ACCENT, and does not follow the element's colour.
+       It marks the two cases worth noticing — fps low enough to feel, and the
+       compass letter — and a "worth noticing" that is the same colour as
+       everything around it has stopped noticing anything. Someone who paints
+       their whole HUD amber loses the distinction; that is their choice to
+       make and it costs them nothing they had. */
+    static int colourOf(int role, HudConfig.Style st) {
+        if (role == ACCENT) return Paint.ACCENT;
+        return role == LABEL ? st.labelArgb() : st.textArgb();
     }
 
     /** THE ONES THIS MOD CAN ACTUALLY PRODUCE A VALUE FOR. Everything else in
@@ -71,26 +96,26 @@ final class HudElements {
         if ("fps".equals(name)) {
             int fps = client.getCurrentFps();
             List<Run> out = new ArrayList<>(2);
-            out.add(new Run(face, Integer.toString(fps), fpsColour(fps)));
-            out.add(new Run(face, "FPS", Paint.LABEL));
+            out.add(new Run(face, Integer.toString(fps), fpsRole(fps)));
+            out.add(new Run(face, "FPS", LABEL));
             return out;
         }
 
         if ("coords".equals(name)) {
             if (client.player == null) return placeholder ? label(el, name, face) : null;
             List<Run> out = new ArrayList<>(7);
-            out.add(new Run(face, "X", Paint.LABEL));
-            out.add(new Run(face, fixed(client.player.getX()), Paint.VALUE));
-            out.add(new Run(face, "Y", Paint.LABEL));
-            out.add(new Run(face, fixed(client.player.getY()), Paint.VALUE));
-            out.add(new Run(face, "Z", Paint.LABEL));
-            out.add(new Run(face, fixed(client.player.getZ()), Paint.VALUE));
+            out.add(new Run(face, "X", LABEL));
+            out.add(new Run(face, fixed(client.player.getX()), VALUE));
+            out.add(new Run(face, "Y", LABEL));
+            out.add(new Run(face, fixed(client.player.getY()), VALUE));
+            out.add(new Run(face, "Z", LABEL));
+            out.add(new Run(face, fixed(client.player.getZ()), VALUE));
             /* THE COMPASS, when asked for. Vanilla puts the facing in F3 and
                nowhere else, so a coordinate readout without it means opening
                the debug screen to answer "which way is north" — which is
                usually the question the coordinates were being read to
                settle. */
-            if (el.compass) out.add(new Run(face, cardinal(client.player.getYaw()), Paint.ACCENT));
+            if (el.compass) out.add(new Run(face, cardinal(client.player.getYaw()), ACCENT));
             return out;
         }
 
@@ -99,7 +124,7 @@ final class HudElements {
 
     private static List<Run> label(HudConfig.Element el, String name, Face face) {
         List<Run> out = new ArrayList<>(1);
-        out.add(new Run(face, el.display(name), Paint.MUTE));
+        out.add(new Run(face, el.display(name), LABEL));
         return out;
     }
 
@@ -108,8 +133,8 @@ final class HudElements {
        the accent marks the case worth noticing — fps low enough to feel — and
        everything healthy stays in the ordinary ink. A HUD that lights up when
        nothing is wrong is a HUD you stop reading. */
-    private static int fpsColour(int fps) {
-        return fps > 0 && fps < 30 ? Paint.ACCENT : Paint.VALUE;
+    private static int fpsRole(int fps) {
+        return fps > 0 && fps < 30 ? ACCENT : VALUE;
     }
 
     private static String fixed(double v) {

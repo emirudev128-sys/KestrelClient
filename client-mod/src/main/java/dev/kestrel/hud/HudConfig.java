@@ -21,16 +21,25 @@ import java.util.Map;
  *
  * <pre>
  * {
- *   "version": 3,
+ *   "version": 4,
  *   "rev": 7,
  *   "by": "launcher",
  *   "style": { "corners": "sharp", "font": "minecraft" },
  *   "elements": {
  *     "fps": { "on": true, "module": "FPS", "label": "FPS",
- *              "anchor": "tl", "x": 2.6, "y": 4.2, "scale": 1 }
+ *              "anchor": "tl", "x": 2.6, "y": 4.2, "scale": 1,
+ *              "plate": true, "plateColour": "#0A0E13", "plateAlpha": 72,
+ *              "textColour": "#F1F4F7", "textAlpha": 100 }
  *   }
  * }
  * </pre>
+ *
+ * <p><b>THE WHOLE-HUD "style" AND THE PER-ELEMENT ONE ARE DIFFERENT THINGS.</b>
+ * The top-level {@code style} holds the two choices that cannot sensibly
+ * differ between elements — corners and typeface, because three sharp plates
+ * and one rounded one is not a configuration. Colour, transparency and
+ * whether there is a plate at all live on the ELEMENT, because picking one
+ * element out from the rest is the entire reason anybody opens this menu.
  *
  * <p><b>THE ANCHOR IS NOT DECORATION.</b> An element is placed against one of
  * nine anchors and offset from it by a percentage. Ignoring the anchor and
@@ -85,13 +94,93 @@ import java.util.Map;
  */
 public final class HudConfig {
 
-    static final int VERSION = 3;
+    static final int VERSION = 4;
     /** a config file is a few hundred bytes; the launcher applies the same
      *  ceiling from the other side */
     private static final long MAX_BYTES = 256 * 1024;
 
+    /* ── PER-ELEMENT STYLE ────────────────────────────────────────────────
+       Version 4. Corners and typeface stay whole-HUD choices; colour and the
+       plate itself are per element, because the thing people want is one
+       element picked out of the rest — coordinates bigger, ping in red, the
+       fps counter with no box behind it at all.
+
+       THE DEFAULTS ARE THE OLD CONSTANTS TO THE BYTE. #0A0E13 at 72% is what
+       Paint.PLATE always was; #F1F4F7 is Paint.VALUE. An element nobody has
+       styled draws exactly as it did before this field existed.
+
+       A COLOUR AND ITS ALPHA ARE TWO FIELDS, not one packed #AARRGGBB.
+       Transparency is the control people reach for most, it wants a slider,
+       and hiding it in the first two characters of a hex string makes it the
+       hardest thing on the screen to change. */
+    public static final class Style {
+        static final int DEF_PLATE_RGB = 0x0A0E13;
+        static final int DEF_PLATE_ALPHA = 72;
+        static final int DEF_TEXT_RGB = 0xF1F4F7;
+        static final int DEF_TEXT_ALPHA = 100;
+
+        /* HOW FAR A LABEL SITS BEHIND ITS VALUE. The whole typographic idea
+           of this HUD is that the VALUE is what you glance at and the LABEL
+           only says what it is, and one weight of one bitmap font cannot
+           express that — so it was two hard-coded greys, #F1F4F7 and #929497.
+           Two hard-coded greys cannot survive the player picking red.
+
+           So the label is now the SAME colour at a fraction of the alpha, and
+           the fraction is chosen to land on the old value: #F1F4F7 at 58%
+           over #0A0E13 blends to #909294, and the grey it replaces was
+           #929497. An unstyled HUD is unchanged; a red one gets a dim red
+           label instead of a grey one, which is the point. */
+        static final double LABEL_DIM = 0.58;
+
+        public final boolean plate;
+        public final int plateRgb;
+        public final int plateAlpha;
+        public final int textRgb;
+        public final int textAlpha;
+
+        Style(boolean plate, int plateRgb, int plateAlpha, int textRgb, int textAlpha) {
+            this.plate = plate;
+            this.plateRgb = plateRgb & 0xFFFFFF;
+            this.plateAlpha = clampAlpha(plateAlpha);
+            this.textRgb = textRgb & 0xFFFFFF;
+            this.textAlpha = clampAlpha(textAlpha);
+        }
+
+        static Style defaults() {
+            return new Style(true, DEF_PLATE_RGB, DEF_PLATE_ALPHA, DEF_TEXT_RGB, DEF_TEXT_ALPHA);
+        }
+
+        Style withPlate(boolean on) { return new Style(on, plateRgb, plateAlpha, textRgb, textAlpha); }
+        Style withPlateRgb(int rgb) { return new Style(plate, rgb, plateAlpha, textRgb, textAlpha); }
+        Style withPlateAlpha(int a) { return new Style(plate, plateRgb, a, textRgb, textAlpha); }
+        Style withTextRgb(int rgb) { return new Style(plate, plateRgb, plateAlpha, rgb, textAlpha); }
+        Style withTextAlpha(int a) { return new Style(plate, plateRgb, plateAlpha, textRgb, a); }
+
+        /** ARGB, which is what every fill and text call in Minecraft wants */
+        public int plateArgb() { return argb(plateRgb, plateAlpha); }
+        public int textArgb() { return argb(textRgb, textAlpha); }
+        public int labelArgb() { return argb(textRgb, (int) Math.round(textAlpha * LABEL_DIM)); }
+
+        /** the 1px outline, which fades with the plate rather than staying
+         *  bright over a box that has been made transparent */
+        public int edgeArgb() {
+            int a = (Paint.EDGE >>> 24) * plateAlpha / 100;
+            return (a << 24) | (Paint.EDGE & 0xFFFFFF);
+        }
+
+        static int argb(int rgb, int alphaPercent) {
+            int a = clampAlpha(alphaPercent) * 255 / 100;
+            return (a << 24) | (rgb & 0xFFFFFF);
+        }
+
+        private static int clampAlpha(int a) {
+            return a < 0 ? 0 : (a > 100 ? 100 : a);
+        }
+    }
+
     /** Where an element sits: one of nine anchors, a percentage offset from
-     *  it, and a scale — plus the launcher's own words for what it is.
+     *  it, and a scale — plus how it is painted and the launcher's own words
+     *  for what it is.
      *
      *  <p>IMMUTABLE, AND EDITED BY REPLACEMENT. The in-game editor moves
      *  these constantly, and the alternative — public mutable fields — would
@@ -111,9 +200,11 @@ public final class HudConfig {
         public final String module;
         /** the launcher's label — what a list calls this one element */
         public final String label;
+        /** how it is painted; never null */
+        public final Style style;
 
         Element(boolean on, String anchor, double x, double y, double scale, boolean compass,
-                String module, String label) {
+                String module, String label, Style style) {
             this.on = on;
             this.anchor = isAnchor(anchor) ? anchor : "tl";
             this.x = clampPercent(x);
@@ -122,22 +213,27 @@ public final class HudConfig {
             this.compass = compass;
             this.module = module == null || module.isEmpty() ? "" : module;
             this.label = label == null || label.isEmpty() ? this.module : label;
+            this.style = style == null ? Style.defaults() : style;
         }
 
         Element movedTo(String anchor, double x, double y) {
-            return new Element(on, anchor, x, y, scale, compass, module, label);
+            return new Element(on, anchor, x, y, scale, compass, module, label, style);
         }
 
         Element scaledTo(double s) {
-            return new Element(on, anchor, x, y, s, compass, module, label);
+            return new Element(on, anchor, x, y, s, compass, module, label, style);
         }
 
         Element switchedTo(boolean nowOn) {
-            return new Element(nowOn, anchor, x, y, scale, compass, module, label);
+            return new Element(nowOn, anchor, x, y, scale, compass, module, label, style);
         }
 
         Element withCompass(boolean nowOn) {
-            return new Element(on, anchor, x, y, scale, nowOn, module, label);
+            return new Element(on, anchor, x, y, scale, nowOn, module, label, style);
+        }
+
+        Element styled(Style s) {
+            return new Element(on, anchor, x, y, scale, compass, module, label, s);
         }
 
         /** the name shown in a list, never blank: an element the launcher
@@ -224,8 +320,8 @@ public final class HudConfig {
      *  two that are useful without being asked for, not all eleven. */
     public static HudConfig defaults() {
         Map<String, Element> m = new LinkedHashMap<>();
-        m.put("fps", new Element(true, "tl", 2.6, 4.2, 1.0, false, "FPS", "FPS"));
-        m.put("coords", new Element(true, "tl", 2.6, 8.4, 1.0, false, "Coordinates", "Coordinates"));
+        m.put("fps", new Element(true, "tl", 2.6, 4.2, 1.0, false, "FPS", "FPS", Style.defaults()));
+        m.put("coords", new Element(true, "tl", 2.6, 8.4, 1.0, false, "Coordinates", "Coordinates", Style.defaults()));
         return new HudConfig(m, false, false, 0);
     }
 
@@ -325,7 +421,16 @@ public final class HudConfig {
             b.append(" \"anchor\": \"").append(esc(el.anchor)).append("\",");
             b.append(" \"x\": ").append(num(el.x)).append(',');
             b.append(" \"y\": ").append(num(el.y)).append(',');
-            b.append(" \"scale\": ").append(num(el.scale));
+            b.append(" \"scale\": ").append(num(el.scale)).append(',');
+            /* ALWAYS WRITTEN, never omitted when it happens to equal the
+               default. The launcher writes all five unconditionally, and a
+               document where a field appears or vanishes depending on its
+               value is one where "absent" has to mean two things. */
+            b.append(" \"plate\": ").append(el.style.plate).append(',');
+            b.append(" \"plateColour\": \"").append(hex(el.style.plateRgb)).append("\",");
+            b.append(" \"plateAlpha\": ").append(el.style.plateAlpha).append(',');
+            b.append(" \"textColour\": \"").append(hex(el.style.textRgb)).append("\",");
+            b.append(" \"textAlpha\": ").append(el.style.textAlpha);
             /* written only where it means something, exactly as the launcher
                writes it: a compass flag on a boot icon is noise in a file two
                programs have to agree about */
@@ -344,6 +449,13 @@ public final class HudConfig {
         double r = Math.round(v * 100.0) / 100.0;
         if (r == Math.rint(r) && !Double.isInfinite(r)) return Long.toString((long) r);
         return String.format(java.util.Locale.ROOT, "%.2f", r);
+    }
+
+    /* Upper case, six digits, always — the launcher normalises to the same
+       form, and a round trip that changed #e3b439 into #E3B439 would look
+       like an edit nobody made. */
+    private static String hex(int rgb) {
+        return String.format(java.util.Locale.ROOT, "#%06X", rgb & 0xFFFFFF);
     }
 
     /* The launcher's labels are the launcher's, not ours, so they are escaped
@@ -393,6 +505,16 @@ public final class HudConfig {
             String body = text.substring(open + 1, close);
 
             if (isPlainName(name)) {
+                /* PLATE DEFAULTS TO ON, so the test is "is it explicitly
+                   false" rather than "is it explicitly true": a document
+                   written before this field existed has no opinion, and the
+                   answer for no opinion has to be the way it already looked. */
+                Style st = new Style(
+                    !hasFalse(body, "plate"),
+                    hexOf(body, "plateColour", Style.DEF_PLATE_RGB),
+                    (int) numOf(body, "plateAlpha", Style.DEF_PLATE_ALPHA),
+                    hexOf(body, "textColour", Style.DEF_TEXT_RGB),
+                    (int) numOf(body, "textAlpha", Style.DEF_TEXT_ALPHA));
                 out.put(name, new Element(
                     boolOf(body, "on"),
                     strOf(body, "anchor"),
@@ -401,7 +523,8 @@ public final class HudConfig {
                     numOf(body, "scale", 1.0),
                     boolOf(body, "compass"),
                     strOf(body, "module"),
-                    strOf(body, "label")));
+                    strOf(body, "label"),
+                    st));
             }
             i = close + 1;
         }
@@ -445,6 +568,30 @@ public final class HudConfig {
         int s = valueStart(body, key);
         if (s < 0) return false;
         return body.regionMatches(true, s, "true", 0, 4);
+    }
+
+    /** "is this key present AND false" — which is a different question from
+     *  boolOf, and the difference is what lets a field default to true */
+    private static boolean hasFalse(String body, String key) {
+        int s = valueStart(body, key);
+        if (s < 0) return false;
+        return body.regionMatches(true, s, "false", 0, 5);
+    }
+
+    /* #RRGGBB, and anything else is the default. A colour is the one field
+       here where a half-understood value is worse than none: a parser that
+       took "#GG0000" as some number would paint an element in a colour
+       nobody chose and leave them unable to see what they had done. */
+    private static int hexOf(String body, String key, int fallback) {
+        String s = strOf(body, key);
+        if (s.length() != 7 || s.charAt(0) != '#') return fallback;
+        int v = 0;
+        for (int i = 1; i < 7; i++) {
+            int d = Character.digit(s.charAt(i), 16);
+            if (d < 0) return fallback;
+            v = (v << 4) | d;
+        }
+        return v;
     }
 
     private static String strOf(String body, String key) {

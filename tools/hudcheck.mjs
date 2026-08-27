@@ -208,6 +208,58 @@ const badSub = subs.filter(([, el, sub]) => hud.ELEMENT_SUB[el] !== sub);
 ok('and the launcher agrees with every one of them', badSub.length === 0,
   badSub.map(([, el, sub]) => el + ': markup says ' + sub).join(' | '));
 
+/* ── 6b. per-element style, which is why version 4 exists ──────────────── */
+console.log('');
+console.log('colour and the plate belong to the element, not to the whole HUD');
+const plain2 = hud.build({ elements: { fps: { a: 'tl', x: 1, y: 1, s: 1 } } }).doc.elements.fps;
+ok('an element nobody styled gets a plate', plain2.plate === true);
+ok('at exactly the colour the mod always painted', plain2.plateColour === hud.PLATE_COLOUR,
+  plain2.plateColour + ' @ ' + plain2.plateAlpha + '%');
+ok('and the ink the mod always used', plain2.textColour === hud.TEXT_COLOUR
+  && plain2.textAlpha === hud.TEXT_ALPHA);
+ok('every style key is written, never omitted for equalling a default',
+  hud.STYLE_KEYS.every((k) => Object.prototype.hasOwnProperty.call(plain2, k)),
+  hud.STYLE_KEYS.filter((k) => !(k in plain2)).join(' '));
+
+const wild = hud.build({ elements: { fps: { a: 'tl', x: 1, y: 1, s: 1,
+  plate: false, plateColour: '#aabbcc', plateAlpha: 250,
+  textColour: 'red', textAlpha: -5 } } }).doc.elements.fps;
+ok('a plate can be switched off', wild.plate === false);
+ok('a lower-case hex is normalised, not stored twice over',
+  wild.plateColour === '#AABBCC', wild.plateColour);
+ok('an alpha past 100 clamps', wild.plateAlpha === 100, String(wild.plateAlpha));
+ok('and below 0 clamps', wild.textAlpha === 0, String(wild.textAlpha));
+ok('a colour that is not a colour falls back rather than being guessed at',
+  wild.textColour === hud.TEXT_COLOUR, wild.textColour);
+ok('and only ELEMENTS carry colour — the document style stays the two choices',
+  Object.keys(hud.build({ elements: {} }).doc.style).sort().join(' ') === 'corners font');
+
+/* the Java side has to agree about every one of those */
+const cfgJava0 = fs.readFileSync(javaFile, 'utf8');
+for (const k of hud.STYLE_KEYS) {
+  ok('HudConfig reads and writes "' + k + '"', cfgJava0.indexOf('\\"' + k + '\\"') >= 0
+    || cfgJava0.indexOf('"' + k + '"') >= 0);
+}
+ok('the mod defaults the plate to ON when the field is absent',
+  /hasFalse\(body, "plate"\)/.test(cfgJava0),
+  'absent must mean "how it already looked", not "off"');
+ok('and refuses a colour it cannot parse instead of guessing',
+  /hexOf/.test(cfgJava0));
+
+/* ── 6c. and the launcher screen no longer destroys what it does not model ─ */
+console.log('');
+console.log('the launcher HUD screen loads what it saves, and merges what it does not own');
+ok('it reads the stored settings at startup',
+  /function loadHud\(\)/.test(appjs) && /loadHud\(\);/.test(appjs),
+  'ST was built from the markup and never from disk');
+ok('the save merges over what is already stored',
+  /host\.settings\.get\(\)[\s\S]{0,400}?Object\.assign\(\{\}, prevEls\[k\], ST\[k\]\)/.test(appjs),
+  'store.js merges at the top level only, so hud was swapped wholesale');
+ok('and it says which four fields it is entitled to overwrite',
+  /HUD_OWNS\s*=\s*\{\s*a:\s*1,\s*x:\s*1,\s*y:\s*1,\s*s:\s*1\s*\}/.test(appjs));
+ok('the module switches are loaded too, not left on the fixture',
+  /MODG\[k\]\.on = mods\[k\]/.test(appjs));
+
 /* ── 7. two writers, and neither erases the other ──────────────────────── */
 console.log('');
 console.log('the document says who wrote it, which is what stops a clobber');
@@ -376,6 +428,19 @@ if (!fs.existsSync(classes)) {
     ok('and the label, non-ASCII character and all',
       read.helmet && read.helmet[9] === hud.labelOf('helmet'),
       read.helmet ? read.helmet[9] : '');
+    /* columns 10..14 are the per-element style, and the defaults have to
+       arrive as the exact bytes the old hard-coded constants were */
+    ok('an unstyled element defaults to a plate',
+      read.helmet && read.helmet[10] === 'true');
+    ok('at the colour the plate constant always was',
+      read.helmet && read.helmet[11] === hud.PLATE_COLOUR,
+      read.helmet ? read.helmet[11] : '');
+    ok('and the alpha it always had',
+      read.helmet && Number(read.helmet[12]) === hud.PLATE_ALPHA,
+      read.helmet ? read.helmet[12] : '');
+    ok('with the text colour unchanged too',
+      read.helmet && read.helmet[13] === hud.TEXT_COLOUR
+        && Number(read.helmet[14]) === hud.TEXT_ALPHA);
 
     const back = await hud.read(inst);
     ok('what the mod wrote is valid JSON the launcher can parse', back.doc !== null);
@@ -390,6 +455,17 @@ if (!fs.existsSync(classes)) {
     ok('and so do the two style flips',
       fromGame.hud.style.corners === 'rounded' && fromGame.hud.style.font === 'kestrel',
       JSON.stringify(fromGame.hud.style));
+    /* THE WHOLE POINT OF VERSION 4: a colour picked in game reaches the
+       launcher's settings, which is what stops the next launch painting over
+       it in the old greys */
+    const styled = fromGame.hud.elements.fps;
+    ok('a plate switched OFF in game comes back off, not absent',
+      styled.plate === false, JSON.stringify(styled.plate));
+    ok('the text colour picked in game survives',
+      styled.textColour === '#FF5555', String(styled.textColour));
+    ok('and its transparency', styled.textAlpha === 80, String(styled.textAlpha));
+    ok('so does the box colour', styled.plateColour === '#55FF55', String(styled.plateColour));
+    ok('and the box transparency', styled.plateAlpha === 35, String(styled.plateAlpha));
     ok('nothing was dropped on the way back', fromGame.dropped === 0);
   } catch (e) {
     ok('the round trip runs', false, e.message.split('\n')[0]);
