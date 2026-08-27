@@ -1303,7 +1303,16 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     fps: 'tl:1.2:2.4', cps: 'tl:1.2:9.6', ping: 'tl:1.2:16.8', keys: 'bl:1.2:24',
     coords: 'tl:1.2:24', potion: 'tr:1.2:2.4',
     helmet: 'tr:1.2:10', chest: 'tr:1.2:17.2', legs: 'tr:1.2:24.4', boots: 'tr:1.2:31.6',
-    held: 'br:1.2:24'
+    held: 'br:1.2:24',
+    day: 'tl:2.6:20.0',
+    clock: 'tr:2.6:9.8',
+    playtime: 'tr:2.6:12.4',
+    memory: 'bl:2.6:10.0',
+    combo: 'mc:0.0:12.0',
+    totems: 'br:12.0:4.0',
+    tnt: 'tc:0.0:12.0',
+    reach: 'mc:0.0:18.0',
+    pvp: 'ml:3.4:22.0'
   };
 
   HELS.forEach(function (el) {

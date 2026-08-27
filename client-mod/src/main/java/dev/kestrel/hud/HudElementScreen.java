@@ -91,6 +91,13 @@ public class HudElementScreen extends Screen {
     private final Screen parent;
     private final String module;
     private final List<String> owned;
+    /* ── ONE SCREEN, TWO SUBJECTS ──────────────────────────────────────────
+       Non-null when this is editing a FEATURE rather than a module's
+       elements. A feature has no position, no colour and no scale, so it gets
+       only the option rows — which is most of what this screen already builds
+       generically, and the reason a second screen would have been two copies
+       of the same list-building for the sake of one branch. */
+    private final String featureId;
     private final List<Row> rows = new ArrayList<>();
 
     private int which;            /* index into owned */
@@ -107,6 +114,28 @@ public class HudElementScreen extends Screen {
         this.parent = parent;
         this.module = module;
         this.owned = owned == null ? List.of() : owned;
+        this.featureId = null;
+    }
+
+    /** the feature form: options only, no geometry and no colour */
+    public HudElementScreen(HudConfig config, Path runDir, Screen parent, String featureId) {
+        super(Text.literal("Kestrel HUD options"));
+        this.config = config;
+        this.runDir = runDir;
+        this.parent = parent;
+        this.module = "";
+        this.owned = List.of();
+        this.featureId = featureId;
+    }
+
+    private Feature feature() {
+        return featureId == null ? null : config.feature(featureId);
+    }
+
+    /* a feature has nothing to preview, so the strip becomes one line saying
+       what it does — which is more use than an empty well */
+    private int previewH() {
+        return feature() == null ? PREVIEW_H : Paint.ROW + 4;
     }
 
     private String name() {
@@ -121,6 +150,20 @@ public class HudElementScreen extends Screen {
     @Override
     protected void init() {
         rows.clear();
+
+        Feature feat = feature();
+        if (feat != null) {
+            /* A FEATURE HAS NO GEOMETRY AND NO COLOUR — only its own
+               switches, built the same generic way an element's are. */
+            for (String key : feat.optKeys()) {
+                HudConfig.OptSpec sp = config.spec(key);
+                if (sp == null || sp.label.isEmpty()) continue;
+                rows.add(new Row(OPT, sp.label, Paint.ROW, key));
+            }
+            layout();
+            return;
+        }
+
         /* only where it means something: one element means nothing to step */
         if (owned.size() > 1) rows.add(new Row(PICK, "Element", Paint.ROW));
         rows.add(new Row(HEAD, "SIZE AND PLACE", Paint.ROW + Paint.SECTION_GAP));
@@ -153,13 +196,19 @@ public class HudElementScreen extends Screen {
             }
         }
 
+        layout();
+    }
+
+    /** the panel's size and its scrolling region, once, for both forms */
+    private void layout() {
         int content = 0;
         for (Row r : rows) content += r.h;
-        ph = Math.min(TITLE_H + PREVIEW_H + content + Paint.PANEL_PAD * 2 + FOOT_H, this.height - 20);
+        int preview = previewH();
+        ph = Math.min(TITLE_H + preview + content + Paint.PANEL_PAD * 2 + FOOT_H, this.height - 20);
         px = (this.width - PANEL_W) / 2;
         py = (this.height - ph) / 2;
-        viewTop = py + TITLE_H + PREVIEW_H + Paint.PANEL_PAD;
-        viewH = ph - TITLE_H - PREVIEW_H - FOOT_H - Paint.PANEL_PAD * 2;
+        viewTop = py + TITLE_H + preview + Paint.PANEL_PAD;
+        viewH = ph - TITLE_H - preview - FOOT_H - Paint.PANEL_PAD * 2;
         clampScroll();
     }
 
@@ -201,7 +250,8 @@ public class HudElementScreen extends Screen {
         HudConfig.Element el = element();
 
         Ui.panel(ctx, px, py, PANEL_W, ph);
-        String title = el == null ? module : el.display(name());
+        Feature ft = feature();
+        String title = ft != null ? ft.label : el == null ? module : el.display(name());
         Ui.left(ctx, this.textRenderer, title.toUpperCase(java.util.Locale.ROOT),
             px + Paint.PANEL_PAD, py + 7, Paint.VALUE);
         boolean overBack = Ui.hit(mouseX, mouseY, closeX(), closeY(), 11, 11);
@@ -209,11 +259,20 @@ public class HudElementScreen extends Screen {
         Ui.rule(ctx, px + 1, py + TITLE_H - 1, PANEL_W - 2);
 
         int pvY = py + TITLE_H;
+        int pvH = previewH();
         /* square: this strip spans the panel and butts against the title
            rule above and the rows below, so it has no free corners to round */
-        ctx.fill(px + 1, pvY, px + PANEL_W - 1, pvY + PREVIEW_H, Paint.WELL);
-        if (el != null) previewOf(ctx, el, px + 1, pvY, PANEL_W - 2, PREVIEW_H);
-        Ui.rule(ctx, px + 1, pvY + PREVIEW_H - 1, PANEL_W - 2);
+        ctx.fill(px + 1, pvY, px + PANEL_W - 1, pvY + pvH, Paint.WELL);
+        Feature feat = feature();
+        if (feat != null) {
+            /* A FEATURE HAS NOTHING TO PREVIEW, so the strip says what it
+               does instead — which is the only place in the menu that ever
+               explains one, and more use than an empty well. */
+            Ui.left(ctx, this.textRenderer, feat.desc, px + Paint.PANEL_PAD, pvY + 4, Paint.MUTE);
+        } else if (el != null) {
+            previewOf(ctx, el, px + 1, pvY, PANEL_W - 2, pvH);
+        }
+        Ui.rule(ctx, px + 1, pvY + pvH - 1, PANEL_W - 2);
 
         int lx = px + Paint.PANEL_PAD;
         int lw = PANEL_W - Paint.PANEL_PAD * 2;
@@ -257,7 +316,7 @@ public class HudElementScreen extends Screen {
             Ui.heading(ctx, this.textRenderer, r.label, x, y + Paint.SECTION_GAP + 3, w);
             return;
         }
-        if (el == null) return;
+        if (el == null && feature() == null) return;
 
         boolean over = my >= y && my < y + Paint.ROW && mx >= x && mx < x + w;
         if (over && r.kind != PLATE_RGB && r.kind != TEXT_RGB) Ui.rowHover(ctx, x - 2, y, w + 4, Paint.ROW);
@@ -307,13 +366,16 @@ public class HudElementScreen extends Screen {
             case OPT: {
                 HudConfig.OptSpec sp = config.spec(r.key);
                 if (sp == null) break;
+                Feature fo = feature();
                 if (sp.isEnum()) {
                     Ui.stepper(ctx, this.textRenderer, sx, sy, VALUE_W, 11,
-                        el.choice(r.key, sp.vals.get(0)).toUpperCase(java.util.Locale.ROOT),
+                        (fo != null ? fo.choice(r.key, sp.vals.get(0))
+                                    : el.choice(r.key, sp.vals.get(0))).toUpperCase(java.util.Locale.ROOT),
                         Ui.hit(mx, my, sx, sy, Ui.STEP_ARROW, 11),
                         Ui.hit(mx, my, sx + VALUE_W - Ui.STEP_ARROW, sy, Ui.STEP_ARROW, 11));
                 } else {
-                    Ui.check(ctx, rightX - Ui.BOX, y + (Paint.ROW - Ui.BOX) / 2, el.flag(r.key),
+                    Ui.check(ctx, rightX - Ui.BOX, y + (Paint.ROW - Ui.BOX) / 2,
+                        fo != null ? fo.flag(r.key) : el.flag(r.key),
                         Ui.hit(mx, my, rightX - Ui.BOX, y + (Paint.ROW - Ui.BOX) / 2, Ui.BOX, Ui.BOX));
                 }
                 break;
@@ -342,6 +404,41 @@ public class HudElementScreen extends Screen {
         if (Ui.hit(mouseX, mouseY, closeX(), closeY(), 11, 11)) { close(); return true; }
         if (Ui.hit(mouseX, mouseY, lx, backY(), lw, 14)) { close(); return true; }
         if (mouseY < viewTop || mouseY >= viewTop + viewH) return super.mouseClicked(mouseX, mouseY, button);
+
+        /* ── THE FEATURE FORM: OPTION ROWS AND NOTHING ELSE ───────────────
+           Handled first and separately rather than threading a null element
+           through the geometry cases below, which would have been five
+           `if (feature != null)` guards in a row. */
+        Feature feat = feature();
+        if (feat != null) {
+            int y2 = viewTop - scroll;
+            int rx = lx + lw;
+            for (Row r : rows) {
+                if (r.kind == OPT) {
+                    HudConfig.OptSpec sp = config.spec(r.key);
+                    int sy2 = y2 + (Paint.ROW - 11) / 2;
+                    int sx2 = rx - VALUE_W;
+                    if (sp != null && sp.isEnum()) {
+                        if (Ui.hit(mouseX, mouseY, sx2, sy2, VALUE_W, 11)) {
+                            boolean back = mouseX < sx2 + VALUE_W / 2.0;
+                            String cur = feat.choice(r.key, sp.vals.get(0));
+                            int at = Math.max(0, sp.vals.indexOf(cur));
+                            int nx = (at + (back ? sp.vals.size() - 1 : 1)) % sp.vals.size();
+                            config.putFeature(feat.id, feat.withOpt(r.key, '"' + sp.vals.get(nx) + '"'));
+                            click();
+                            return true;
+                        }
+                    } else if (Ui.hit(mouseX, mouseY, rx - Ui.BOX,
+                                      y2 + (Paint.ROW - Ui.BOX) / 2, Ui.BOX, Ui.BOX)) {
+                        config.putFeature(feat.id, feat.withOpt(r.key, feat.flag(r.key) ? "false" : "true"));
+                        click();
+                        return true;
+                    }
+                }
+                y2 += r.h;
+            }
+            return super.mouseClicked(mouseX, mouseY, button);
+        }
 
         String n = name();
         HudConfig.Element el = element();

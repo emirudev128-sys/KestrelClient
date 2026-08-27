@@ -1,4 +1,8 @@
 {
   "category.kestrel-hud": "Kestrel",
-  "key.kestrel-hud.menu": "Open the HUD menu"
+  "key.kestrel-hud.menu": "Open the HUD menu",
+  "key.kestrel-hud.sprint": "Toggle sprint",
+  "key.kestrel-hud.sneak": "Toggle sneak",
+  "key.kestrel-hud.zoom": "Zoom",
+  "key.kestrel-hud.snaplook": "Snap look"
 }

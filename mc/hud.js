@@ -102,7 +102,19 @@ const ELEMENT_MODULE = {
   chest: 'Armor status',
   legs: 'Armor status',
   boots: 'Armor status',
-  held: 'Armor status'
+  held: 'Armor status',
+  /* ── THE SECOND WAVE ────────────────────────────────────────────────────
+     Each one its own module, because each is a thing a player switches on or
+     off by itself — unlike the five armour rows, which are one decision. */
+  day: 'Day counter',
+  clock: 'Clock',
+  playtime: 'Playtime',
+  memory: 'Memory',
+  combo: 'Combo counter',
+  totems: 'Totem counter',
+  tnt: 'TNT countdown',
+  reach: 'Reach display',
+  pvp: 'PvP info'
 };
 const ELEMENTS = Object.keys(ELEMENT_MODULE);
 
@@ -162,7 +174,11 @@ const ELEMENT_OPTS = {
     buttons: { type: 'enum', vals: ['left', 'right', 'both'], def: 'left', label: 'Count' }
   },
   ping: {
-    unit: { type: 'bool', def: true, label: 'Show "ms"' }
+    /* "Show the unit" and not 'Show "ms"', because reach declares the same
+       switch and one global spec table means one name is one option — label
+       included. The row sits under the element's own title, so the context
+       already says which unit is meant. */
+    unit: { type: 'bool', def: true, label: 'Show the unit' }
   },
   keys: {
     mouse: { type: 'bool', def: true, label: 'Show mouse buttons' },
@@ -178,6 +194,40 @@ const ELEMENT_OPTS = {
     duration: { type: 'bool', def: true, label: 'Show time left' },
     ambient: { type: 'bool', def: false, label: 'Include beacon effects' }
   },
+  day: {
+    label: { type: 'bool', def: true, label: 'Show the word "Day"' }
+  },
+  clock: {
+    seconds: { type: 'bool', def: false, label: 'Show seconds' },
+    ampm: { type: 'bool', def: false, label: '12-hour clock' }
+  },
+  playtime: {
+    seconds: { type: 'bool', def: true, label: 'Show seconds' }
+  },
+  memory: {
+    /* NOT `unit`, which is already a switch on ping and reach meaning "print
+       the unit after the number". One global spec table means one name is one
+       option, and the same name carrying a different TYPE on a different
+       element is how the menu ends up drawing a checkbox for a three-value
+       choice. hudcheck asserts the names cannot collide like that. */
+    format: { type: 'enum', vals: ['gb', 'mb', 'percent'], def: 'gb', label: 'Show as' }
+  },
+  combo: {
+    hide: { type: 'bool', def: true, label: 'Hide when idle' }
+  },
+  totems: {
+    offhand: { type: 'bool', def: true, label: 'Count the offhand' }
+  },
+  tnt: {
+    ticks: { type: 'bool', def: false, label: 'Count in ticks' }
+  },
+  reach: {
+    unit: { type: 'bool', def: true, label: 'Show the unit' }
+  },
+  pvp: {
+    health: { type: 'bool', def: true, label: 'Show their health' },
+    distance: { type: 'bool', def: false, label: 'Show the distance' }
+  },
   helmet: { wear: { type: 'enum', vals: ['bar', 'percent', 'none'], def: 'bar', label: 'Durability' } },
   chest: { wear: { type: 'enum', vals: ['bar', 'percent', 'none'], def: 'bar', label: 'Durability' } },
   legs: { wear: { type: 'enum', vals: ['bar', 'percent', 'none'], def: 'bar', label: 'Durability' } },
@@ -188,15 +238,19 @@ const ELEMENT_OPTS = {
 /* every distinct option across every element, deduped by name */
 function optSpec() {
   const out = {};
-  for (const el of Object.keys(ELEMENT_OPTS)) {
-    const spec = ELEMENT_OPTS[el];
+  const add = function (spec) {
     for (const key of Object.keys(spec)) {
       if (out[key]) continue;
       out[key] = spec[key].type === 'enum'
         ? { label: spec[key].label, vals: spec[key].vals.slice() }
         : { label: spec[key].label };
     }
-  }
+  };
+  for (const el of Object.keys(ELEMENT_OPTS)) add(ELEMENT_OPTS[el]);
+  /* FEATURE OPTIONS GO IN THE SAME TABLE, so the menu resolves a label the
+     same way whichever kind of row it is drawing. The name-collision rule
+     covers both together, which is what makes that possible. */
+  for (const f of FEATURE_NAMES) add(FEATURES[f].opts);
   return out;
 }
 
@@ -238,6 +292,112 @@ const ANCHORS = ['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br'];
    read. Kestrel's own face is the deliberate choice, not the imposed one. */
 const CORNERS = ['sharp', 'rounded'];
 const FONTS = ['minecraft', 'kestrel'];
+
+/* ══ FEATURES — THE SECOND NOUN ═══════════════════════════════════════════
+   An ELEMENT is a plate of text at one of nine anchors with an offset, a
+   scale and a style. Half of what was asked for next is not that: a toggle
+   sprint has no anchor, zoom has a key and a field of view, a chunk-border
+   overlay is drawn in the world in 3D rather than on the HUD plane. Forcing
+   those into `elements` would put `plateAlpha` on things that cannot have
+   one, and the first person to open the options screen for "Zoom" would find
+   a colour picker.
+
+   So a feature is its own thing: ON OR OFF, A KEY, AND ITS OWN OPTIONS. No
+   position, no colour, no scale. It reuses the same option machinery the
+   elements use — declared here with a type, a default and a label, and named
+   once in the same top-level `optSpec` — so the in-game menu builds a
+   feature's rows exactly the way it builds an element's.
+
+   A KEY IS A GLFW NAME, not a code. "KEY_C" survives a keyboard layout and a
+   remap where 67 does not, and it is the string Minecraft's own InputUtil
+   parses. An empty key means "no binding": the feature is off unless
+   something else turns it on.
+
+   NOT EVERYTHING ASKED FOR IS HERE, and the gaps are deliberate rather than
+   forgotten — see docs/hud-backlog.md. Freelook and hit colours need a MIXIN,
+   which is a build-time weave into somebody else's class with its own config
+   and refmap that breaks differently on every Minecraft version; adding the
+   mod's first one for a HUD convenience, untested in a running game, is a bad
+   trade. They are named in the backlog with that reason. */
+const FEATURES = {
+  sprint: {
+    label: 'Toggle sprint',
+    desc: 'Hold it once and stay sprinting',
+    key: 'KEY_V',
+    opts: {}
+  },
+  sneak: {
+    label: 'Toggle sneak',
+    desc: 'Hold it once and stay sneaking',
+    key: '',
+    opts: {}
+  },
+  zoom: {
+    label: 'Zoom',
+    desc: 'Narrow the field of view while held',
+    key: 'KEY_C',
+    opts: {
+      amount: { type: 'enum', vals: ['2x', '4x', '8x'], def: '4x', label: 'How far' },
+      smooth: { type: 'bool', def: true, label: 'Smooth the mouse while zoomed' }
+    }
+  },
+  snaplook: {
+    label: 'Snap look',
+    desc: 'Turn a fixed amount instantly',
+    key: 'KEY_LEFT_ALT',
+    opts: {
+      turn: { type: 'enum', vals: ['180', '90', '45'], def: '180', label: 'Degrees' }
+    }
+  },
+  hitbox: {
+    label: 'Hitboxes',
+    desc: 'Outline entities in the world',
+    key: '',
+    opts: {
+      players: { type: 'bool', def: true, label: 'Players only' }
+    }
+  },
+  chunks: {
+    label: 'Chunk borders',
+    desc: 'Draw the edges of the chunk you are in',
+    key: '',
+    opts: {
+      neighbours: { type: 'bool', def: false, label: 'Include the chunks around it' }
+    }
+  }
+};
+const FEATURE_NAMES = Object.keys(FEATURES);
+
+/* a GLFW key name, or empty for unbound. Checked against a shape rather than
+   a list: Minecraft's own InputUtil knows every name there is and this side
+   has no business keeping a second copy of that list. */
+const KEY_RE = /^KEY_[A-Z0-9_]{1,24}$/;
+
+function featureFor(name, raw) {
+  const spec = FEATURES[name];
+  if (!spec) return null;
+  const r = (raw && typeof raw === 'object') ? raw : {};
+  const key = KEY_RE.test(String(r.key)) ? String(r.key) : (r.key === '' ? '' : spec.key);
+  const out = { on: r.on === true, label: spec.label, desc: spec.desc, key: key };
+  const o = optsFrom(spec.opts, r.opts);
+  if (Object.keys(o).length) out.opts = o;
+  return out;
+}
+
+/* the same validation optsFor does, against an arbitrary declaration rather
+   than an element's — one implementation, two callers */
+function optsFrom(spec, raw) {
+  const out = {};
+  if (!spec) return out;
+  const src = (raw && typeof raw === 'object') ? raw : {};
+  for (const key of Object.keys(spec)) {
+    const sp = spec[key];
+    const v = src[key];
+    if (sp.type === 'bool') out[key] = v === undefined ? sp.def : v === true;
+    else out[key] = sp.vals.indexOf(String(v)) >= 0 ? String(v) : sp.def;
+  }
+  return out;
+}
 
 /* who last wrote the document, and the only two answers there are */
 const WRITERS = ['launcher', 'game'];
@@ -286,7 +446,7 @@ function alpha(v, fallback) {
   return n < 0 ? 0 : (n > 100 ? 100 : Math.round(n));
 }
 
-const VERSION = 5;
+const VERSION = 6;
 const FILE = 'kestrel-hud.json';
 
 /* A config file is a few hundred bytes. Anything past this is not a config
@@ -403,9 +563,20 @@ function build(hud, rev) {
        and its three values five times would be five copies to keep in step.
        Keyed by option name; the names are globally distinct on purpose. */
     optSpec: optSpec(),
-    elements: elements
+    elements: elements,
+    /* every feature, always — an absent one would read as "this launcher does
+       not know about zoom" rather than "zoom is off", and the mod would have
+       no row to offer */
+    features: featuresOf(h.features)
   };
   return { doc: doc, dropped: dropped, count: Object.keys(elements).length, on: on };
+}
+
+function featuresOf(raw) {
+  const src = (raw && typeof raw === 'object') ? raw : {};
+  const out = {};
+  for (const name of FEATURE_NAMES) out[name] = featureFor(name, src[name]);
+  return out;
 }
 
 /* ── the document -> a settings object ────────────────────────────────────
@@ -460,6 +631,7 @@ function fromDoc(doc) {
   return {
     hud: {
       elements: elements,
+      features: featuresOf(d.features),
       modules: modules,
       style: {
         corners: CORNERS.indexOf(String(st.corners)) >= 0 ? String(st.corners) : 'sharp',
@@ -569,6 +741,7 @@ async function write(gameDir, hud, log, rev) {
 module.exports = {
   sync, read, write, build, fromDoc, labelOf,
   ELEMENTS, ELEMENT_MODULE, ELEMENT_SUB, ELEMENT_OPTS, optsFor, optSpec,
+  FEATURES, FEATURE_NAMES, featureFor, featuresOf,
   ANCHORS, CORNERS, FONTS, WRITERS,
   FILE, VERSION, SCALE_MIN, SCALE_MAX, MAX_BYTES,
   PLATE_COLOUR, PLATE_ALPHA, TEXT_COLOUR, TEXT_ALPHA,

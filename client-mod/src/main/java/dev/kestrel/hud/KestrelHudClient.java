@@ -58,6 +58,7 @@ public class KestrelHudClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        Session.begin();
         runDir = FabricLoader.getInstance().getGameDir();
         config = HudConfig.read(runDir);
         LOG.info("Kestrel HUD: {} element(s) configured at revision {}, {} corners, {} font",
@@ -68,8 +69,20 @@ public class KestrelHudClient implements ClientModInitializer {
         menuKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
             "key." + MOD_ID + ".menu", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, "category." + MOD_ID));
 
+        /* the features that DO something rather than draw something: their
+           keys are registered from the document, so a feature added in
+           mc/hud.js arrives with a binding and no Java changing */
+        Behaviours.register(config);
+
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
         HudRenderCallback.EVENT.register(this::draw);
+        /* AND THE ONES DRAWN IN THE WORLD. A different pass entirely — these
+           are lines in 3D with depth, and they have to go in while the world
+           is still being drawn or they would float on top of terrain that
+           should hide them. AFTER_ENTITIES so an outline lands on top of the
+           thing it outlines. */
+        net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents.AFTER_ENTITIES
+            .register(ctx -> Overlays.render(ctx, config));
     }
 
     /* Drained in a while loop rather than read once: wasPressed() pops one
@@ -85,6 +98,12 @@ public class KestrelHudClient implements ClientModInitializer {
         if (client.options != null) {
             Clicks.tick(client.options.attackKey.isPressed(), client.options.useKey.isPressed());
         }
+        /* the combo, reach and PvP readouts all key off the same attack, so
+           one watcher feeds all three rather than three keeping their own
+           copy of "who did I last hit and when" */
+        Combat.tick(client);
+        if (client.world == null) Combat.reset();
+        Behaviours.tick(client, config);
         while (menuKey.wasPressed()) {
             /* IN A WORLD, AND NOT OVER ANOTHER SCREEN. This configures a HUD
                that only exists in a world, and opening it over the title

@@ -117,7 +117,8 @@ final class HudElements {
      *  positioned — it just does not appear in the world. */
     private static final List<String> DRAWN = List.of(
         "fps", "cps", "ping", "keys", "coords", "potion",
-        "helmet", "chest", "legs", "boots", "held");
+        "helmet", "chest", "legs", "boots", "held",
+        "day", "clock", "playtime", "memory", "combo", "totems", "tnt", "reach", "pvp");
 
     static boolean drawn(String name) {
         return DRAWN.contains(name);
@@ -185,6 +186,66 @@ final class HudElements {
                 return out;
             }
             case "potion": return potions(el, client, face, false);
+
+            case "day": {
+                if (client.world == null) return null;
+                long d = client.world.getTimeOfDay() / 24000L;
+                List<Run> r = new ArrayList<>(2);
+                if (el.flag("label")) r.add(new Run(face, "Day", LABEL));
+                r.add(new Run(face, Long.toString(d), VALUE));
+                return one(r);
+            }
+            case "clock": {
+                java.time.LocalTime t = java.time.LocalTime.now();
+                return one(row(new Run(face, wallClock(t.getHour(), t.getMinute(), t.getSecond(),
+                    el.flag("seconds"), el.flag("ampm")), VALUE)));
+            }
+            case "playtime":
+                return one(row(new Run(face, span(Session.millis(), el.flag("seconds")), VALUE)));
+            case "memory":
+                return one(memory(el, face));
+            case "combo": {
+                int n = Combat.combo();
+                if (n <= 0 && el.flag("hide")) return null;
+                return one(row(new Run(face, Integer.toString(n), n > 0 ? VALUE : LABEL),
+                    new Run(face, n == 1 ? "hit" : "hits", LABEL)));
+            }
+            case "totems": {
+                int n = totems(client, el.flag("offhand"));
+                return one(row(new Run(face, Integer.toString(n), n == 0 ? ACCENT : VALUE),
+                    new Run(face, n == 1 ? "totem" : "totems", LABEL)));
+            }
+            case "tnt": {
+                Double fuse = nearestFuse(client);
+                if (fuse == null) return null;
+                return one(el.flag("ticks")
+                    ? row(new Run(face, Integer.toString((int) Math.round(fuse * 20)), ACCENT),
+                          new Run(face, "t", LABEL))
+                    : row(new Run(face, String.format(java.util.Locale.ROOT, "%.1f", fuse), ACCENT),
+                          new Run(face, "s", LABEL)));
+            }
+            case "reach": {
+                double d = Combat.reach();
+                if (d < 0) return null;
+                List<Run> r = row(new Run(face, String.format(java.util.Locale.ROOT, "%.2f", d), VALUE));
+                if (el.flag("unit")) r.add(new Run(face, "blocks", LABEL));
+                return one(r);
+            }
+            case "pvp": {
+                Combat.refresh(client);
+                String who = Combat.target();
+                if (who.isEmpty()) return null;
+                List<Run> r = row(new Run(face, who, VALUE));
+                if (el.flag("health") && Combat.targetHealth() >= 0) {
+                    float hp = Combat.targetHealth();
+                    r.add(new Run(face, trim(hp), hp <= 6 ? ACCENT : LABEL));
+                }
+                if (el.flag("distance") && Combat.targetDistance() >= 0) {
+                    r.add(new Run(face,
+                        String.format(java.util.Locale.ROOT, "%.1fm", Combat.targetDistance()), LABEL));
+                }
+                return one(r);
+            }
             default: return armour(name, el, client, face, false);
         }
     }
@@ -318,8 +379,127 @@ final class HudElements {
                 return out;
             }
             case "potion": return potions(el, null, face, true);
+            case "day": {
+                List<Run> r = new ArrayList<>(2);
+                if (el.flag("label")) r.add(new Run(face, "Day", LABEL));
+                r.add(new Run(face, "214", VALUE));
+                return one(r);
+            }
+            case "clock":
+                return one(row(new Run(face,
+                    wallClock(23, 41, 8, el.flag("seconds"), el.flag("ampm")), VALUE)));
+            case "playtime":
+                return one(row(new Run(face, span(6127000L, el.flag("seconds")), VALUE)));
+            case "memory":
+                return one(memory(el, face));
+            case "combo":
+                return one(row(new Run(face, "5", VALUE), new Run(face, "hits", LABEL)));
+            case "totems":
+                return one(row(new Run(face, "3", VALUE), new Run(face, "totems", LABEL)));
+            case "tnt":
+                return one(el.flag("ticks")
+                    ? row(new Run(face, "48", ACCENT), new Run(face, "t", LABEL))
+                    : row(new Run(face, "2.4", ACCENT), new Run(face, "s", LABEL)));
+            case "reach": {
+                List<Run> r = row(new Run(face, "3.42", VALUE));
+                if (el.flag("unit")) r.add(new Run(face, "blocks", LABEL));
+                return one(r);
+            }
+            case "pvp": {
+                List<Run> r = row(new Run(face, "Cobblestone_", VALUE));
+                if (el.flag("health")) r.add(new Run(face, "14.5", LABEL));
+                if (el.flag("distance")) r.add(new Run(face, "3.1m", LABEL));
+                return one(r);
+            }
             default: return armour(name, el, null, face, true);
         }
+    }
+
+    /* ── the second wave's arithmetic ─────────────────────────────────────
+       Each of these is small enough to inline and is not, because the LIVE and
+       SAMPLE branches both need it — and two copies of a format string is two
+       chances for the preview to disagree with the thing it previews. */
+
+    private static String wallClock(int h, int m, int sec, boolean seconds, boolean ampm) {
+        String suffix = "";
+        if (ampm) {
+            suffix = h < 12 ? " AM" : " PM";
+            h = h % 12;
+            if (h == 0) h = 12;
+        }
+        StringBuilder b = new StringBuilder();
+        b.append(ampm ? Integer.toString(h) : two(h)).append(':').append(two(m));
+        if (seconds) b.append(':').append(two(sec));
+        return b.append(suffix).toString();
+    }
+
+    /** an elapsed span: h:mm:ss, or h:mm when seconds are not wanted */
+    private static String span(long ms, boolean seconds) {
+        long s = Math.max(0, ms) / 1000L;
+        long h = s / 3600, m = (s / 60) % 60;
+        return seconds ? h + ":" + two((int) m) + ":" + two((int) (s % 60)) : h + ":" + two((int) m);
+    }
+
+    private static String two(int n) { return (n < 10 ? "0" : "") + n; }
+
+    /* THE HEAP IN USE IS TOTAL MINUS FREE, not `total`. `total` is what the
+       JVM has taken from the OS; it only ever goes up and says nothing about
+       whether you are about to stutter. */
+    private static List<Run> memory(HudConfig.Element el, Face face) {
+        Runtime rt = Runtime.getRuntime();
+        long max = rt.maxMemory();
+        long used = rt.totalMemory() - rt.freeMemory();
+        String how = el.choice("format", "gb");
+        if ("percent".equals(how)) {
+            int pc = max <= 0 ? 0 : (int) Math.round(used * 100.0 / max);
+            return row(new Run(face, pc + "%", pc >= 90 ? ACCENT : VALUE));
+        }
+        boolean gb = "gb".equals(how);
+        double div = gb ? 1073741824.0 : 1048576.0;
+        String unit = gb ? "GB" : "MB";
+        String fmt = gb ? "%.1f" : "%.0f";
+        boolean tight = max > 0 && used * 100.0 / max >= 90;
+        return row(
+            new Run(face, String.format(java.util.Locale.ROOT, fmt, used / div), tight ? ACCENT : VALUE),
+            new Run(face, "/", LABEL),
+            new Run(face, String.format(java.util.Locale.ROOT, fmt, max / div) + " " + unit, LABEL));
+    }
+
+    private static int totems(MinecraftClient c, boolean offhand) {
+        if (c == null || c.player == null) return 0;
+        int n = 0;
+        net.minecraft.entity.player.PlayerInventory inv = c.player.getInventory();
+        for (int i = 0; i < inv.size(); i++) {
+            ItemStack st = inv.getStack(i);
+            if (st != null && st.getItem() == net.minecraft.item.Items.TOTEM_OF_UNDYING) n += st.getCount();
+        }
+        if (!offhand) {
+            ItemStack off = c.player.getOffHandStack();
+            if (off != null && off.getItem() == net.minecraft.item.Items.TOTEM_OF_UNDYING) n -= off.getCount();
+        }
+        return Math.max(0, n);
+    }
+
+    /* THE NEAREST PRIMED TNT, in seconds. Nothing primed means no plate at all
+       rather than a plate reading zero — a countdown permanently on screen
+       showing nothing is a countdown you stop looking at. */
+    private static Double nearestFuse(MinecraftClient c) {
+        if (c == null || c.world == null || c.player == null) return null;
+        double best = Double.MAX_VALUE;
+        int fuse = -1;
+        for (net.minecraft.entity.Entity e : c.world.getEntities()) {
+            if (!(e instanceof net.minecraft.entity.TntEntity)) continue;
+            double d = c.player.squaredDistanceTo(e);
+            if (d < best) { best = d; fuse = ((net.minecraft.entity.TntEntity) e).getFuse(); }
+        }
+        return fuse < 0 ? null : Double.valueOf(fuse / 20.0);
+    }
+
+    /** 14.0 -> "14", 14.5 -> "14.5" — half a heart is worth a decimal and a
+     *  whole one is not */
+    private static String trim(float v) {
+        return v == Math.rint(v) ? Integer.toString((int) v)
+            : String.format(java.util.Locale.ROOT, "%.1f", v);
     }
 
     /** "Armor status · helmet" -> "helmet" */

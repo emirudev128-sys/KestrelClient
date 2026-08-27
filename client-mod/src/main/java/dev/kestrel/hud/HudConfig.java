@@ -94,7 +94,7 @@ import java.util.Map;
  */
 public final class HudConfig {
 
-    static final int VERSION = 5;
+    static final int VERSION = 6;
     /** a config file is a few hundred bytes; the launcher applies the same
      *  ceiling from the other side */
     private static final long MAX_BYTES = 256 * 1024;
@@ -328,6 +328,19 @@ public final class HudConfig {
 
     private final Map<String, OptSpec> spec;
     private final Map<String, Element> elements;
+    /* ── THE SECOND NOUN ───────────────────────────────────────────────────
+       Features have no anchor, no colour and no scale, so they are not
+       elements and are not kept with them. See Feature. */
+    private final Map<String, Feature> features;
+
+    public List<String> featureNames() { return new ArrayList<>(features.keySet()); }
+    public Feature feature(String id) { return features.get(id); }
+
+    void putFeature(String id, Feature f) {
+        if (id == null || f == null || !features.containsKey(id)) return;
+        features.put(id, f);
+        dirty = true;
+    }
 
     /** the spec for one option, or null if the launcher declared none — in
      *  which case the menu simply does not offer a row for it, which is the
@@ -343,9 +356,11 @@ public final class HudConfig {
     private boolean dirty;
 
     private HudConfig(Map<String, Element> elements, Map<String, OptSpec> spec,
+                      Map<String, Feature> features,
                       boolean rounded, boolean kestrelFont, int rev) {
         this.elements = elements;
         this.spec = spec == null ? new LinkedHashMap<>() : spec;
+        this.features = features == null ? new LinkedHashMap<>() : features;
         this.rounded = rounded;
         this.kestrelFont = kestrelFont;
         this.rev = rev;
@@ -378,7 +393,7 @@ public final class HudConfig {
         Map<String, Element> m = new LinkedHashMap<>();
         m.put("fps", new Element(true, "tl", 2.6, 4.2, 1.0, null, "FPS", "FPS", Style.defaults()));
         m.put("coords", new Element(true, "tl", 2.6, 8.4, 1.0, null, "Coordinates", "Coordinates", Style.defaults()));
-        return new HudConfig(m, new LinkedHashMap<>(), false, false, 0);
+        return new HudConfig(m, new LinkedHashMap<>(), new LinkedHashMap<>(), false, false, 0);
     }
 
     /** Reads {@code config/kestrel-hud.json} out of the run directory. Never
@@ -400,7 +415,7 @@ public final class HudConfig {
         try {
             Map<String, Element> m = parse(text);
             if (m.isEmpty()) return defaults();
-            return new HudConfig(m, specOf(text),
+            return new HudConfig(m, specOf(text), featuresOf(text),
                 styleIs(text, "corners", "rounded"),
                 styleIs(text, "font", "kestrel"),
                 revOf(text));
@@ -503,7 +518,36 @@ public final class HudConfig {
             }
             b.append(" }").append(++i < n ? ",\n" : "\n");
         }
-        b.append("  }\n}\n");
+        b.append("  }");
+
+        /* WRITTEN BACK WHOLE, including the label and the description this
+           side does not own. Dropping them would make the next launcher read
+           a feature with no name — and this mod is an editor for the
+           document, not a filter on it. */
+        if (!features.isEmpty()) {
+            b.append(",\n  \"features\": {\n");
+            int fi = 0, fn = features.size();
+            for (Map.Entry<String, Feature> e : features.entrySet()) {
+                Feature f = e.getValue();
+                b.append("    \"").append(esc(e.getKey())).append("\": {");
+                b.append(" \"on\": ").append(f.on).append(',');
+                b.append(" \"label\": \"").append(esc(f.label)).append("\",");
+                b.append(" \"desc\": \"").append(esc(f.desc)).append("\",");
+                b.append(" \"key\": \"").append(esc(f.key)).append('"');
+                if (!f.opts.isEmpty()) {
+                    b.append(", \"opts\": {");
+                    int j = 0;
+                    for (Map.Entry<String, String> o : f.opts.entrySet()) {
+                        b.append(j++ > 0 ? ", " : " ")
+                         .append('"').append(esc(o.getKey())).append("\": ").append(o.getValue());
+                    }
+                    b.append(" }");
+                }
+                b.append(" }").append(++fi < fn ? ",\n" : "\n");
+            }
+            b.append("  }");
+        }
+        b.append("\n}\n");
         return b.toString();
     }
 
@@ -664,6 +708,40 @@ public final class HudConfig {
                     }
                 }
                 out.put(key, new OptSpec(strOf(body, "label"), vals));
+            }
+            i = c2 + 1;
+        }
+        return out;
+    }
+
+    /* ── the features, off the top of the document ─────────────────────────
+       Same shape as the elements block and the same brace walk, which is the
+       payoff for having fixed matching() rather than special-casing `opts`. */
+    private static Map<String, Feature> featuresOf(String text) {
+        Map<String, Feature> out = new LinkedHashMap<>();
+        int at = text.indexOf("\"features\"");
+        if (at < 0) return out;
+        int open = text.indexOf('{', at);
+        if (open < 0) return out;
+        int close = matching(text, open);
+        if (close < 0) return out;
+        String inner = text.substring(open + 1, close);
+
+        int i = 0;
+        while (i < inner.length()) {
+            int q = inner.indexOf('"', i);
+            if (q < 0) break;
+            int qe = inner.indexOf('"', q + 1);
+            if (qe < 0) break;
+            String id = inner.substring(q + 1, qe);
+            int o2 = inner.indexOf('{', qe);
+            if (o2 < 0) break;
+            int c2 = matching(inner, o2);
+            if (c2 < 0) break;
+            String body = inner.substring(o2 + 1, c2);
+            if (isPlainName(id)) {
+                out.put(id, new Feature(id, boolOf(body, "on"), strOf(body, "label"),
+                    strOf(body, "desc"), strOf(body, "key"), optsOf(body)));
             }
             i = c2 + 1;
         }

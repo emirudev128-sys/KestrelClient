@@ -121,8 +121,25 @@ public class HudMenuScreen extends Screen {
     private int rows() { return (order.size() + cols - 1) / cols; }
     private int gridH() { return rows() == 0 ? 0 : rows() * CARD_H + (rows() - 1) * CARD_GAP; }
 
-    /** the grid, then a headed row holding both appearance steppers */
-    private int contentH() { return gridH() + Paint.SECTION_GAP + Paint.ROW + Paint.ROW; }
+    /* ── FEATURES ARE ROWS, NOT CARDS ─────────────────────────────────────
+       A card exists to show you the element it configures — that is what the
+       well in the middle of it is for. A feature has nothing to show: a
+       toggle-sprint has no appearance, and a card for it would be a card with
+       an empty picture. So they are rows, which is also the honest signal that
+       they are a different kind of thing from everything above them. */
+    private int featureRows() { return config.featureNames().size(); }
+
+    private int featuresH() {
+        return featureRows() == 0 ? 0 : Paint.SECTION_GAP + Paint.ROW + featureRows() * Paint.ROW;
+    }
+
+    /** the grid, the features, then a headed row holding both appearance steppers */
+    private int contentH() {
+        return gridH() + featuresH() + Paint.SECTION_GAP + Paint.ROW + Paint.ROW;
+    }
+
+    private int featureHeadY() { return viewTop - scroll + gridH() + Paint.SECTION_GAP; }
+    private int featureY(int i) { return featureHeadY() + Paint.ROW + i * Paint.ROW; }
 
     private void clampScroll() {
         int max = Math.max(0, contentH() - viewH);
@@ -137,7 +154,7 @@ public class HudMenuScreen extends Screen {
     private int cardY(int i) { return viewTop - scroll + (i / cols) * (CARD_H + CARD_GAP); }
     private int optionsY(int top) { return top + WELL_H + 14; }
     private int enabledY(int top) { return optionsY(top) + BTN_H + 3; }
-    private int appearY() { return viewTop - scroll + gridH() + Paint.SECTION_GAP; }
+    private int appearY() { return viewTop - scroll + gridH() + featuresH() + Paint.SECTION_GAP; }
     private int stepY() { return appearY() + Paint.ROW; }
     private int closeX() { return px + panelW - Paint.PANEL_PAD - 11; }
     private int closeY() { return py + 6; }
@@ -190,6 +207,7 @@ public class HudMenuScreen extends Screen {
                 card(ctx, order.get(i), cardX(i), cy, mouseX, mouseY);
             }
         }
+        features(ctx, mouseX, mouseY);
         appearance(ctx, mouseX, mouseY);
         ctx.disableScissor();
 
@@ -203,6 +221,47 @@ public class HudMenuScreen extends Screen {
             Ui.hit(mouseX, mouseY, editX(), footY(), editW(), 14), false);
         Ui.button(ctx, this.textRenderer, doneX(), footY(), doneW(), 14, "DONE",
             Ui.hit(mouseX, mouseY, doneX(), footY(), doneW(), 14), true);
+    }
+
+    /* Each row: what it is, what key does it, and whether it is on. The key
+       is shown because a feature you cannot find the binding for is a feature
+       you turn on once and never use again. */
+    private void features(DrawContext ctx, int mx, int my) {
+        java.util.List<String> ids = config.featureNames();
+        if (ids.isEmpty()) return;
+        int lx = px + Paint.PANEL_PAD;
+        int lw = panelW - Paint.PANEL_PAD * 2;
+        Ui.heading(ctx, this.textRenderer, "FEATURES", lx, featureHeadY() + 4, lw);
+
+        for (int i = 0; i < ids.size(); i++) {
+            Feature f = config.feature(ids.get(i));
+            if (f == null) continue;
+            int y = featureY(i);
+            boolean over = my >= y && my < y + Paint.ROW && mx >= lx && mx < lx + lw;
+            if (over) Ui.rowHover(ctx, lx - 2, y, lw + 4, Paint.ROW);
+            Ui.left(ctx, this.textRenderer, f.label, lx, y + 3, f.on ? Paint.VALUE : Paint.BODY);
+
+            int tx = lx + lw - Ui.TOGGLE_W;
+            int ty = y + (Paint.ROW - Ui.TOGGLE_H) / 2;
+            /* the key, then a gear where there is anything to configure */
+            int right = tx - 6;
+            if (!f.opts.isEmpty()) {
+                boolean overGear = Ui.hit(mx, my, right - 9, y + 3, 9, 9);
+                Ui.gear(ctx, right - 9, y + 3, overGear ? Paint.ACCENT : Paint.MUTE, Paint.PANEL);
+                right -= 13;
+            }
+            if (!f.key.isEmpty()) {
+                Ui.right(ctx, this.textRenderer, keyName(f.key), right, y + 3, Paint.FAINT);
+            }
+            Ui.toggle(ctx, this.textRenderer, tx, ty, f.on,
+                Ui.hit(mx, my, tx, ty, Ui.TOGGLE_W, Ui.TOGGLE_H), true);
+        }
+    }
+
+    /** KEY_LEFT_ALT -> LEFT ALT, which is what is printed on the key */
+    private static String keyName(String glfw) {
+        String s = glfw.startsWith("KEY_") ? glfw.substring(4) : glfw;
+        return s.replace('_', ' ');
     }
 
     /* THE TWO WHOLE-HUD CHOICES, side by side rather than one per row. They
@@ -343,6 +402,27 @@ public class HudMenuScreen extends Screen {
 
         int lx = px + Paint.PANEL_PAD;
         int lw = panelW - Paint.PANEL_PAD * 2;
+
+        /* the feature rows: the toggle, and the gear beside it */
+        java.util.List<String> ids = config.featureNames();
+        for (int i = 0; i < ids.size(); i++) {
+            Feature f = config.feature(ids.get(i));
+            if (f == null) continue;
+            int y = featureY(i);
+            int tx = lx + lw - Ui.TOGGLE_W;
+            if (Ui.hit(mouseX, mouseY, tx, y + (Paint.ROW - Ui.TOGGLE_H) / 2, Ui.TOGGLE_W, Ui.TOGGLE_H)) {
+                config.putFeature(f.id, f.switchedTo(!f.on));
+                click();
+                return true;
+            }
+            if (!f.opts.isEmpty() && Ui.hit(mouseX, mouseY, tx - 15, y + 3, 9, 9)) {
+                if (this.client != null) {
+                    this.client.setScreen(new HudElementScreen(config, runDir, this, f.id));
+                }
+                return true;
+            }
+        }
+
         int half = lw / 2;
         int sy = stepY() + (Paint.ROW - 11) / 2;
         /* EITHER ARROW FLIPS IT, and so does the middle. Two values make

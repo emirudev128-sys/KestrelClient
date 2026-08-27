@@ -199,9 +199,15 @@ ok('an option the element does not declare is dropped',
 console.log('');
 console.log('every option is named once, at the top of the document');
 const spec = hud.build({ elements: {} }).doc.optSpec;
+/* BOTH KINDS, because features share the one spec table with elements —
+   that sharing is what lets the menu resolve a label the same way whichever
+   sort of row it is drawing. */
 const declared = new Set();
 for (const el of Object.keys(hud.ELEMENT_OPTS)) {
   for (const k of Object.keys(hud.ELEMENT_OPTS[el])) declared.add(k);
+}
+for (const f of hud.FEATURE_NAMES) {
+  for (const k of Object.keys(hud.FEATURES[f].opts)) declared.add(k);
 }
 ok('the spec names every option any element declares',
   [...declared].every((k) => spec[k] && spec[k].label),
@@ -213,9 +219,26 @@ ok('every enum in the spec carries its values',
   }));
 /* the whole point of one table: `wear` is on five armour elements and must
    mean the same thing on all five */
-ok('an option shared by several elements is declared once',
+ok('an option shared by several elements or features is declared once',
   Object.keys(spec).length === declared.size,
   Object.keys(spec).length + ' entries for ' + declared.size + ' distinct options');
+/* THE INVARIANT ONE GLOBAL TABLE RESTS ON. optSpec() dedupes by name and
+   keeps the first, so an option name used with two different types — or two
+   different labels — on two elements silently gets one of them everywhere.
+   That is exactly what happened when `unit` was a switch on ping and an enum
+   on memory: the menu would have drawn a checkbox for a three-value choice. */
+const byName = {};
+let collide = [];
+for (const el of Object.keys(hud.ELEMENT_OPTS)) {
+  for (const [k, o] of Object.entries(hud.ELEMENT_OPTS[el])) {
+    const sig = o.type + '|' + o.label + '|' + (o.vals || []).join(',');
+    if (byName[k] && byName[k].sig !== sig) collide.push(k + ' (' + byName[k].el + ' vs ' + el + ')');
+    else byName[k] = { sig, el };
+  }
+}
+ok('no option name means two different things on two elements',
+  collide.length === 0, collide.join('; ') || Object.keys(byName).length + ' distinct names');
+
 ok('and every default a declaration states is one of its own values',
   Object.values(hud.ELEMENT_OPTS).every((e) => Object.values(e).every((o) =>
     o.type === 'bool' ? typeof o.def === 'boolean' : o.vals.indexOf(o.def) >= 0)));
@@ -311,6 +334,48 @@ ok('and it says which four fields it is entitled to overwrite',
 ok('the module switches are loaded too, not left on the fixture',
   /MODG\[k\]\.on = mods\[k\]/.test(appjs));
 
+/* ── 6d. features: the second noun ─────────────────────────────────────── */
+console.log('');
+console.log('a feature is not an element, and the contract says so');
+const fdoc = hud.build({ elements: {}, features: { zoom: { on: true, opts: { amount: '8x' } } } }).doc;
+ok('every declared feature is written, on or off', 
+  hud.FEATURE_NAMES.every((f) => fdoc.features[f]),
+  hud.FEATURE_NAMES.length + ' features');
+ok('a feature has no anchor, no scale and no colour',
+  hud.FEATURE_NAMES.every((f) => {
+    const v = fdoc.features[f];
+    return v.anchor === undefined && v.scale === undefined && v.plateColour === undefined;
+  }), 'that is the whole reason it is not an element');
+ok('it carries its own label and description', 
+  fdoc.features.zoom.label === 'Zoom' && fdoc.features.zoom.desc.length > 0,
+  'the mod has no vocabulary of its own, features included');
+ok('and its options went through the same validation elements use',
+  fdoc.features.zoom.opts.amount === '8x'
+    && hud.build({ features: { zoom: { opts: { amount: 'nope' } } } }).doc.features.zoom.opts.amount === '4x');
+
+/* A KEY IS A NAME, AND A NAME IS CHECKED. This ends up in a keybinding
+   registration, so a value that is not a key name is a value that must not
+   reach it. */
+const key = (v) => hud.build({ features: { zoom: { key: v } } }).doc.features.zoom.key;
+ok('a GLFW key name is kept', key('KEY_LEFT_ALT') === 'KEY_LEFT_ALT');
+ok('anything that is not one falls back to the default', key('rm -rf /') === 'KEY_C', key('rm -rf /'));
+ok('and an empty key means deliberately unbound', key('') === '', 'not "use the default"');
+
+ok('features come home through fromDoc too',
+  hud.fromDoc(fdoc).hud.features.zoom.opts.amount === '8x');
+
+/* the option-name rule has to hold ACROSS both kinds, because they share one
+   spec table */
+const featOpt = new Set();
+for (const f of hud.FEATURE_NAMES) for (const k of Object.keys(hud.FEATURES[f].opts)) featOpt.add(k);
+const elemOpt = new Set();
+for (const e of Object.keys(hud.ELEMENT_OPTS)) for (const k of Object.keys(hud.ELEMENT_OPTS[e])) elemOpt.add(k);
+const shared = [...featOpt].filter((k) => elemOpt.has(k));
+ok('no option name is used by both a feature and an element',
+  shared.length === 0, shared.join(' ') || featOpt.size + ' feature options, ' + elemOpt.size + ' element options');
+ok('and every feature option is named in the spec',
+  [...featOpt].every((k) => fdoc.optSpec[k] && fdoc.optSpec[k].label));
+
 /* ── 7. two writers, and neither erases the other ──────────────────────── */
 console.log('');
 console.log('the document says who wrote it, which is what stops a clobber');
@@ -382,6 +447,38 @@ const menuJava = src('HudMenuScreen.java');
 const layoutJava = src('HudLayoutScreen.java');
 const clientJava = src('KestrelHudClient.java');
 const uiJava = src('Ui.java');
+
+/* ── the second noun, in the mod ──────────────────────────────────────── */
+console.log('');
+console.log('and the mod treats a feature as its own kind of thing');
+const featJava = src('Feature.java');
+const behJava = src('Behaviours.java');
+const overJava = src('Overlays.java');
+ok('the mod has a Feature type distinct from Element', featJava !== null);
+ok('and reads features off the document', /featuresOf\(text\)/.test(cfgJava0));
+ok('and writes them back whole, label and all',
+  /\\"features\\": \{/.test(cfgJava0) && /f\.label/.test(cfgJava0),
+  'dropping the label would leave the next launcher reading a nameless feature');
+if (behJava) {
+  ok('the behaviours undo themselves when switched off',
+    /unzoom/.test(behJava) && /fovBefore/.test(behJava),
+    'a mod that changes a setting then stops running has broken the game');
+  ok('and a key is resolved by NAME, not by code',
+    /fromTranslationKey/.test(behJava), 'a code does not survive a keyboard layout');
+}
+if (overJava) {
+  ok('the world overlays subtract the camera position',
+    /cam\.x/.test(overJava) && /cam\.z/.test(overJava),
+    'the world matrix is camera-relative; absolute coordinates draw nothing visible');
+  ok('and give every line a normal',
+    /normal\(pose/.test(overJava), 'a zero normal is silently dropped by the shader');
+  ok('chunk borders take their height from the world, not from 0..256',
+    /getBottomY\(\)/.test(overJava) && /getHeight\(\)/.test(overJava));
+}
+ok('and none of it needed a mixin',
+  !fs.existsSync(path.join(ROOT, 'client-mod', 'src', 'main', 'resources', 'kestrel-hud.mixins.json')),
+  'a mixin is a build-time weave that breaks differently on every version');
+
 
 ok('HudMenuScreen exists', menuJava !== null);
 ok('HudLayoutScreen exists', layoutJava !== null);
