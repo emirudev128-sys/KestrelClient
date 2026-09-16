@@ -58,13 +58,15 @@ final class HudRenderer {
     /* ── WHERE THE CAPITALS ARE, PER FACE ─────────────────────────────────
        Text is centred in its row on its capital letters, not on the line box.
        Minecraft's font draws capitals in the seven pixels from where it is
-       drawn, so their middle is 3.5 down. The Kestrel face is a TrueType font
-       whose baseline sits 7 font pixels down plus its 1-pixel shift — 8 —
-       with capitals 0.698 of its 9-pixel size above that: middle 4.86 down.
-       Centring the line box instead is what left every plate's text high,
-       with three pixels over it and five under. */
+       drawn, so their middle is 3.5 down. The Kestrel face is Archivo Medium —
+       the face the launcher draws its own HUD preview in — a TrueType font
+       whose baseline sits 7 font pixels down with capitals 0.686 of its
+       10-pixel size above that: middle 3.57 down, within a tenth of a pixel of
+       Minecraft's, which is why 10 is its size. Centring the line box instead
+       is what left every plate's text high, with three pixels over it and five
+       under. */
     private static final float VANILLA_CAP_MIDDLE = 3.5f;
-    private static final float KESTREL_CAP_MIDDLE = 8f - 0.698f * 9f / 2f;
+    private static final float KESTREL_CAP_MIDDLE = 7f - 0.686f * 10f / 2f;
 
     private static float capMiddle(net.minecraft.text.Text t) {
         net.minecraft.util.Identifier font = t.getStyle().getFont();

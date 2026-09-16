@@ -781,8 +781,26 @@ if (rendererJava) {
   /* the same fix the menu needed: centred on the capitals, not the line box */
   ok('HUD text is centred on its capitals in every row, for both faces',
     /rh \/ 2f - capMiddle\(r\.text\)/.test(rendererJava) && /VANILLA_CAP_MIDDLE = 3\.5f/.test(rendererJava)
-      && /KESTREL_CAP_MIDDLE = 8f - 0\.698f \* 9f \/ 2f/.test(rendererJava),
+      && /KESTREL_CAP_MIDDLE = 7f - 0\.686f \* 10f \/ 2f/.test(rendererJava),
     'three pixels over the text and five under it, before');
+  /* THE KESTREL FONT IS THE LAUNCHER'S HUD FACE. The launcher's HUD preview
+     sets .hel-t in the page font at --w-med, which is Archivo Medium; the game
+     drew Azeret Mono Bold instead, and the player saw two different HUDs. */
+  {
+    const kestrelFont = JSON.parse(fs.readFileSync(path.join(ROOT, 'client-mod', 'src', 'main', 'resources',
+      'assets', 'kestrel-hud', 'font', 'kestrel.json'), 'utf8'));
+    const appCss = fs.readFileSync(path.join(ROOT, 'ui', 'styles', 'app.css'), 'utf8');
+    const tokensCss = fs.readFileSync(path.join(ROOT, 'ui', 'styles', 'tokens.css'), 'utf8');
+    const helT = /\.hel-t \{[^}]*\}/.exec(appCss);
+    ok('the Kestrel HUD font is the face the launcher previews the HUD in: Archivo Medium',
+      kestrelFont.providers[0].file === 'kestrel-hud:archivo-medium.ttf'
+        && !!helT && /font-weight: var\(--w-med\)/.test(helT[0]) && !/font-family/.test(helT[0])
+        && /--w-med:\s*500;/.test(tokensCss) && /--font-ui:\s*"Archivo"/.test(tokensCss),
+      kestrelFont.providers[0].file);
+    const twinFeatures = kestrelFont.caxton_providers && kestrelFont.caxton_providers[0].regular.features || [];
+    ok('with tabular figures under Caxton, so a live counter does not change width', twinFeatures.indexOf('tnum') >= 0,
+      'Archivo\'s default digits are proportional: 1 is 547 units wide, 0 is 574');
+  }
   ok('and a row is as tall as its tallest run',
     /static int rowHeight\(/.test(rendererJava) && /h \+= rowHeight\(r\)/.test(rendererJava));
 }

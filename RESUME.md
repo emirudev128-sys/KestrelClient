@@ -38,13 +38,17 @@ installed into their `1-21-4-fabric` instance. Their next message is most likely
   (`system:disk`, `fs.statfs`); it said a fixed "41.6 GB free on C:" before.
 - **The launcher's own fonts ship in `ui/fonts`** (variable Archivo and Azeret Mono, OFL) and the CSP's
   `font-src` is 'self' — it no longer fetches them from Google on every start.
+- **The HUD's Kestrel font is Archivo Medium**, size 10 — the face the launcher's HUD preview uses
+  (`.hel-t`, `--w-med`) — with tabular figures under Caxton. It was Azeret Mono Bold, and the player saw
+  a different HUD in game from the one the launcher showed.
 
 **The launcher's own HUD screen still draws armour and totems as words** — it cannot read a
 player's resource packs the way the game can.
 
 **Earlier jars are backed up** in that session's scratchpad: `kestrel-hud-0.1.0.previous.jar` (the card-grid
-menu), `kestrel-hud-0.1.0.editor-v1.jar` (the new editor before icons, mouse and Caxton) and
-`kestrel-hud-0.1.0.editor-v2.jar` (before centred keystrokes, durability numbers and effect icons).
+menu), `kestrel-hud-0.1.0.editor-v1.jar` (the new editor before icons, mouse and Caxton),
+`kestrel-hud-0.1.0.editor-v2.jar` (before centred keystrokes, durability numbers and effect icons),
+`kestrel-hud-0.1.0.editor-v3.jar` (the Kestrel HUD font still Azeret Mono Bold).
 
 ### The loop, end to end
 

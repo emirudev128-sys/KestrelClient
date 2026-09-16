@@ -43,7 +43,9 @@ public class KestrelHudClient implements ClientModInitializer {
     /* Kestrel's own face, used only when the config asks for it. The default
        is Minecraft's, because a HUD that looks like the game costs a new
        player nothing to read; ours is the deliberate choice, not the imposed
-       one. See assets/kestrel-hud/font/kestrel.json. */
+       one. It is Archivo Medium — the face the launcher draws its own HUD
+       preview in — so a HUD arranged there looks the same in the world. See
+       assets/kestrel-hud/font/kestrel.json. */
     static final Identifier FONT = Identifier.of(MOD_ID, "kestrel");
 
     /* RIGHT SHIFT, because vanilla binds it to nothing and every client that
