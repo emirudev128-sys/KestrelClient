@@ -38,8 +38,9 @@
    states its own mod list, and this is not invited to edit it.
    ========================================================================= */
 
-/* THE FOUR, AND WHY EACH ONE. Ordered by how much of the promise they carry:
-   the renderer first, then the things that stop the renderer being starved.
+/* THE FOUR, AND WHY EACH ONE — then Caxton, which is here for the HUD's type
+   rather than for frames. Ordered by how much of the promise they carry: the
+   renderer first, then the things that stop the renderer being starved.
 
    Verified against api.modrinth.com — id, title and published loaders — on
    27 August 2026. Add to this deliberately, never by search, and re-check the
@@ -64,6 +65,27 @@ const SET = [
   {
     project: 'NNAgCjsB', title: 'Entity Culling', slug: 'entityculling',
     why: 'stops entities behind walls being drawn at all'
+  },
+  /* ── AND ONE THAT IS NOT ABOUT FRAMES ──────────────────────────────────
+     Caxton renders TrueType fonts as signed distance fields, so text set in
+     one stays smooth at any size. The Kestrel HUD mod's menu and its Kestrel
+     font name Caxton providers beside ordinary ones (`caxton_providers`),
+     and Minecraft's own bitmap font is left exactly as it was — so without
+     the HUD mod this changes nothing anybody can see.
+
+     MIT-licensed, and fetched from Modrinth at install time like the four
+     above rather than bundled: Kestrel never redistributes it.
+
+     TWO GATES the others do not need. Fabric only, because the HUD mod that
+     uses it is Fabric-only. And only where its native library ships — 64-bit
+     Windows and Linux; on anything else Caxton cannot load its renderer, so
+     it is not installed rather than installed broken. Verified against
+     api.modrinth.com on 16 September 2026. */
+  {
+    project: 'k8iIgzXE', title: 'Caxton', slug: 'caxton',
+    loaders: ['fabric'],
+    platforms: ['win32-x64', 'linux-x64'],
+    why: 'smooth TrueType text for the Kestrel HUD and menu; the Minecraft font is untouched'
   }
 ];
 
@@ -140,7 +162,19 @@ async function fill(game, instanceId, inst, report) {
     return false;
   };
 
+  const loaderKey = loader.toLowerCase().trim().split(/\s+/)[0];
+  const platform = process.platform + '-' + process.arch;
   for (const m of SET) {
+    if (m.loaders && m.loaders.indexOf(loaderKey) < 0) {
+      out.skipped.push({ title: m.title, why: 'only for ' + m.loaders.join(', ') });
+      game.log('perf: ' + m.title + ' is only for ' + m.loaders.join(', ') + ' — skipped on ' + loaderKey);
+      continue;
+    }
+    if (m.platforms && m.platforms.indexOf(platform) < 0) {
+      out.skipped.push({ title: m.title, why: 'no build for ' + platform });
+      game.log('perf: ' + m.title + ' has no native build for ' + platform + ' — skipped');
+      continue;
+    }
     if (already(m)) {
       out.skipped.push({ title: m.title, why: 'already installed' });
       game.log('perf: ' + m.title + ' is already there — left alone');

@@ -10,19 +10,32 @@ client mod that draws a fully configurable HUD.**
 
 ## THE SESSION THAT STARTS HERE
 
-**The user has just tested the HUD in game and is about to give visual feedback.** That is the whole
-job: read what they say, change it, rebuild, hand back a jar. Everything below is arranged for that.
+**The in-game menu has just been rebuilt, and the user has not seen it in game yet.** It was
+redesigned in a browser mockup (link below), signed off there, ported to the mod, built, checked and
+installed into their `1-21-4-fabric` instance. Their next message is most likely a screenshot of it.
 
-**They tested a build that was missing nine of the twenty elements.** `build()` walked the stored
-settings instead of the declaration, so the nine newest never reached the game — the log said
-`saved revision 20 (11 element(s))`. **This is fixed** (commit `dfe9b78`) but the fix landed AFTER
-their test, so:
+**What the mockup could not prove, and a screenshot will:**
 
-- Any feedback about elements is about **eleven** of them: fps, cps, ping, keystrokes, coords,
-  potion effects and the five armour slots.
-- They have **never seen** day counter, clock, playtime, memory, combo, totems, TNT, reach or PvP
-  info — nor the six features, which *did* reach the file but were all switched off by default.
-- **Build and hand them a fresh jar early**, so their next look is at the whole thing.
+- **The panel-only blur** (`PanelBlur.java`) — framebuffer blits around vanilla's own blur pass. If the
+  whole screen is blurred, or nothing is, or the canvas in the middle is black, it is here.
+- **Text on its capitals** (`Type.java`) — placed from the rule that a TrueType baseline sits 7 font
+  pixels below the draw position, read out of the game's bytecode. If every label is high or low by
+  the same amount, the constant is wrong, not the design.
+- **Crisp type.** Every text size has its own font definition because glyphs are sampled
+  nearest-neighbour. Blurry or ragged text means a definition is missing or the density is wrong.
+- **Rebinding a feature key** from the Features tab, which also writes Minecraft's `options.txt`.
+- **Caxton.** The instance now has Caxton (MIT, fetched from Modrinth), and every Kestrel font has a
+  `caxton_providers` twin sized to match (`scale_factor = size * ascender / 7000`). If text is still
+  ragged, check the log for Caxton failing to load its native library — then the plain fonts are used.
+- **Item icons** for armour and totems (the game's item renderer, so resource packs apply), **the
+  mouse** in keystrokes, and **HUD text centred on its capitals** in every row. Row heights changed
+  (an icon row is 16, the mouse row 14), so elements are a little taller than before.
+
+**The launcher's own HUD screen still draws armour and totems as words** — it cannot read a
+player's resource packs the way the game can.
+
+**Earlier jars are backed up** in that session's scratchpad: `kestrel-hud-0.1.0.previous.jar` (the card-grid
+menu) and `kestrel-hud-0.1.0.editor-v1.jar` (the new editor before icons, mouse and Caxton).
 
 ### The loop, end to end
 
@@ -32,12 +45,13 @@ their test, so:
     & $g -p client-mod build
 
     # 2. verify
-    node tools/hudcheck.mjs        # 184 assertions; the last twenty run the COMPILED mod
+    node tools/hudcheck.mjs        # 196 assertions; the last twenty run the COMPILED mod
 
     # 3. hand over  client-mod/build/libs/kestrel-hud-0.1.0.jar
     #    ONLY that file. Not -sources.jar: it has an unexpanded ${version} and Fabric warns.
 
 Gradle 9.2.0 is in that dists folder too and loom 1.9.2 refuses to load under it — take **8.14.3**.
+The game locks the jar while it runs; check no `javaw`/`java` running KnotClient before copying.
 
 ### You can read their machine. Test the path, do not assume
 
@@ -54,22 +68,26 @@ That is how the eleven-vs-twenty bug was found, and how the round trip was final
 
 ### Where the visual knobs are
 
+Lengths are **design pixels**: one screen pixel at 1080p, and exactly the mockup's units doubled.
+
 | feedback about | file | what to change |
 |---|---|---|
-| menu transparency | `Paint.java` | `PANEL` `SCRIM` `RAISE` `HOVER` `ACTIVE` `WELL` — ARGB, alpha in the top byte |
-| menu corners | `Paint.java` | `R_PANEL` `R_CARD` `R_WELL` `R_CTRL`; the arcs are `Ui.ARC` |
-| card size / grid | `HudMenuScreen.java` | `CARD_W` `CARD_H` `CARD_GAP` `WELL_H` `BTN_H` `MAX_COLS` |
-| options screen | `HudElementScreen.java` | `PANEL_W` `PREVIEW_H` `VALUE_W` |
-| spacing rhythm | `Paint.java` | `ROW` `PANEL_PAD` `SECTION_GAP` |
+| transparency, colours, group colours | `Glass.java` | `PANEL` `RAISE` `HOVER` `WELL` `LINE` `TINT`, the group hues |
+| panel sizes and spacing | `Glass.java` | `MARGIN` `GUTTER` `TOP` `BOTTOM` `LEFT_W` `RIGHT_W` `ROW` `PAD` |
+| a text size or weight | `Type.java` + `assets/kestrel-hud/font/menu/` | a `Role`; a new size needs its own `.json` and `_2x.json` |
+| chips, keycaps, sliders, swatches, on/off | `Chrome.java` | one method per control |
+| the module list, canvas, element settings | `ElementsTab.java` | `left`, `canvas`, `settings` |
+| the feature rules and key map | `FeaturesTab.java` | `rules`, `keys`, `settings` |
+| the blur | `PanelBlur.java` | vanilla's radius comes from the player's own blur option |
 | HUD plate itself | `Paint.java` | `PLATE` `EDGE` `PAD_X` `PAD_Y` `LINE` `GAP` `STACK_GAP` |
 | what an element says | `HudElements.java` | one `case` per element, LIVE and SAMPLE |
-| magnet feel | `HudLayoutScreen.java` | `SNAP` (5px), `INSET_X/Y` |
+| magnet feel | `ElementsTab.java` | `pull()`: 5 GUI px, insets 2.6% / 4.2% |
 
-**There is a pixel-accurate mockup** of the menu at
-`https://claude.ai/code/artifact/69a0c0f0-a7f8-40b3-8c68-5a4850aac95b` — built from the mod's own
-constants, every proportion and alpha on a slider, with its own harness asserting it has not drifted
-from the Java. Use it to settle proportions **without a build**. It cannot tell you whether the world
-overlays render.
+**The mockup** is at `https://claude.ai/artifact/2GqQsKuDWtxUY5FmKgtxTQ` — the menu at the user's
+window size, opened on their real config, with the proportions and transparency on sliders and a
+"Save for Claude" button that stores the slider values (read them back with the Artifact tool's
+`read_db`, collection `workbench`, doc `values`). Settle proportions there **without a build**, then
+port the numbers, doubled.
 
 ---
 
@@ -81,19 +99,23 @@ Each is asserted by `hudcheck`, so breaking one fails a check rather than shippi
   read `docs/hud-backlog.md` before adding the first.
 - **NO SHADOWS.** Every `drawText` passes `false`. Minecraft draws a shadow as a hard offset copy of
   every glyph — the look the plate exists to avoid. This was reverted once already.
-- **NO OUTLINES on the menu.** Depth is the alpha ladder: panel 43%, card 64%, hover 79%, well 81%
-  **composited**. A card at 37% over a 43% panel reads as 64% — compare composited values, never raw
-  alphas. `roundBorder` was deleted rather than left unused.
-- **NOTHING IN A MENU MOVES.** Every preview is `HudElements.SAMPLE`, fixed text. A live fps counter
-  in a card flickers and changes width; in the layout editor that makes an element impossible to
-  align.
-- **The menu is softened; the HUD is not.** Menu corners are rounded; a HUD plate stays square
-  because Minecraft's own panels are.
-- **Do not name other launchers or clients anywhere in this repo.** Design notes carry the reasoning
-  on their own terms — `docs/hud-menu-design.md` is the model. `hud-inspos/` stays gitignored.
+- **HAIRLINES AND SQUARE CORNERS on the menu** — the user's choice, reversing the earlier "no
+  outlines, rounded corners" rule. Depth under the edges is still the alpha ladder: panel 43%, row
+  64%, hover 79%, well 81% **composited** — compare composited values, never raw alphas.
+- **ON/OFF IS A SQUARE**, amber or dim, with no track, no word and no border. Picked from four designs.
+- **ONE SCREEN, AT ITS OWN SCALE.** The editor lays out in design pixels from the framebuffer, never
+  from the GUI scale, and replaced three screens that are deleted, not kept beside it.
+- **ONLY THE PANELS ARE BLURRED.** The world between them stays sharp; the user asked for exactly that.
+- **TEXT IS CENTRED ON ITS CAPITALS**, and every text size has its own font definition at both
+  densities. Every bundled face is a static instance — a variable one renders Thin.
+- **NOTHING IN A MENU MOVES.** Every preview is `HudElements.SAMPLE`, fixed text.
+- **The HUD plate stays square by default**; the player can round it. The menu is square regardless.
+- **Do not name other launchers, clients or reference projects anywhere in this repo.** Design notes
+  carry the reasoning on their own terms — `docs/hud-menu-design.md` is the model. `hud-inspos/`
+  stays gitignored.
 
 **The user's dialled-in values** (do not "improve" these; they were set by eye against the real
-game): panel 43%, scrim 0%, cards 37%, hover 63%, pressed 58%, well 46%, card gap 9.
+game): panel 43%, rows 37%, hover 63%, well 46%.
 
 ---
 
@@ -105,7 +127,7 @@ The HUD exists in three places that cannot see each other:
     mc/hud.js                           what the launcher writes to disk
     client-mod/…/HudConfig.java         what the game reads back
 
-Nothing links them at build time. **`node tools/hudcheck.mjs` is what notices** — 184 assertions,
+Nothing links them at build time. **`node tools/hudcheck.mjs` is what notices** — 196 assertions,
 the last twenty running the COMPILED mod against a document the launcher just wrote, then reading
 back what it wrote. Only that stage catches a locale-formatted number, a broken escape, or a parser
 that loses a sign.
@@ -174,11 +196,13 @@ B, return to A, and a rev comparison silently discards A's edit.
 | `HudConfig` | the contract: hand-rolled parser and writer, no JSON library |
 | `HudElements` | what each element says — LIVE values or fixed SAMPLE text |
 | `HudRenderer` | geometry and drawing, forward AND inverse (the editor needs both) |
-| `Paint` / `Ui` | the palette, and the furniture: panel, card, stepper, slider, swatches |
-| `HudMenuScreen` | **Right Shift** — a card grid of modules, plus feature rows |
-| `HudElementScreen` | one element's options, or one feature's |
-| `HudLayoutScreen` | drag with magnet snapping |
-| `Behaviours` | sprint, sneak, zoom, snap look |
+| `Paint` | the HUD plate's colours and metrics |
+| `EditorScreen` | **Right Shift** — the one editor: state, layout, input, save on close |
+| `ElementsTab` / `FeaturesTab` | the two tabs: list, canvas or rules, settings |
+| `Chrome` | top bar, hint bar, and every control both tabs share |
+| `Glass` / `Type` | the menu's surfaces and measurements; its fonts, placed on cap height |
+| `PanelBlur` | blurs only what sits behind a panel, and gives the canvas the sharp world |
+| `Behaviours` | sprint, sneak, zoom, snap look — and their keys, rebindable from the menu |
 | `Overlays` | hitboxes and chunk borders, in the world render pass |
 | `Clicks` / `Combat` / `Session` | the state the counters need |
 
@@ -207,7 +231,9 @@ will see nothing from them until they switch one on in the menu.
 **Still never seen on screen:** the nine new elements, the six features, and the **world overlays** —
 which is the part a compiler cannot check at all, since a render pass either draws or it does not.
 
-**Online play is wired, not yet seen.** Until the sign-in worked, every launch was offline: the Play
+**Online play works** — the user launched with their Microsoft account and joined a server on
+16 September 2026; the game log shows the connection and no session errors. Until the sign-in
+worked, every launch was offline: the Play
 button hard-coded it and `mc/index.js` threw on a real account. Now Play uses the account marked
 active on Accounts (`launchOpts()` in `app.js`), `msauth.js`'s `launchSession()` hands over the
 token (renewed first if under an hour is left), and a line of game output that repeats the token is
@@ -220,7 +246,8 @@ a real token by design — see the header of `mc/launch.js`.
 ## New instances get a performance set
 
 Created with `perf: 'pending'`; the first launch installs **Sodium, Lithium, FerriteCore and Entity
-Culling** from pinned Modrinth ids in `mc/perf.js`. That is what makes "more frames" a claim this
+Culling** from pinned Modrinth ids in `mc/perf.js` — plus **Caxton** for the HUD's type, gated to Fabric
+and to 64-bit Windows and Linux, where its native library ships. That is what makes "more frames" a claim this
 launcher can honestly make — the engine doing the work is Sodium's, installed by name, visible in the
 mods list, removable like anything else.
 
@@ -229,15 +256,15 @@ mods list, removable like anything else.
 instances. Retro-fitting mods into somebody's tuned setup is the failure that loses trust in a
 launcher's mods folder for good. Modpack imports pass `'off'`: a pack states its own list.
 
-Degrades rather than failing — `NO_BUILD` is caught per mod. Verified live: Fabric 1.21.4 and 1.16.5
-give 4 of 4, NeoForge 1.21.1 gives 4 of 4, Forge 1.20.1 gives 2 of 4, 1.8.9 gives 0.
+Degrades rather than failing — `NO_BUILD` is caught per mod. Verified live: Fabric 1.21.4 gives 5 of 5,
+Fabric 1.16.5 gives 4, NeoForge 1.21.1 gives 4, Forge 1.20.1 gives 2, 1.8.9 gives 0.
 
 ---
 
 ## Verify it yourself
 
-    node tools/hudcheck.mjs          the HUD contract across three languages (184)
-    node tools/perfcheck.mjs         the performance set: ids, gating, the flag (26)
+    node tools/hudcheck.mjs          the HUD contract across three languages (196)
+    node tools/perfcheck.mjs         the default set: ids, gates, the flag (33)
     node tools/perfcheck.mjs live    ... and ask Modrinth whether any of it exists
     node tools/clicktest.mjs         every control, does it respond (337)
     node tools/audit.mjs ui          the design standard

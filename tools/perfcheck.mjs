@@ -49,6 +49,13 @@ ok('every project id is the shape Modrinth mints', badId.length === 0,
 ok('and no id is repeated', new Set(perf.SET.map((m) => m.project)).size === perf.SET.length);
 ok('the renderer is first — it is most of the claim',
   perf.SET[0].slug === 'sodium', perf.SET[0].title);
+const caxton = perf.SET.find((m) => m.slug === 'caxton');
+ok('Caxton is in it, for the HUD\'s type', !!caxton, caxton ? caxton.project : 'missing');
+ok('and gated to Fabric, the only loader the HUD mod exists for',
+  !!caxton && JSON.stringify(caxton.loaders) === '["fabric"]');
+ok('and to the platforms its native library ships for',
+  !!caxton && JSON.stringify(caxton.platforms) === '["win32-x64","linux-x64"]',
+  'installed anywhere else it cannot load its renderer');
 
 /* ── 2. the gating ───────────────────────────────────────────────────────── */
 console.log('\nand it only applies where a mods folder means something');
@@ -96,6 +103,38 @@ ok('every identifier of an installed mod is collected, not the first truthy one'
 ok('and a hand-dropped jar is matched on its filename',
   /s\.indexOf\(slug\) === 0/.test(src), 'sodium-fabric-0.6.13.jar carries the name nowhere else');
 
+/* ── 4b. the per-mod gates, run rather than read ────────────────────────── */
+console.log('\nand a gated mod is skipped before anything is asked of Modrinth');
+{
+  const asked = [];
+  const fakeGame = {
+    log: () => {},
+    content: { list: async () => [] },
+    contentPlan: async (id, project) => {
+      asked.push(project);
+      const e = new Error('no build');
+      e.code = 'NO_BUILD';
+      throw e;
+    },
+    contentInstall: async () => ({ installed: [] })
+  };
+  const gated = perf.SET.filter((m) => m.loaders || m.platforms).map((m) => m.project);
+  const onForge = await perf.fill(fakeGame, 'x', { loader: 'Forge', ver: '1.20.1' }, null);
+  ok('on Forge, Caxton is never looked up', gated.every((p) => asked.indexOf(p) < 0),
+    'asked for ' + asked.length + ' of ' + perf.SET.length);
+  ok('and says why it was skipped',
+    onForge.skipped.some((s) => s.title === 'Caxton' && /only for fabric/.test(s.why)));
+  asked.length = 0;
+  const here = process.platform + '-' + process.arch;
+  const supported = caxton && caxton.platforms.indexOf(here) >= 0;
+  const onFabric = await perf.fill(fakeGame, 'x', { loader: 'Fabric', ver: '1.21.4' }, null);
+  ok('on Fabric, on ' + here + ', Caxton is ' + (supported ? 'looked up' : 'skipped for the platform'),
+    supported ? asked.indexOf(caxton.project) >= 0
+      : onFabric.skipped.some((s) => s.title === 'Caxton' && /no build for/.test(s.why)));
+  ok('and a missing build is still a skip, not a failure', onFabric.failed.length === 0,
+    onFabric.skipped.length + ' skipped');
+}
+
 /* ── 5. live: does any of it actually exist ──────────────────────────────── */
 if (!LIVE) {
   console.log('\n  SKIP  the live pass — run `node tools/perfcheck.mjs live` to ask Modrinth');
@@ -127,12 +166,14 @@ if (!LIVE) {
      back with nothing at all rather than with an error. */
   console.log('');
   const cases = [
-    ['fabric', '1.21.4', 4], ['fabric', '1.16.5', 4],
+    ['fabric', '1.21.4', 5], ['fabric', '1.16.5', 4],
     ['neoforge', '1.21.1', 4], ['forge', '1.20.1', 2], ['fabric', '1.8.9', 0]
   ];
   for (const [loader, mc, want] of cases) {
     let n = 0;
     for (const m of perf.SET) {
+      /* a gated mod only counts where the gate lets it through */
+      if (m.loaders && m.loaders.indexOf(loader) < 0) continue;
       const v = await get('/project/' + m.project + '/version?loaders=["' + loader + '"]&game_versions=["' + mc + '"]');
       if (Array.isArray(v) && v.length) n++;
     }
