@@ -30,12 +30,21 @@ installed into their `1-21-4-fabric` instance. Their next message is most likely
 - **Item icons** for armour and totems (the game's item renderer, so resource packs apply), **the
   mouse** in keystrokes, and **HUD text centred on its capitals** in every row. Row heights changed
   (an icon row is 16, the mouse row 14), so elements are a little taller than before.
+- **Keystrokes:** every row centred (W over S, the mouse under it) and the spacebar drawn as a key —
+  a line with its ends turned up — across the plate. **Durability** reads like advanced tooltips,
+  `225 / 363`; the bar is gone and a stored `"bar"` reads as the number. **Potion effects** can show
+  the effect's icon instead of its name (`icons`), from the game's sprite atlas.
+- **The launcher's status bar** reads real free space for the drive the library lives on
+  (`system:disk`, `fs.statfs`); it said a fixed "41.6 GB free on C:" before.
+- **The launcher's own fonts ship in `ui/fonts`** (variable Archivo and Azeret Mono, OFL) and the CSP's
+  `font-src` is 'self' — it no longer fetches them from Google on every start.
 
 **The launcher's own HUD screen still draws armour and totems as words** — it cannot read a
 player's resource packs the way the game can.
 
 **Earlier jars are backed up** in that session's scratchpad: `kestrel-hud-0.1.0.previous.jar` (the card-grid
-menu) and `kestrel-hud-0.1.0.editor-v1.jar` (the new editor before icons, mouse and Caxton).
+menu), `kestrel-hud-0.1.0.editor-v1.jar` (the new editor before icons, mouse and Caxton) and
+`kestrel-hud-0.1.0.editor-v2.jar` (before centred keystrokes, durability numbers and effect icons).
 
 ### The loop, end to end
 
@@ -45,7 +54,7 @@ menu) and `kestrel-hud-0.1.0.editor-v1.jar` (the new editor before icons, mouse 
     & $g -p client-mod build
 
     # 2. verify
-    node tools/hudcheck.mjs        # 196 assertions; the last twenty run the COMPILED mod
+    node tools/hudcheck.mjs        # 201 assertions; the last twenty run the COMPILED mod
 
     # 3. hand over  client-mod/build/libs/kestrel-hud-0.1.0.jar
     #    ONLY that file. Not -sources.jar: it has an unexpanded ${version} and Fabric warns.
@@ -127,7 +136,7 @@ The HUD exists in three places that cannot see each other:
     mc/hud.js                           what the launcher writes to disk
     client-mod/…/HudConfig.java         what the game reads back
 
-Nothing links them at build time. **`node tools/hudcheck.mjs` is what notices** — 196 assertions,
+Nothing links them at build time. **`node tools/hudcheck.mjs` is what notices** — 201 assertions,
 the last twenty running the COMPILED mod against a document the launcher just wrote, then reading
 back what it wrote. Only that stage catches a locale-formatted number, a broken escape, or a parser
 that loses a sign.
@@ -263,7 +272,7 @@ Fabric 1.16.5 gives 4, NeoForge 1.21.1 gives 4, Forge 1.20.1 gives 2, 1.8.9 give
 
 ## Verify it yourself
 
-    node tools/hudcheck.mjs          the HUD contract across three languages (196)
+    node tools/hudcheck.mjs          the HUD contract across three languages (201)
     node tools/perfcheck.mjs         the default set: ids, gates, the flag (33)
     node tools/perfcheck.mjs live    ... and ask Modrinth whether any of it exists
     node tools/clicktest.mjs         every control, does it respond (337)

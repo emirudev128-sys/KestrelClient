@@ -192,7 +192,10 @@ const ELEMENT_OPTS = {
   },
   potion: {
     duration: { type: 'bool', def: true, label: 'Show time left' },
-    ambient: { type: 'bool', def: false, label: 'Include beacon effects' }
+    ambient: { type: 'bool', def: false, label: 'Include beacon effects' },
+    /* the effect's own icon in place of its name — the game's sprite, so a
+       resource pack that repaints Speed repaints this too */
+    icons: { type: 'bool', def: false, label: 'Show the icon, not the name' }
   },
   day: {
     label: { type: 'bool', def: true, label: 'Show the word "Day"' }
@@ -228,11 +231,11 @@ const ELEMENT_OPTS = {
     health: { type: 'bool', def: true, label: 'Show their health' },
     distance: { type: 'bool', def: false, label: 'Show the distance' }
   },
-  helmet: { wear: { type: 'enum', vals: ['bar', 'percent', 'none'], def: 'bar', label: 'Durability' } },
-  chest: { wear: { type: 'enum', vals: ['bar', 'percent', 'none'], def: 'bar', label: 'Durability' } },
-  legs: { wear: { type: 'enum', vals: ['bar', 'percent', 'none'], def: 'bar', label: 'Durability' } },
-  boots: { wear: { type: 'enum', vals: ['bar', 'percent', 'none'], def: 'bar', label: 'Durability' } },
-  held: { wear: { type: 'enum', vals: ['bar', 'percent', 'none'], def: 'bar', label: 'Durability' } }
+  helmet: { wear: { type: 'enum', vals: ['number', 'percent', 'none'], def: 'number', label: 'Durability' } },
+  chest: { wear: { type: 'enum', vals: ['number', 'percent', 'none'], def: 'number', label: 'Durability' } },
+  legs: { wear: { type: 'enum', vals: ['number', 'percent', 'none'], def: 'number', label: 'Durability' } },
+  boots: { wear: { type: 'enum', vals: ['number', 'percent', 'none'], def: 'number', label: 'Durability' } },
+  held: { wear: { type: 'enum', vals: ['number', 'percent', 'none'], def: 'number', label: 'Durability' } }
 };
 
 /* every distinct option across every element, deduped by name */

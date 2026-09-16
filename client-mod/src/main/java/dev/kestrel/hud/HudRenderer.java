@@ -34,20 +34,25 @@ final class HudRenderer {
         double cy() { return y + h / 2.0; }
     }
 
-    /** the unscaled width of one run — text, or a bar, an icon or the mouse */
+    /** the unscaled width of one run — text, or whatever is drawn */
     private static int runWidth(TextRenderer tr, HudElements.Run r) {
-        return r.text == null ? r.width : tr.getWidth(r.text);
+        return r.kind == HudElements.TEXT ? tr.getWidth(r.text) : r.width;
     }
 
-    /** A ROW IS AS TALL AS ITS TALLEST RUN: a line of text, an item icon, or
-     *  the mouse. Everything shorter is centred in it. */
+    /** A ROW IS AS TALL AS ITS TALLEST RUN: a line of text, an item icon, an
+     *  effect icon or the mouse. Everything shorter is centred in it. */
     static int rowHeight(List<HudElements.Run> runs) {
         int h = Paint.LINE;
         for (HudElements.Run r : runs) {
-            if (r.isItem()) h = Math.max(h, HudElements.ITEM);
-            else if (r.isMouse()) h = Math.max(h, HudElements.MOUSE_H);
+            if (r.kind == HudElements.ITEM_ICON) h = Math.max(h, HudElements.ITEM);
+            else if (r.kind == HudElements.EFFECT_ICON) h = Math.max(h, HudElements.EFFECT);
+            else if (r.kind == HudElements.MOUSE) h = Math.max(h, HudElements.MOUSE_H);
         }
         return h;
+    }
+
+    private static boolean centred(List<HudElements.Run> runs) {
+        return !runs.isEmpty() && runs.get(0).kind == HudElements.CENTRE;
     }
 
     /* ── WHERE THE CAPITALS ARE, PER FACE ─────────────────────────────────
@@ -66,12 +71,13 @@ final class HudRenderer {
         return KestrelHudClient.FONT.equals(font) ? KESTREL_CAP_MIDDLE : VANILLA_CAP_MIDDLE;
     }
 
-    /** the unscaled width of one row, padding included */
+    /** the unscaled width of one row, padding included; the CENTRE mark takes no room */
     private static int rowWidth(TextRenderer tr, List<HudElements.Run> runs) {
-        int inner = 0;
-        for (int i = 0; i < runs.size(); i++) {
-            inner += runWidth(tr, runs.get(i));
-            if (i < runs.size() - 1) inner += Paint.GAP;
+        int inner = 0, n = 0;
+        for (HudElements.Run r : runs) {
+            if (r.kind == HudElements.CENTRE) continue;
+            if (n++ > 0) inner += Paint.GAP;
+            inner += runWidth(tr, r);
         }
         return inner + Paint.PAD_X * 2;
     }
@@ -195,19 +201,39 @@ final class HudRenderer {
 
         int y = Paint.PAD_Y;
         for (List<HudElements.Run> runs : rows) {
-        int x = Paint.PAD_X;
         int rh = rowHeight(runs);
+        /* a centred row starts wherever leaves equal room either side of it */
+        int x = centred(runs) ? (w - rowWidth(tr, runs)) / 2 + Paint.PAD_X : Paint.PAD_X;
         for (HudElements.Run r : runs) {
-            if (r.isItem()) {
+            if (r.kind == HudElements.CENTRE) continue;
+            if (r.kind == HudElements.ITEM_ICON) {
                 /* the game's item renderer: the player's resource packs, their
                    enchantment glint, their custom models — nothing of ours */
                 ctx.drawItem(r.item, x, y + (rh - HudElements.ITEM) / 2);
                 x += r.width + Paint.GAP;
                 continue;
             }
-            if (r.isMouse()) {
+            if (r.kind == HudElements.EFFECT_ICON) {
+                /* the effect's sprite from the game's own atlas, the one the
+                   inventory shows, at the element's text transparency */
+                net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
+                if (mc != null && r.effect != null) {
+                    int alpha = (st.textArgb() >>> 24) & 0xFF;
+                    ctx.drawSpriteStretched(net.minecraft.client.render.RenderLayer::getGuiTextured,
+                        mc.getStatusEffectSpriteManager().getSprite(r.effect),
+                        x, y + (rh - HudElements.EFFECT) / 2, HudElements.EFFECT, HudElements.EFFECT,
+                        (alpha << 24) | 0xFFFFFF);
+                }
+                x += r.width + Paint.GAP;
+                continue;
+            }
+            if (r.kind == HudElements.MOUSE) {
                 mouse(ctx, x, y + (rh - HudElements.MOUSE_H) / 2, r.buttons, st);
                 x += r.width + Paint.GAP;
+                continue;
+            }
+            if (r.kind == HudElements.SPACE) {
+                space(ctx, Paint.PAD_X, w - Paint.PAD_X, y + (rh - 4) / 2, HudElements.colourOf(r.role, st));
                 continue;
             }
             /* ── NO SHADOW. NOT OVER A PLATE, AND NOT WITHOUT ONE EITHER ───
@@ -228,24 +254,6 @@ final class HudRenderer {
                at fifteen percent, which costs nothing and works everywhere. A
                shadow nobody asked for is not a third option, it is this
                deciding for them. */
-            if (r.isBar()) {
-                /* A WEAR BAR, drawn in the element's own ink rather than in a
-                   colour of its own. Two pixels of it sit inside the line so a
-                   bar and the text beside it share a baseline, and the empty
-                   part stays visible at a third alpha — a bar with no track is
-                   a bar you cannot judge a fraction against. */
-                int by = y + (rh - 3) / 2;
-                int filled = (int) Math.round(r.width * r.fill);
-                int ink = HudElements.colourOf(r.role, st);
-                int track = (ink & 0x00FFFFFF) | (((ink >>> 24) / 3) << 24);
-                ctx.fill(x, by, x + r.width, by + 3, track);
-                if (filled > 0) {
-                    /* nearly gone is the one case worth noticing */
-                    ctx.fill(x, by, x + filled, by + 3, r.fill < 0.15 ? Paint.ACCENT : ink);
-                }
-                x += r.width + Paint.GAP;
-                continue;
-            }
             int ty = y + Math.round(rh / 2f - capMiddle(r.text));
             ctx.drawText(tr, r.text, x, ty,
                 HudElements.colourOf(r.role, st), false);
@@ -254,6 +262,17 @@ final class HudRenderer {
         y += rh;
         }
         ctx.getMatrices().pop();
+    }
+
+    /* ── the spacebar: a line with its two ends turned up ──────────────────
+       Four pixels tall, one wide at each wall and along the bottom — the
+       weight of the font's own strokes — spanning the plate between its
+       padding, the way the key spans the keyboard. */
+    private static void space(DrawContext ctx, int x0, int x1, int y, int colour) {
+        if (x1 - x0 < 3) return;
+        ctx.fill(x0, y, x0 + 1, y + 3, colour);
+        ctx.fill(x1 - 1, y, x1, y + 3, colour);
+        ctx.fill(x0, y + 3, x1, y + 4, colour);
     }
 
     /* ── the mouse, drawn from pixels ──────────────────────────────────────

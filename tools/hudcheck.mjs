@@ -245,7 +245,10 @@ console.log('and an enum option is checked against its own values');
 const wear = (v) => hud.build({ elements: { helmet: { a: 'mr', x: 0, y: 0, s: 1, opts: { wear: v } } } })
   .doc.elements.helmet.opts.wear;
 ok('a declared value is kept', wear('percent') === 'percent');
-ok('and one that is not falls back to the default', wear('rainbow') === 'bar', wear('rainbow'));
+ok('and one that is not falls back to the default', wear('rainbow') === 'number', wear('rainbow'));
+/* the durability bar is gone — the user wanted the number, the way advanced
+   tooltips show it — so a document that still says "bar" reads as the number */
+ok('a stored "bar" from before becomes the number', wear('bar') === 'number', wear('bar'));
 ok('an option the element does not declare is dropped',
   hud.build({ elements: { helmet: { a: 'mr', x: 0, y: 0, s: 1, opts: { compass: true } } } })
      .doc.elements.helmet.opts.compass === undefined);
@@ -740,10 +743,25 @@ if (elementsJava) {
      renderer, so a resource pack that repaints diamond armour repaints the
      HUD too. Nothing here ships a texture that could disagree with it. */
   ok('armour and totems show the item itself, live and in samples',
-    /Run\.item\(sampleGear\(name\)\)/.test(elementsJava) && /List<Run> r = row\(Run\.item\(st\)\);/.test(elementsJava)
+    /ItemStack gear = sampleGear\(name\);\s*List<Run> r = row\(Run\.item\(gear\)\);/.test(elementsJava)
+      && /List<Run> r = row\(Run\.item\(st\)\);/.test(elementsJava)
       && (elementsJava.match(/Run\.item\(new ItemStack\(net\.minecraft\.item\.Items\.TOTEM_OF_UNDYING\)\)/g) || []).length === 2);
   ok('keystrokes draw a mouse, not LMB and RMB',
     /Run\.mouse\(lmb, rmb\)/.test(elementsJava) && elementsJava.indexOf('"LMB"') < 0 && elementsJava.indexOf('"RMB"') < 0);
+  ok('and the spacebar as a key, not the word SPACE',
+    /Run\.space\(sp\)/.test(elementsJava) && elementsJava.indexOf('"SPACE"') < 0);
+  ok('with W and the mouse centred over A S D, not pushed to the left edge',
+    /row\(Run\.centre\(\), new Run\(face, "W"/.test(elementsJava) && /row\(Run\.centre\(\), Run\.mouse\(lmb, rmb\)\)/.test(elementsJava));
+  /* durability reads the way advanced tooltips show it — left / max — and
+     the bar the user did not want is gone rather than kept as an option */
+  ok('durability is a count like advanced tooltips, and the bar is gone',
+    /el\.choice\("wear", "number"\)/.test(elementsJava)
+      && /new Run\(face, Integer\.toString\(left\), role\)/.test(elementsJava)
+      && !/Run\.bar\(|\bfill\b/.test(elementsJava.replace(/\/\*[\s\S]*?\*\//g, '')));
+  ok('potion effects can show the effect\'s icon instead of its name',
+    /boolean icons = el\.flag\("icons"\)/.test(elementsJava) && /Run\.effect\(type\)/.test(elementsJava)
+      && !!(hud.ELEMENT_OPTS.potion && hud.ELEMENT_OPTS.potion.icons && hud.ELEMENT_OPTS.potion.icons.type === 'bool'),
+    'declared in mc/hud.js, read by the mod');
   const memAt = elementsJava.indexOf('private static List<Run> memorySample(');
   ok('the memory sample is fixed numbers, not the live heap',
     memAt > 0 && /case "memory":[\s\S]{0,400}memorySample\(el, face\)/.test(elementsJava)

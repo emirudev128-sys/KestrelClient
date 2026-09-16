@@ -23,11 +23,11 @@ import java.util.List;
  * renderer, an element is now a LIST OF ROWS and a row is a list of runs. An
  * element with one row is the ordinary case and costs one extra list.
  *
- * <p><b>A RUN IS TEXT OR A BAR.</b> Durability is the one thing here that is
- * a quantity rather than a word, and writing {@code 62%} where a bar belongs
- * makes you read a number to learn something the eye gets instantly. The two
- * kinds share a width so the renderer does not have to know which is which
- * until it draws.
+ * <p><b>A RUN IS TEXT, OR SOMETHING DRAWN.</b> An item's icon, a status
+ * effect's icon, the mouse, the spacebar. Icons come from the game's own item
+ * renderer and sprite atlas, so a resource pack that repaints them repaints the
+ * HUD. Every drawn kind has a fixed width, so the renderer measures a row
+ * without knowing what is in it until it draws.
  *
  * <p><b>TWO MODES, AND EVERY MENU USES THE SECOND.</b> {@link #LIVE} reads the
  * game; {@link #SAMPLE} is fixed text that never changes. A card previewing
@@ -65,54 +65,65 @@ final class HudElements {
     static final int LABEL = 1;   /* the word that says what it is */
     static final int ACCENT = 2;  /* worth noticing; see below */
 
-    /** an item icon's size, and the mouse drawing's, in unscaled pixels */
+    /** the sizes of the drawn runs, in unscaled pixels */
     static final int ITEM = 16;
+    static final int EFFECT = 18;
     static final int MOUSE_W = 11;
     static final int MOUSE_H = 14;
+    static final int SPACE_MIN = 17;
 
-    /** one run: a piece of text, a bar with a fill from 0 to 1, an item's
-     *  icon, or the mouse with its two buttons */
+    /* ── WHAT KIND OF THING A RUN IS ──────────────────────────────────────
+       Text, an item's icon, a status effect's icon, the mouse, the spacebar —
+       or CENTRE, which draws nothing and marks its row to be centred in the
+       plate rather than started at its left edge. */
+    static final int TEXT = 0;
+    static final int ITEM_ICON = 1;
+    static final int EFFECT_ICON = 2;
+    static final int MOUSE = 3;
+    static final int SPACE = 4;
+    static final int CENTRE = 5;
+
     static final class Run {
-        final Text text;        /* null for anything that is not text */
-        final int role;
-        final double fill;      /* bars only */
+        final int kind;
+        final Text text;        /* TEXT only */
+        final int role;         /* the ink: text, the spacebar */
         final int width;        /* everything but text, in unscaled pixels */
-        final ItemStack item;   /* item icons only */
-        final int buttons;      /* the mouse only: bit 0 left held, bit 1 right held; -1 otherwise */
+        final ItemStack item;   /* ITEM_ICON only */
+        final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.effect.StatusEffect> effect;
+        final int buttons;      /* MOUSE only: bit 0 left held, bit 1 right held */
 
         Run(Face face, String text, int role) {
-            this.text = face.of(text);
-            this.role = role;
-            this.fill = -1;
-            this.width = 0;
-            this.item = null;
-            this.buttons = -1;
+            this(TEXT, face.of(text), role, 0, null, null, 0);
         }
 
-        private Run(double fill, int width, int role, ItemStack item, int buttons) {
-            this.text = null;
+        private Run(int kind, Text text, int role, int width, ItemStack item,
+                    net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.effect.StatusEffect> effect, int buttons) {
+            this.kind = kind;
+            this.text = text;
             this.role = role;
-            this.fill = fill < 0 ? 0 : (fill > 1 ? 1 : fill);
             this.width = width;
             this.item = item;
+            this.effect = effect;
             this.buttons = buttons;
         }
 
-        static Run bar(double fill, int width) { return new Run(fill, width, VALUE, null, -1); }
+        /* AN ITEM OR AN EFFECT IS DRAWN FROM THE GAME'S OWN ATLASES, so it is
+           whatever the player's resource packs make it. Nothing here ships a
+           texture. */
+        static Run item(ItemStack stack) { return new Run(ITEM_ICON, null, VALUE, ITEM, stack, null, 0); }
 
-        /* AN ITEM IS DRAWN BY THE GAME'S OWN ITEM RENDERER, so it is whatever
-           the player's resource packs make it. Nothing here ships a texture. */
-        static Run item(ItemStack stack) { return new Run(0, ITEM, VALUE, stack, -1); }
-
-        static Run mouse(boolean left, boolean right) {
-            return new Run(0, MOUSE_W, VALUE, null, (left ? 1 : 0) | (right ? 2 : 0));
+        static Run effect(net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.effect.StatusEffect> type) {
+            return new Run(EFFECT_ICON, null, VALUE, EFFECT, null, type, 0);
         }
 
-        boolean isBar() { return text == null && item == null && buttons < 0; }
+        static Run mouse(boolean left, boolean right) {
+            return new Run(MOUSE, null, VALUE, MOUSE_W, null, null, (left ? 1 : 0) | (right ? 2 : 0));
+        }
 
-        boolean isItem() { return item != null; }
+        /** the spacebar: a line with its two ends turned up, as wide as the plate */
+        static Run space(boolean held) { return new Run(SPACE, null, held ? VALUE : LABEL, SPACE_MIN, null, null, 0); }
 
-        boolean isMouse() { return buttons >= 0; }
+        static Run centre() { return new Run(CENTRE, null, VALUE, 0, null, null, 0); }
     }
 
     private static List<Run> row(Run... runs) {
@@ -293,8 +304,11 @@ final class HudElements {
             lmb = c.options.attackKey.isPressed();
             rmb = c.options.useKey.isPressed();
         }
-        out.add(row(new Run(face, "W", w ? VALUE : LABEL)));
-        out.add(row(new Run(face, "A", a ? VALUE : LABEL),
+        /* EVERY ROW IS CENTRED, so W sits over S and the mouse under it, the
+           way the keys sit on a keyboard, rather than all four rows starting
+           at the plate's left edge. */
+        out.add(row(Run.centre(), new Run(face, "W", w ? VALUE : LABEL)));
+        out.add(row(Run.centre(), new Run(face, "A", a ? VALUE : LABEL),
             new Run(face, "S", s ? VALUE : LABEL),
             new Run(face, "D", d ? VALUE : LABEL)));
         if (el.flag("mouse")) {
@@ -304,15 +318,17 @@ final class HudElements {
                is why a keystroke display and a CPS counter are two elements
                that can say the same thing. */
             if (el.flag("cps")) {
-                out.add(row(
+                out.add(row(Run.centre(),
                     new Run(face, Integer.toString(fake ? 7 : Clicks.count("left")), lmb ? VALUE : LABEL),
                     Run.mouse(lmb, rmb),
                     new Run(face, Integer.toString(fake ? 2 : Clicks.count("right")), rmb ? VALUE : LABEL)));
             } else {
-                out.add(row(Run.mouse(lmb, rmb)));
+                out.add(row(Run.centre(), Run.mouse(lmb, rmb)));
             }
         }
-        if (el.flag("space")) out.add(row(new Run(face, "SPACE", sp ? VALUE : LABEL)));
+        /* the spacebar as the key looks, not the word: a line with its ends
+           turned up, stretched across the plate */
+        if (el.flag("space")) out.add(row(Run.space(sp)));
         return out;
     }
 
@@ -321,12 +337,16 @@ final class HudElements {
        plate sitting in the corner saying nothing is worse than no plate. */
     private static List<List<Run>> potions(HudConfig.Element el, MinecraftClient c, Face face, boolean fake) {
         List<List<Run>> out = new ArrayList<>(4);
+        /* "Show the icon, not the name" puts the effect's own sprite where its
+           name was — the icon vanilla's inventory uses, from the player's
+           resource packs. The time left is still its own choice. */
+        boolean icons = el.flag("icons");
+        boolean times = el.flag("duration");
         if (fake) {
-            /* the sample honours "Show time left" like the live rows do, or
-               switching it off would change nothing you can see */
-            boolean times = el.flag("duration");
-            out.add(times ? row(new Run(face, "Speed IV", VALUE), new Run(face, "1:00", LABEL)) : row(new Run(face, "Speed IV", VALUE)));
-            out.add(times ? row(new Run(face, "Strength II", VALUE), new Run(face, "0:41", LABEL)) : row(new Run(face, "Strength II", VALUE)));
+            /* the sample honours both switches like the live rows do, or
+               flipping one would change nothing you can see */
+            out.add(effectRow(face, icons, net.minecraft.entity.effect.StatusEffects.SPEED, "Speed IV", times ? "1:00" : null));
+            out.add(effectRow(face, icons, net.minecraft.entity.effect.StatusEffects.STRENGTH, "Strength II", times ? "0:41" : null));
             return out;
         }
         if (c == null || c.player == null) return null;
@@ -336,29 +356,36 @@ final class HudElements {
             String nm = Text.translatable(e.getEffectType().value().getTranslationKey()).getString();
             int amp = e.getAmplifier();
             if (amp > 0) nm = nm + " " + roman(amp + 1);
-            List<Run> r = row(new Run(face, nm, VALUE));
-            if (el.flag("duration") && !e.isInfinite()) {
-                r.add(new Run(face, clock(e.getDuration()), LABEL));
-            }
-            out.add(r);
+            out.add(effectRow(face, icons, e.getEffectType(), nm, times && !e.isInfinite() ? clock(e.getDuration()) : null));
         }
         return out.isEmpty() ? null : out;
     }
 
-    /* ── armour and the held item ─────────────────────────────────────────
-       The launcher's own label, then the wear. `bar` is the default because
-       durability is a quantity: a bar is read at a glance and 62% has to be
-       read. `none` is for somebody who wants the slot named and nothing else.
+    private static List<Run> effectRow(Face face, boolean icon,
+                                       net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.effect.StatusEffect> type,
+                                       String name, String time) {
+        List<Run> r = row(icon ? Run.effect(type) : new Run(face, name, VALUE));
+        if (time != null) r.add(new Run(face, time, LABEL));
+        return r;
+    }
 
-       AN EMPTY SLOT DRAWS NOTHING. A row saying "Helmet" with an empty bar is
-       a row telling you about equipment you are not wearing. */
+    /* ── armour and the held item ─────────────────────────────────────────
+       The item's icon, then the wear. `number` is the default and reads the
+       way advanced tooltips do — 225 / 363 — because the player asked for the
+       count rather than a bar. `percent` is the short form, and `none` is for
+       somebody who wants the icon and nothing else.
+
+       AN EMPTY SLOT DRAWS NOTHING. A row for a helmet you are not wearing is a
+       row telling you about equipment you do not have. */
     private static List<List<Run>> armour(String name, HudConfig.Element el, MinecraftClient c, Face face, boolean fake) {
         /* THE ITEM'S OWN ICON, not its name. A sample shows diamond gear —
            something a player recognises at a glance — and the world shows
            exactly what they are wearing, through their resource packs. */
         if (fake) {
-            List<Run> r = row(Run.item(sampleGear(name)));
-            addWear(r, el, 0.62, face);
+            ItemStack gear = sampleGear(name);
+            List<Run> r = row(Run.item(gear));
+            int max = gear.getMaxDamage();
+            addWear(r, el, (int) Math.round(max * 0.62), max, face);
             return one(r);
         }
         if (c == null || c.player == null) return null;
@@ -367,21 +394,25 @@ final class HudElements {
         if (st == null || st.isEmpty()) return null;
 
         List<Run> r = row(Run.item(st));
-        if (st.isDamageable()) {
-            double left = 1.0 - (double) st.getDamage() / (double) st.getMaxDamage();
-            addWear(r, el, left, face);
-        }
+        if (st.isDamageable()) addWear(r, el, st.getMaxDamage() - st.getDamage(), st.getMaxDamage(), face);
         return one(r);
     }
 
-    private static void addWear(List<Run> r, HudConfig.Element el, double left, Face face) {
-        String how = el.choice("wear", "bar");
+    /** the wear, as a count like advanced tooltips, a percentage, or nothing */
+    private static void addWear(List<Run> r, HudConfig.Element el, int left, int max, Face face) {
+        if (max <= 0) return;
+        String how = el.choice("wear", "number");
         if ("none".equals(how)) return;
+        double fraction = (double) left / max;
+        /* nearly broken is the one case worth noticing */
+        int role = fraction < 0.15 ? ACCENT : VALUE;
         if ("percent".equals(how)) {
-            r.add(new Run(face, Math.round(left * 100) + "%", left < 0.15 ? ACCENT : LABEL));
+            r.add(new Run(face, Math.round(fraction * 100) + "%", role));
             return;
         }
-        r.add(Run.bar(left, 24));
+        r.add(new Run(face, Integer.toString(left), role));
+        r.add(new Run(face, "/", LABEL));
+        r.add(new Run(face, Integer.toString(max), LABEL));
     }
 
     /* ── THE SAMPLES ──────────────────────────────────────────────────────
