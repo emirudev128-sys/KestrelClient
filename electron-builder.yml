@@ -50,7 +50,10 @@ files:
   - msauth.js
   - auth-config.js
   - mc/**/*
-  # the renderer
+  # the renderer, which includes ui/fonts: both typefaces and the OFL text
+  # each one must travel with.  They ship so that nothing is fetched to draw
+  # the window's own text; `npm run packcheck` walks ui/ and fails on any
+  # file this glob did not carry into the archive.
   - ui/**/*
   # shipped so a user can configure their own client id; the placeholder one
   - auth.config.example.json

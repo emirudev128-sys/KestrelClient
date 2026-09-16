@@ -1,0 +1,49 @@
+/* ============================================================================
+   The two typefaces, shipped rather than fetched.
+
+   They used to come from Google Fonts, so every start of the launcher opened
+   a connection to a host that is not Microsoft, Mojang or Modrinth, and an
+   offline window quietly drew in Segoe UI and Cascadia Mono instead.  The
+   files now live in ui/fonts and the CSP's font-src is 'self' alone: a font
+   from anywhere else is refused, not merely never asked for.
+
+   BOTH ARE THE VARIABLE FILES, NOT STATIC CUTS.  The width axis is in use:
+   --wide-display, --wide-ui and --wide-label in tokens.css are font-stretch
+   values, and font-stretch reaches the wdth axis only when the face declares
+   a stretch RANGE.  A set of static instances would all be 100% wide, and the
+   condensed display line would silently stop being condensed.
+
+   The descriptors restate what the old stylesheet link asked for — Archivo
+   at wdth 62–125 and wght 100–900, Azeret Mono at wght 100–900, upright
+   only, display=swap — so what changed is where the bytes come from, not how
+   anything renders.
+
+   The files are google/fonts at 92345ac, renamed and otherwise untouched, so
+   `git hash-object` on either one gives the blob id GitHub lists for it:
+
+     archivo-variable.ttf       ofl/archivo/Archivo[wdth,wght].ttf
+                                cc64253d36665a5ca0d6719cdf1e32b3de453b51
+     azeret-mono-variable.ttf   ofl/azeretmono/AzeretMono[wght].ttf
+                                105c12bf6068e656b2ad374e21645857e24dad78
+
+   Both are under the SIL Open Font License 1.1, and each licence text ships
+   beside its font as the OFL requires.  They are third-party and keep their
+   own terms; the rest of the launcher is all rights reserved.
+   ========================================================================= */
+
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  font-display: swap;
+  src: url("../fonts/archivo-variable.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Azeret Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../fonts/azeret-mono-variable.ttf") format("truetype");
+}

@@ -68,7 +68,9 @@ function saveBounds() {
       escape is missed: with no inline script allowed, an injected <script>
       does not run.  connect-src is an allow-list of the hosts this launcher
       genuinely talks to and nothing else, which is also the privacy claim
-      made enforceable rather than promised.
+      made enforceable rather than promised.  font-src is 'self' and nothing
+      else for the same reason: both typefaces ship in ui/fonts, so drawing
+      the window's own text contacts nobody.
 
    2. A permission handler.  Chromium's default is to ASK; a launcher has no
       use for a camera, a microphone, geolocation or notifications, so every
@@ -80,7 +82,7 @@ function hardenSession() {
   /* One string literal on purpose: assembled from an array it is applied
      correctly but static analysers cannot read it, and a policy a scanner
      cannot parse is a policy nobody can check. */
-  const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.modrinth.com https://cdn.modrinth.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+  const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; connect-src 'self' https://api.modrinth.com https://cdn.modrinth.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
   ses.webRequest.onHeadersReceived((details, cb) => {
     cb({ responseHeaders: Object.assign({}, details.responseHeaders, {
