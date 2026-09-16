@@ -34,9 +34,36 @@ final class HudRenderer {
         double cy() { return y + h / 2.0; }
     }
 
-    /** the unscaled width of one run — text or a bar */
+    /** the unscaled width of one run — text, or a bar, an icon or the mouse */
     private static int runWidth(TextRenderer tr, HudElements.Run r) {
-        return r.isBar() ? r.width : tr.getWidth(r.text);
+        return r.text == null ? r.width : tr.getWidth(r.text);
+    }
+
+    /** A ROW IS AS TALL AS ITS TALLEST RUN: a line of text, an item icon, or
+     *  the mouse. Everything shorter is centred in it. */
+    static int rowHeight(List<HudElements.Run> runs) {
+        int h = Paint.LINE;
+        for (HudElements.Run r : runs) {
+            if (r.isItem()) h = Math.max(h, HudElements.ITEM);
+            else if (r.isMouse()) h = Math.max(h, HudElements.MOUSE_H);
+        }
+        return h;
+    }
+
+    /* ── WHERE THE CAPITALS ARE, PER FACE ─────────────────────────────────
+       Text is centred in its row on its capital letters, not on the line box.
+       Minecraft's font draws capitals in the seven pixels from where it is
+       drawn, so their middle is 3.5 down. The Kestrel face is a TrueType font
+       whose baseline sits 7 font pixels down plus its 1-pixel shift — 8 —
+       with capitals 0.698 of its 9-pixel size above that: middle 4.86 down.
+       Centring the line box instead is what left every plate's text high,
+       with three pixels over it and five under. */
+    private static final float VANILLA_CAP_MIDDLE = 3.5f;
+    private static final float KESTREL_CAP_MIDDLE = 8f - 0.698f * 9f / 2f;
+
+    private static float capMiddle(net.minecraft.text.Text t) {
+        net.minecraft.util.Identifier font = t.getStyle().getFont();
+        return KestrelHudClient.FONT.equals(font) ? KESTREL_CAP_MIDDLE : VANILLA_CAP_MIDDLE;
     }
 
     /** the unscaled width of one row, padding included */
@@ -59,10 +86,12 @@ final class HudRenderer {
         return w;
     }
 
-    /** the unscaled height of an element: a line per row, and the padding */
+    /** the unscaled height of an element: each row's own height, and the padding */
     static int height(List<List<HudElements.Run>> rows) {
-        int n = Math.max(1, rows.size());
-        return Paint.LINE * n + Paint.PAD_Y * 2;
+        if (rows.isEmpty()) return Paint.LINE + Paint.PAD_Y * 2;
+        int h = 0;
+        for (List<HudElements.Run> r : rows) h += rowHeight(r);
+        return h + Paint.PAD_Y * 2;
     }
 
     /* ── forward: anchor + percentage -> pixels ────────────────────────────
@@ -167,7 +196,20 @@ final class HudRenderer {
         int y = Paint.PAD_Y;
         for (List<HudElements.Run> runs : rows) {
         int x = Paint.PAD_X;
+        int rh = rowHeight(runs);
         for (HudElements.Run r : runs) {
+            if (r.isItem()) {
+                /* the game's item renderer: the player's resource packs, their
+                   enchantment glint, their custom models — nothing of ours */
+                ctx.drawItem(r.item, x, y + (rh - HudElements.ITEM) / 2);
+                x += r.width + Paint.GAP;
+                continue;
+            }
+            if (r.isMouse()) {
+                mouse(ctx, x, y + (rh - HudElements.MOUSE_H) / 2, r.buttons, st);
+                x += r.width + Paint.GAP;
+                continue;
+            }
             /* ── NO SHADOW. NOT OVER A PLATE, AND NOT WITHOUT ONE EITHER ───
                Over a plate a shadow is a smeared second copy of every glyph —
                blur pretending to be depth — and the plate is already what
@@ -192,7 +234,7 @@ final class HudRenderer {
                    bar and the text beside it share a baseline, and the empty
                    part stays visible at a third alpha — a bar with no track is
                    a bar you cannot judge a fraction against. */
-                int by = y + 3;
+                int by = y + (rh - 3) / 2;
                 int filled = (int) Math.round(r.width * r.fill);
                 int ink = HudElements.colourOf(r.role, st);
                 int track = (ink & 0x00FFFFFF) | (((ink >>> 24) / 3) << 24);
@@ -204,13 +246,55 @@ final class HudRenderer {
                 x += r.width + Paint.GAP;
                 continue;
             }
-            ctx.drawText(tr, r.text, x, y,
+            int ty = y + Math.round(rh / 2f - capMiddle(r.text));
+            ctx.drawText(tr, r.text, x, ty,
                 HudElements.colourOf(r.role, st), false);
             x += tr.getWidth(r.text) + Paint.GAP;
         }
-        y += Paint.LINE;
+        y += rh;
         }
         ctx.getMatrices().pop();
+    }
+
+    /* ── the mouse, drawn from pixels ──────────────────────────────────────
+       Two buttons over a body, eleven by fourteen. A held button takes the
+       element's value ink, the way a held key does; an idle one the label
+       ink; the body sits under both at half the label's alpha, there to make
+       the shape read as a mouse rather than as two squares. */
+    private static final String[] MOUSE = {
+        "..LLL.RRR..",
+        ".LLLL.RRRR.",
+        "LLLLL.RRRRR",
+        "LLLLL.RRRRR",
+        "LLLLL.RRRRR",
+        "LLLLL.RRRRR",
+        "...........",
+        "BBBBBBBBBBB",
+        "BBBBBBBBBBB",
+        "BBBBBBBBBBB",
+        "BBBBBBBBBBB",
+        "BBBBBBBBBBB",
+        ".BBBBBBBBB.",
+        "..BBBBBBB.."
+    };
+
+    private static void mouse(DrawContext ctx, int x, int y, int buttons, HudConfig.Style st) {
+        int left = (buttons & 1) != 0 ? st.textArgb() : st.labelArgb();
+        int right = (buttons & 2) != 0 ? st.textArgb() : st.labelArgb();
+        int label = st.labelArgb();
+        int body = (label & 0x00FFFFFF) | ((((label >>> 24) & 0xFF) / 2) << 24);
+        for (int j = 0; j < MOUSE.length; j++) {
+            String row = MOUSE[j];
+            int i = 0;
+            while (i < row.length()) {
+                char k = row.charAt(i);
+                if (k == '.') { i++; continue; }
+                int s = i;
+                while (i < row.length() && row.charAt(i) == k) i++;
+                int colour = k == 'L' ? left : k == 'R' ? right : body;
+                ctx.fill(x + s, y + j, x + i, y + j + 1, colour);
+            }
+        }
     }
 
     /* ── the plate ─────────────────────────────────────────────────────────

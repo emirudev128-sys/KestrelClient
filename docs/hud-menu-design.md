@@ -5,71 +5,90 @@ forget magnet while moving"* — and later, per element: *"if I go to coordinate
 make that one bigger while keeping others the same"*, remove the background box, change its
 transparency, change the colour of the text or the box.
 
-Reference screenshots the user supplied are in **`hud-inspos/`**, which is **gitignored and stays
-that way** — they are other people's product UI and do not belong in a public repository. Neither do
-descriptions of them. **This file records the decisions on their own terms**: what was built, what
-was rejected, and the reason in each case, so the reasoning survives without carrying anybody else's
-name into a repo that anyone can read.
+**The current menu was designed in a browser mockup first and ported only once the user had signed
+it off.** The mockup is a clickable replica at the user's own window size, built from the mod's
+tables and the user's real config, with every proportion and transparency on a slider. Reference
+screenshots the user supplied stay out of the repository (`hud-inspos/` is gitignored); **this file
+records the decisions on their own terms**, so the reasoning survives without carrying anybody
+else's name into a repo that anyone can read.
 
 ---
 
 ## The shape
 
-**Right Shift opens it, in a world.** Escape closes it, like every other Minecraft screen. It is
-registered through the ordinary keybinding API, so it appears in Minecraft's own Controls screen and
-can be rebound — more than a hard-coded key check in a tick handler would have given anyone.
+**Right Shift opens it, in a world.** Escape, DONE and Right Shift again all close it, and all three
+save through the same one write. It is registered through the ordinary keybinding API, so it appears
+in Minecraft's own Controls screen and can be rebound.
 
-**Two modes, not one screen.** Toggling things and dragging things want different screens: a panel
-in the middle of the display is exactly the wrong thing to have on top of what you are positioning.
-So the menu toggles and configures, and `EDIT HUD LAYOUT` drops into a separate screen with the
-panel gone and the HUD alone on screen.
+**One screen where there were three.** The earlier menu was a grid of cards, a separate options
+screen and a separate layout screen, and a player moved between them to do one thing. Now it is one
+editor: a top bar with two tabs, the modules down the left, a picture of the screen in the middle
+with the HUD on it, the selected element's settings on the right, and the keys along the bottom.
+Selecting, styling and placing an element happen without changing screens.
 
-**A grid of cards, one per module.** The first build was a list of rows with a toggle on the right.
-It worked, and it was sent back after testing. The card is right for a reason worth stating plainly:
-**enable and configure are two different controls, and a row with one toggle has nowhere to put the
-second one.** Each card carries `OPTIONS` and `ENABLED`.
+**Hairlines and square corners — chosen, and reversing the earlier rule.** The earlier menu
+separated surfaces by transparency alone and rounded every corner, and both were deliberate. For
+this one the user chose, from a mockup with both options on the table, a one-pixel edge on every
+panel, row, chip and keycap and no rounding anywhere. The transparency ladder survived underneath:
+panel 43%, rows 37%, hovered 63%, wells 46% — the values the user dialled in game — composite to 43,
+64, 79 and 81%.
 
-**A card is a MODULE, not an element.** "Armor status" owns five elements and the launcher's own
-screen switches them together. Five armour cards would be a second model of visibility disagreeing
-with the first. Where a module owns more than one element, the options screen steps between them
-with `< HELMET >`.
+**Modules are grouped and colour-coded.** Performance, Input, World, Session, Combat, Gear: a small
+square in the group's colour heads each group, and the rows carry a faint wash of it. The colours
+are muted and kept well away from amber, which stays the one accent — selection, on, and the primary
+action — so a group can never be mistaken for a state. Each row's leading tag is the anchor the
+module sits at (`TL`, `MR`), which is information, not decoration.
 
-**Every card draws the real element, not an icon.** The obvious thing was a small glyph per module.
-Drawing the element itself — through the same renderer the world uses, at whatever colour,
-transparency and plate setting it currently has — makes the grid a contact sheet of your own HUD, so
-a colour change shows up before you close the menu. An invented icon would have been more work and
-told you less.
+**A row is a MODULE, not an element.** "Armor status" owns five elements and the launcher switches
+them together. The settings panel steps between them with a `Part` control.
 
-**The HUD stays drawn while the menu is open.** It is what you are configuring. Flipping a module
-off should show you the element vanishing from the corner it was in; that is the whole reason to do
-this in the game rather than in the launcher, where it was already possible.
+**On/off is a square.** Amber when on, dim when off; no track, no word, no border. It was chosen from
+four designs placed side by side in the mockup. Its click target is 26 pixels around a 10-pixel mark.
 
-## The per-element screen
+**Features read as rules.** A feature is on or off, a key, and its options — no anchor, colour or
+scale — so the Features tab sets each one out the way it behaves: `WHEN [V] PRESSED → TOGGLE
+SPRINT`, `WHILE [C] HELD → ZOOM [4x]`, `WHILE ON → OUTLINE ENTITIES`. A key chip in the rule is
+pressed to rebind it; a column beside the rules lists the keys in use and says when two features
+want the same one.
 
-`OPTIONS` opens one element: size, anchor, show-the-box, box colour, box opacity, text colour, text
-opacity, and the compass — which lives here rather than in the whole-HUD section, since it means
-something on exactly one element.
+## The canvas
 
-**The preview lets the world through.** "Does this plate read at 30%" is a question about the world.
-A preview on flat grey answers a different question.
+**It is the real screen, small.** The unblurred frame is scaled into the middle panel and every
+element is drawn over it by the renderer the world uses, at the position the world would put it. An
+element switched off stays on the canvas, faint and dashed — it is how you find it to switch it back.
+`fit` shows the whole screen; `1 : 1` shows true size around the selected element.
 
-**Colour comes from swatches.** No wheel — that needs a shader. No hex field — that needs a focus
-model and a validation state for a value that is wrong most of the time you are typing it. Fourteen
-squares: Kestrel's own four first, so "put it back how it was" is one click, then Minecraft's chat
-colours, which are the ones players already have names for.
+**The live HUD steps aside while the editor is open.** The canvas draws the whole HUD; a live copy
+peeking out between the panels would be two of everything.
 
-**Alpha is a slider; everything else is a stepper.** Transparency is the one genuinely continuous
-value on these screens — nobody wants 72 rather than 71, they want "fainter than that", and the only
-way to say that is to drag it and watch. The number is still shown, because two elements set to
-"about the same" by eye cannot be made identical later without it.
+## How it is drawn
 
-**Size is a slider here and a wheel in the layout editor.** Both write the same field. The wheel is
-right when the element is under your cursor and you are judging it against its neighbours; the
-slider is right when you are looking at one thing and want 1.75 exactly.
+**At its own scale, not the GUI scale.** Everything is laid out in design pixels — one screen pixel
+at 1080p, two on a screen 1600 pixels tall or more — and scaled once into Minecraft's GUI space. The
+menu is the same size at GUI scale 2 and GUI scale 4, and every hairline is exactly one pixel.
+
+**Only what sits behind a panel is blurred.** Vanilla's menu blur covers the whole frame. The frame is
+copied, blurred with vanilla's own pass, copied again and put back, and only the panel rectangles are
+pasted from the blurred copy — framebuffer blits, no shader of ours and no mixin. The world between
+the panels stays sharp, and the same unblurred copy is what the canvas shows.
+
+**Kestrel's two typefaces, a font definition per size.** Archivo for words, Azeret Mono for labels,
+values and keys — the launcher's own pair. Minecraft samples glyph textures nearest-neighbour, so a
+face scaled to a size it was not rasterised at breaks up; every size the menu uses has its own
+definition at that size, with a double-density twin. Every face is a static instance: a variable font
+renders at its default instance, which for these is Thin.
+
+**Text is centred on its capitals.** A TrueType baseline sits 7 font pixels below where it is drawn,
+and both faces keep more room below the baseline than above the capitals, so a label centred by its
+line box sits visibly high. Each label is placed from the font's own cap height (0.686 em for
+Archivo, 0.698 for Azeret Mono). The mockup had the same fault and the same fix.
+
+**Nothing in the menu moves.** Every element is drawn from fixed sample text. A live fps counter in a
+preview flickers and changes width while you are trying to align it.
 
 ## The magnet
 
-Asked for by name. What it snaps to, in priority order — the thing that survives longest first:
+Asked for by name, and carried over whole from the old layout screen to the canvas. What it snaps to, in priority order — the thing that survives longest first:
 
 1. **The nine anchors** — flush to an edge, on a centre line, or at the stock inset the default
    layout uses. These are what the config actually stores, so landing *on* one means the element is
@@ -89,30 +108,25 @@ are dragging, an element that jumps out from under the cursor is one you cannot 
 
 ## What was rejected, and why
 
-**Green for the enabled state.** The conventional answer is a button that turns green. Kestrel has
-one accent and green appears nowhere in its palette; an enabled state should read as *on*, not as
+**Green for on.** Kestrel has one accent, amber, and an on state should read as *on*, not as
 *approved*.
 
-**A blur behind the panel.** Blur is a shader pass whose API has moved in every recent Minecraft
-version, and it would have to be re-checked at every version bump for a visual nicety. A fill works,
-and the world stays legible behind it, which was the point.
+**Vanilla's `ButtonWidget` and friends.** They carry vanilla's look — the bevelled button, the 20px
+height. A menu that configures a Kestrel HUD while wearing Minecraft's chrome reads as two products
+in one window.
 
-**Collapsible sections.** Worth it at four groups. This has two and ten rows, and a disclosure
-triangle over five rows costs a click to see what already fits on screen.
+**One font, scaled to every size.** Cheaper to ship and broken on screen: nearest-neighbour sampling
+turns a scaled glyph's strokes ragged. Seventeen small font definitions cost nothing at runtime.
 
-**Single guillemets in the stepper.** `‹ SHARP ›` reads better than `< SHARP >` and is exactly the
-kind of character that comes out as a missing-glyph box under some resource packs. A control whose
-arrows might not render is not a control.
+**Blurring the whole frame.** Vanilla's default and the one-line version — and it blurs the world the
+HUD is being arranged against everywhere, including the gaps between panels, which the user asked to
+stay sharp.
 
-**Vanilla's `ButtonWidget` and friends.** They carry vanilla's look — the beveled nine-slice button,
-the 20px height. Kestrel's screens are square-cornered, thin-bordered and 14px to a row, and a menu
-that configures a Kestrel HUD while wearing Minecraft's chrome would read as two products in one
-window.
+**Drawing at the GUI scale.** The number a player picked for Minecraft's own buttons would decide how
+big this menu is, and at GUI scale 4 a three-panel editor does not fit a 1080p screen at all.
 
-**Invented sample data for the elements that are not drawn yet.** A plate reading `21 ms` on top of
-the world is indistinguishable from a ping display that works, and you would find out it never
-appears in-world by closing the editor. The muted label cannot be mistaken for a reading, and the
-card says `not drawn yet` outright.
+**Numbering the rows.** A leading `01`, `02` is a common look and it would have encoded nothing: the
+modules are not a sequence. The tag in that position is the anchor instead.
 
 ## The ownership question, settled
 
@@ -169,8 +183,10 @@ that screen wrote the stock arrangement over whatever had been set in game. Per-
 that fatal rather than annoying, since `store.js` merges at the top level only and `{hud: …}` swapped
 the whole object. `loadHud()` now reads at startup and `saveHud()` merges instead of replacing.
 
-## Still not drawn
+## Two more bugs, found by building the mockup
 
-Nine of the eleven elements are arranged, carried, listed, toggled and styleable — and not drawn in
-the world. The cards say so on the rows they cannot honour, and the layout editor shows those
-elements as their own label in the muted ink. `HudElements.of()` is the single place to add each.
+**The memory preview moved.** Its sample read the live heap, so it changed every frame the menu was
+open — the one preview that broke the rule the samples exist for. It shows fixed numbers now.
+
+**The potion preview ignored "Show time left".** Switching it off changed nothing you could see. The
+sample honours it the way the live rows do.

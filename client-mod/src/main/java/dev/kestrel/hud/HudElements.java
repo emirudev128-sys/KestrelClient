@@ -65,30 +65,54 @@ final class HudElements {
     static final int LABEL = 1;   /* the word that says what it is */
     static final int ACCENT = 2;  /* worth noticing; see below */
 
-    /** one run: a piece of text, or a bar with a fill from 0 to 1 */
+    /** an item icon's size, and the mouse drawing's, in unscaled pixels */
+    static final int ITEM = 16;
+    static final int MOUSE_W = 11;
+    static final int MOUSE_H = 14;
+
+    /** one run: a piece of text, a bar with a fill from 0 to 1, an item's
+     *  icon, or the mouse with its two buttons */
     static final class Run {
-        final Text text;        /* null for a bar */
+        final Text text;        /* null for anything that is not text */
         final int role;
         final double fill;      /* bars only */
-        final int width;        /* bars only, in unscaled pixels */
+        final int width;        /* everything but text, in unscaled pixels */
+        final ItemStack item;   /* item icons only */
+        final int buttons;      /* the mouse only: bit 0 left held, bit 1 right held; -1 otherwise */
 
         Run(Face face, String text, int role) {
             this.text = face.of(text);
             this.role = role;
             this.fill = -1;
             this.width = 0;
+            this.item = null;
+            this.buttons = -1;
         }
 
-        private Run(double fill, int width, int role) {
+        private Run(double fill, int width, int role, ItemStack item, int buttons) {
             this.text = null;
             this.role = role;
             this.fill = fill < 0 ? 0 : (fill > 1 ? 1 : fill);
             this.width = width;
+            this.item = item;
+            this.buttons = buttons;
         }
 
-        static Run bar(double fill, int width) { return new Run(fill, width, VALUE); }
+        static Run bar(double fill, int width) { return new Run(fill, width, VALUE, null, -1); }
 
-        boolean isBar() { return text == null; }
+        /* AN ITEM IS DRAWN BY THE GAME'S OWN ITEM RENDERER, so it is whatever
+           the player's resource packs make it. Nothing here ships a texture. */
+        static Run item(ItemStack stack) { return new Run(0, ITEM, VALUE, stack, -1); }
+
+        static Run mouse(boolean left, boolean right) {
+            return new Run(0, MOUSE_W, VALUE, null, (left ? 1 : 0) | (right ? 2 : 0));
+        }
+
+        boolean isBar() { return text == null && item == null && buttons < 0; }
+
+        boolean isItem() { return item != null; }
+
+        boolean isMouse() { return buttons >= 0; }
     }
 
     private static List<Run> row(Run... runs) {
@@ -211,9 +235,11 @@ final class HudElements {
                     new Run(face, n == 1 ? "hit" : "hits", LABEL)));
             }
             case "totems": {
+                /* the totem itself, then how many: an icon says "totem" faster
+                   than the word, in any language */
                 int n = totems(client, el.flag("offhand"));
-                return one(row(new Run(face, Integer.toString(n), n == 0 ? ACCENT : VALUE),
-                    new Run(face, n == 1 ? "totem" : "totems", LABEL)));
+                return one(row(Run.item(new ItemStack(net.minecraft.item.Items.TOTEM_OF_UNDYING)),
+                    new Run(face, Integer.toString(n), n == 0 ? ACCENT : VALUE)));
             }
             case "tnt": {
                 Double fuse = nearestFuse(client);
@@ -272,11 +298,19 @@ final class HudElements {
             new Run(face, "S", s ? VALUE : LABEL),
             new Run(face, "D", d ? VALUE : LABEL)));
         if (el.flag("mouse")) {
-            /* the CPS-on-the-buttons option, which is why a keystroke display
-               and a CPS counter are two elements that can say the same thing */
-            String l = el.flag("cps") ? Integer.toString(fake ? 7 : Clicks.count("left")) : "LMB";
-            String r = el.flag("cps") ? Integer.toString(fake ? 2 : Clicks.count("right")) : "RMB";
-            out.add(row(new Run(face, l, lmb ? VALUE : LABEL), new Run(face, r, rmb ? VALUE : LABEL)));
+            /* A MOUSE, NOT "LMB RMB". The buttons light up the way the keys
+               above them do. With CPS on, each button's count sits on its own
+               side of the mouse — two digits do not fit inside a button — which
+               is why a keystroke display and a CPS counter are two elements
+               that can say the same thing. */
+            if (el.flag("cps")) {
+                out.add(row(
+                    new Run(face, Integer.toString(fake ? 7 : Clicks.count("left")), lmb ? VALUE : LABEL),
+                    Run.mouse(lmb, rmb),
+                    new Run(face, Integer.toString(fake ? 2 : Clicks.count("right")), rmb ? VALUE : LABEL)));
+            } else {
+                out.add(row(Run.mouse(lmb, rmb)));
+            }
         }
         if (el.flag("space")) out.add(row(new Run(face, "SPACE", sp ? VALUE : LABEL)));
         return out;
@@ -288,8 +322,11 @@ final class HudElements {
     private static List<List<Run>> potions(HudConfig.Element el, MinecraftClient c, Face face, boolean fake) {
         List<List<Run>> out = new ArrayList<>(4);
         if (fake) {
-            out.add(row(new Run(face, "Speed IV", VALUE), new Run(face, "1:00", LABEL)));
-            out.add(row(new Run(face, "Strength II", VALUE), new Run(face, "0:41", LABEL)));
+            /* the sample honours "Show time left" like the live rows do, or
+               switching it off would change nothing you can see */
+            boolean times = el.flag("duration");
+            out.add(times ? row(new Run(face, "Speed IV", VALUE), new Run(face, "1:00", LABEL)) : row(new Run(face, "Speed IV", VALUE)));
+            out.add(times ? row(new Run(face, "Strength II", VALUE), new Run(face, "0:41", LABEL)) : row(new Run(face, "Strength II", VALUE)));
             return out;
         }
         if (c == null || c.player == null) return null;
@@ -316,9 +353,11 @@ final class HudElements {
        AN EMPTY SLOT DRAWS NOTHING. A row saying "Helmet" with an empty bar is
        a row telling you about equipment you are not wearing. */
     private static List<List<Run>> armour(String name, HudConfig.Element el, MinecraftClient c, Face face, boolean fake) {
-        String label = shortLabel(el, name);
+        /* THE ITEM'S OWN ICON, not its name. A sample shows diamond gear —
+           something a player recognises at a glance — and the world shows
+           exactly what they are wearing, through their resource packs. */
         if (fake) {
-            List<Run> r = row(new Run(face, label, LABEL));
+            List<Run> r = row(Run.item(sampleGear(name)));
             addWear(r, el, 0.62, face);
             return one(r);
         }
@@ -327,7 +366,7 @@ final class HudElements {
         ItemStack st = slot < 0 ? c.player.getMainHandStack() : c.player.getInventory().getArmorStack(slot);
         if (st == null || st.isEmpty()) return null;
 
-        List<Run> r = row(new Run(face, st.getName().getString(), VALUE));
+        List<Run> r = row(Run.item(st));
         if (st.isDamageable()) {
             double left = 1.0 - (double) st.getDamage() / (double) st.getMaxDamage();
             addWear(r, el, left, face);
@@ -391,11 +430,14 @@ final class HudElements {
             case "playtime":
                 return one(row(new Run(face, span(6127000L, el.flag("seconds")), VALUE)));
             case "memory":
-                return one(memory(el, face));
+                /* FIXED NUMBERS, not the heap. This read the live runtime and
+                   so moved every frame the menu was open — the one sample that
+                   broke the rule the samples exist for. */
+                return one(memorySample(el, face));
             case "combo":
                 return one(row(new Run(face, "5", VALUE), new Run(face, "hits", LABEL)));
             case "totems":
-                return one(row(new Run(face, "3", VALUE), new Run(face, "totems", LABEL)));
+                return one(row(Run.item(new ItemStack(net.minecraft.item.Items.TOTEM_OF_UNDYING)), new Run(face, "3", VALUE)));
             case "tnt":
                 return one(el.flag("ticks")
                     ? row(new Run(face, "48", ACCENT), new Run(face, "t", LABEL))
@@ -441,6 +483,13 @@ final class HudElements {
     }
 
     private static String two(int n) { return (n < 10 ? "0" : "") + n; }
+
+    private static List<Run> memorySample(HudConfig.Element el, Face face) {
+        String how = el.choice("format", "gb");
+        if ("percent".equals(how)) return row(new Run(face, "52%", VALUE));
+        if ("mb".equals(how)) return row(new Run(face, "2150", VALUE), new Run(face, "/", LABEL), new Run(face, "4096 MB", LABEL));
+        return row(new Run(face, "2.1", VALUE), new Run(face, "/", LABEL), new Run(face, "4.0 GB", LABEL));
+    }
 
     /* THE HEAP IN USE IS TOTAL MINUS FREE, not `total`. `total` is what the
        JVM has taken from the OS; it only ever goes up and says nothing about
@@ -503,10 +552,15 @@ final class HudElements {
     }
 
     /** "Armor status · helmet" -> "helmet" */
-    private static String shortLabel(HudConfig.Element el, String name) {
-        String s = el.display(name);
-        int dot = s.lastIndexOf('·');
-        return dot >= 0 ? s.substring(dot + 1).trim() : s;
+    /** the piece of diamond gear a sample of this slot shows */
+    private static ItemStack sampleGear(String name) {
+        switch (name) {
+            case "helmet": return new ItemStack(net.minecraft.item.Items.DIAMOND_HELMET);
+            case "chest": return new ItemStack(net.minecraft.item.Items.DIAMOND_CHESTPLATE);
+            case "legs": return new ItemStack(net.minecraft.item.Items.DIAMOND_LEGGINGS);
+            case "boots": return new ItemStack(net.minecraft.item.Items.DIAMOND_BOOTS);
+            default: return new ItemStack(net.minecraft.item.Items.DIAMOND_SWORD);
+        }
     }
 
     /* GREEN IS NOT A COLOUR THIS PALETTE HAS, and inventing one for "good fps"

@@ -497,10 +497,7 @@ const src = (n) => {
   return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null;
 };
 const cfgJava = src('HudConfig.java');
-const menuJava = src('HudMenuScreen.java');
-const layoutJava = src('HudLayoutScreen.java');
 const clientJava = src('KestrelHudClient.java');
-const uiJava = src('Ui.java');
 
 /* ── the second noun, in the mod ──────────────────────────────────────── */
 console.log('');
@@ -534,8 +531,6 @@ ok('and none of it needed a mixin',
   'a mixin is a build-time weave that breaks differently on every version');
 
 
-ok('HudMenuScreen exists', menuJava !== null);
-ok('HudLayoutScreen exists', layoutJava !== null);
 if (cfgJava) {
   ok('the mod stamps its writes as the game\'s', /"by":\s*\\"game/.test(cfgJava)
     || cfgJava.indexOf('\\"by\\": \\"game\\"') >= 0, 'so the launcher can tell them apart');
@@ -551,51 +546,182 @@ if (cfgJava) {
     /if\s*\(\s*!\s*dirty\s*\)/.test(cfgJava), 'or every launch would import a "change"');
   ok('the mod clamps a negative offset to -100, as the launcher does',
     cfgJava.indexOf('-100.0') >= 0);
+  ok('while the HUD plate itself stays square by default',
+    /rounded \? "rounded" : "sharp"/.test(cfgJava0) || /corners.*sharp/.test(hudJs),
+    'sharp is what looks native in the world; the player can round it');
 }
 if (clientJava) {
   ok('Right Shift is what opens it',
     clientJava.indexOf('GLFW_KEY_RIGHT_SHIFT') >= 0);
   ok('through the ordinary keybinding API, so it is reboundable',
     clientJava.indexOf('KeyBindingHelper') >= 0);
-  ok('and the HUD stays drawn behind the menu',
-    clientJava.indexOf('instanceof HudMenuScreen') >= 0);
-}
-if (layoutJava) {
-  ok('the magnet can be switched off', layoutJava.indexOf('hasAltDown') >= 0);
-  ok('and it snaps to the anchors the config stores',
-    layoutJava.indexOf('INSET_X') >= 0 && layoutJava.indexOf('SNAP') >= 0);
-}
-if (menuJava) {
-  /* ── TWO THINGS THE USER SAW IN A SCREENSHOT ─────────────────────────
-     Both were a size computed in one place and not in another, and both are
-     the kind of thing that looks fine until one element is bigger than the
-     rest. A keystroke grid is four rows where everything else is one. */
-  ok('a card preview is bounded by the well HEIGHT as well as its width',
-    /Math\.min\(1\.0, Math\.min\(\(w - 8\.0\) \/ ew, \(double\) h \/ eh\)\)/.test(menuJava),
-    'a four-row element drew out of the recess and over the name under it');
-  const stepW = /int STEP_W = (\d+)/.exec(menuJava);
-  /* the longest value either appearance stepper ever shows is MINECRAFT, 52px
-     in the vanilla font, and it needs the room BETWEEN the two 9px arrows */
-  ok('the appearance stepper is wide enough for its longest value',
-    stepW && Number(stepW[1]) - 18 >= 52,
-    stepW ? Number(stepW[1]) + 'px leaves ' + (Number(stepW[1]) - 18) + 'px for a 52px word' : 'not found');
-
-  ok('the menu toggles a module, not an element',
-    menuJava.indexOf('flipModule') >= 0);
-  ok('and says which rows the mod cannot draw yet',
-    menuJava.indexOf('not drawn yet') >= 0);
+  ok('and what it opens is the one editor screen',
+    clientJava.indexOf('new EditorScreen(') >= 0);
+  ok('the live HUD steps aside under every screen, the editor included',
+    /if \(client\.currentScreen != null\) return;/.test(clientJava),
+    'the editor draws the whole HUD on its canvas; a live copy between the panels is two of everything');
 }
 
-/* ── 8b. the menu holds still, and the world behind it is blurred ────────
-   Both of these were reported by eye and both are the kind of thing that
-   regresses silently — a live value creeping back into a preview looks like
-   nothing in a diff, and a dropped applyBlur() call just makes the menu
-   quietly worse. */
+/* ── 8b. ONE SCREEN, AT ITS OWN SCALE, BLURRING ONLY ITS PANELS ──────────
+   The menu was redesigned in a browser mockup and signed off there before it
+   was ported: hairlines, square corners, three panels, on/off as a square.
+   These hold the port to that — and to the three things a mockup cannot show,
+   which are how Minecraft rasterises a font, where its baseline is, and how
+   its blur is applied. */
 console.log('');
-console.log('nothing in a menu moves, and the world behind one is blurred');
-const elemJava = src('HudElementScreen.java');
-const elementsJava = src('HudElements.java');
+console.log('the editor is one screen, at its own scale, blurring only its panels');
+const editorJava = src('EditorScreen.java');
+const elementsTabJava = src('ElementsTab.java');
+const featuresTabJava = src('FeaturesTab.java');
+const chromeJava = src('Chrome.java');
+const glassJava = src('Glass.java');
+const typeJava = src('Type.java');
+const blurJava = src('PanelBlur.java');
+const menuFiles = [['EditorScreen', editorJava], ['ElementsTab', elementsTabJava], ['FeaturesTab', featuresTabJava],
+  ['Chrome', chromeJava], ['Glass', glassJava], ['Type', typeJava], ['PanelBlur', blurJava]];
+ok('the editor and its parts exist', menuFiles.every(([, j]) => j !== null),
+  menuFiles.filter(([, j]) => j === null).map(([f]) => f).join(', ') || 'all seven');
+ok('and the three screens it replaced are gone, not left beside it',
+  ['HudMenuScreen.java', 'HudElementScreen.java', 'HudLayoutScreen.java', 'Ui.java'].every((f) => src(f) === null),
+  'a second menu that still compiles is a menu somebody opens by accident');
 
+if (editorJava) {
+  ok('it lays out in design pixels from the framebuffer, not from the GUI scale',
+    /getFramebufferHeight\(\)/.test(editorJava) && /density = fbH >= 1600 \? 2 : 1/.test(editorJava)
+      && /scale\(scale, scale, 1f\)/.test(editorJava),
+    'so GUI scale 2 and GUI scale 4 give the same menu');
+  ok('it blurs only its panels', /PanelBlur\.apply\(/.test(editorJava)
+    && !/applyBlur\(\)/.test(editorJava) && !/renderBackground\(/.test(editorJava),
+    'the world between the panels stays sharp');
+  ok('and saves once, on the way out', /public void close\(\)\s*\{\s*config\.save\(runDir\);/.test(editorJava));
+  ok('the key that opens it also closes it', /isMenuKey\(keyCode, scanCode\)/.test(editorJava));
+}
+if (blurJava) {
+  ok('the panel blur is vanilla\'s own blur, copied around rather than rewritten',
+    /gameRenderer\.renderBlur\(\)/.test(blurJava) && /_glBlitFrameBuffer/.test(blurJava));
+  ok('and turns the scissor test off before blitting', /RenderSystem\.disableScissor\(\)/.test(blurJava),
+    'a blit honours the scissor test, and a stale rectangle copies a fraction of the frame');
+  ok('the canvas gets the unblurred world, scaled smoothly',
+    /blit\(sharp\.fbo, main\.fbo,\s*miniSource/.test(blurJava) && /miniTarget\[1\], true\);/.test(blurJava));
+}
+
+if (glassJava) {
+  const pctOf = (name) => {
+    const m = new RegExp('int ' + name + ' = argb\\(0x[0-9A-Fa-f]{6}, (\\d+)\\)').exec(glassJava);
+    return m ? Number(m[1]) / 100 : null;
+  };
+  const over = (under, top) => under + top * (1 - under);
+  const pc = (v) => Math.round(v * 100) + '%';
+  const panel = pctOf('PANEL'), raise = pctOf('RAISE'), hoverA = pctOf('HOVER'), well = pctOf('WELL');
+  /* A WIDE RANGE on purpose: the exact figure is a judgement made by eye in
+     game, and a check that pins it is a check edited every time somebody
+     looks properly. What is worth asserting is that it is glass. */
+  ok('the panel is glass — the world shows through it', panel !== null && panel >= 0.25 && panel <= 0.75,
+    panel === null ? 'not found' : pc(panel));
+  /* composited, not raw: a row at 37% over a 43% panel reads as 64% */
+  const vRow = over(panel, raise), vHover = over(panel, hoverA), vWell = over(vRow, well);
+  ok('a row, composited over the panel, is more solid than the panel', vRow > panel,
+    'panel ' + pc(panel) + ' -> row ' + pc(vRow));
+  ok('a hovered row is more solid than a resting one', vHover > vRow, 'row ' + pc(vRow) + ' -> hover ' + pc(vHover));
+  ok('and a well on a row is the most solid surface', vWell > vHover, 'well ' + pc(vWell));
+
+  /* ── HAIRLINES AND SQUARE CORNERS, BY THE PLAYER'S CHOICE ────────────────
+     The previous menu asserted the opposite: no outline on anything, every
+     corner rounded. That was right for that menu, and it was reversed on
+     purpose, from a mockup with both on the table. */
+  ok('every panel carries a one-pixel edge',
+    /static void panel\([^)]*\)\s*\{\s*box\(ctx, x, y, w, h, PANEL, LINE\);/.test(glassJava));
+  const menuSource = menuFiles.map(([, j]) => (j || '').replace(/\/\*[\s\S]*?\*\//g, '')).join('\n');
+  ok('and nothing in the menu is rounded', !/roundRect|\bARC\b|R_PANEL|R_CARD/.test(menuSource));
+  ok('on/off is a ten-pixel square, amber or dim, with no word beside it',
+    /static void dot\(DrawContext ctx, float cx, float cy, boolean on, boolean hover\)/.test(glassJava)
+      && /fill\(ctx, Math\.round\(cx\) - 5, Math\.round\(cy\) - 5, 10, 10, c\)/.test(glassJava));
+}
+
+if (typeJava) {
+  ok('text is centred on its capitals, from each font\'s own cap height',
+    /ARCHIVO_CAP = 0\.686f/.test(typeJava) && /AZERET_CAP = 0\.698f/.test(typeJava)
+      && /cy - 7f \+ r\.cap\(\) \* r\.size\(\) \/ 2f/.test(typeJava),
+    'a TrueType baseline sits 7 font pixels below where it is drawn');
+  /* A DEFINITION PER ROLE AND PER DENSITY. Glyph textures are sampled
+     nearest-neighbour, so a face scaled to a size it was not rasterised at
+     breaks up; every role must exist at its own size, at both densities. */
+  const fontDir = path.join(ROOT, 'client-mod', 'src', 'main', 'resources', 'assets', 'kestrel-hud', 'font');
+  const roles = [...new Map([...typeJava.matchAll(/new Role\("([a-z0-9_]+)", (\d+),/g)].map((m) => [m[1], Number(m[2])])).entries()];
+  const bad = [];
+  for (const [id, size] of roles) {
+    for (const [suffix, oversample] of [['', 1], ['_2x', 2]]) {
+      const f = path.join(fontDir, 'menu', id + suffix + '.json');
+      if (!fs.existsSync(f)) { bad.push(id + suffix + ' is missing'); continue; }
+      const p = JSON.parse(fs.readFileSync(f, 'utf8')).providers[0];
+      if (p.size !== size || p.oversample !== oversample) bad.push(id + suffix + ' is ' + p.size + ' at ' + p.oversample + 'x');
+      if (!fs.existsSync(path.join(fontDir, String(p.file).replace(/^kestrel-hud:/, '')))) bad.push(id + suffix + ' names a missing ' + p.file);
+    }
+  }
+  ok('every text role has a font definition at its size, at both densities', roles.length > 0 && bad.length === 0,
+    bad.length ? bad.join(' | ') : roles.length + ' roles, ' + roles.length * 2 + ' definitions');
+  /* A VARIABLE FONT RENDERS AT ITS DEFAULT INSTANCE, which for these is Thin —
+     how the HUD font once came out hairline-thin. Every face must be static. */
+  const faces = fs.readdirSync(fontDir).filter((f) => f.endsWith('.ttf'));
+  const variable = faces.filter((f) => {
+    const b = fs.readFileSync(path.join(fontDir, f));
+    const tables = b.readUInt16BE(4);
+    for (let i = 0; i < tables; i++) if (b.toString('latin1', 12 + i * 16, 16 + i * 16) === 'fvar') return true;
+    return false;
+  });
+  ok('and every bundled face is a static instance', variable.length === 0,
+    variable.length ? variable.join(', ') : faces.length + ' static faces');
+  /* ── A CAXTON TWIN FOR EVERY DEFINITION ──────────────────────────────────
+     With Caxton installed, `caxton_providers` is used in place of
+     `providers`; without it, vanilla ignores the key. Caxton sizes a face so
+     its ascender is 7 * scale_factor and keeps vanilla's baseline, so the twin
+     is the same size exactly when scale_factor = size * ascender / 7000. */
+  const ascender = { archivo: 878, 'azeret-mono': 937 };
+  const twinFaces = path.join(ROOT, 'client-mod', 'src', 'main', 'resources', 'assets', 'kestrel-hud', 'textures', 'font');
+  const definitions = fs.readdirSync(path.join(fontDir, 'menu')).map((f) => path.join(fontDir, 'menu', f))
+    .concat([path.join(fontDir, 'kestrel.json')]);
+  const twinBad = [];
+  for (const f of definitions) {
+    const doc = JSON.parse(fs.readFileSync(f, 'utf8'));
+    const p = doc.providers[0], c = doc.caxton_providers && doc.caxton_providers[0];
+    const name = path.basename(f);
+    if (!c || c.type !== 'caxton' || !c.regular) { twinBad.push(name + ' has no Caxton twin'); continue; }
+    const face = String(p.file).replace(/^kestrel-hud:/, '');
+    if (c.regular.file !== p.file) twinBad.push(name + ' twins a different face');
+    const want = p.size * ascender[face.startsWith('archivo') ? 'archivo' : 'azeret-mono'] / 7000;
+    if (Math.abs(c.regular.scale_factor - want) > 0.0001) twinBad.push(name + ' scale ' + c.regular.scale_factor + ', want ' + want.toFixed(4));
+    if (JSON.stringify(c.regular.shift || [0, 0]) !== JSON.stringify(p.shift || [0, 0])) twinBad.push(name + ' shifts differently');
+    if (!fs.existsSync(path.join(twinFaces, face))) twinBad.push(name + ': textures/font/' + face + ' is missing');
+  }
+  ok('every font has a Caxton twin at the same pixel size, its face where Caxton looks', twinBad.length === 0,
+    twinBad.length ? twinBad.join(' | ') : definitions.length + ' definitions');
+  const licences = path.join(ROOT, 'client-mod', 'src', 'main', 'resources', 'licenses');
+  ok('with a licence shipped for each family', ['archivo-OFL.txt', 'azeret-mono-OFL.txt'].every((f) => fs.existsSync(path.join(licences, f))));
+}
+
+if (elementsTabJava) {
+  ok('the canvas keeps the layout editor\'s magnet — insets, five pixels, Alt to free it',
+    /2\.6 : 4\.2/.test(elementsTabJava) && /dist = 5\.0/.test(elementsTabJava) && !!editorJava && /hasAltDown\(\)/.test(editorJava));
+  ok('and re-chooses the anchor from where an element lands',
+    /HudRenderer\.anchorAt\(/.test(elementsTabJava) && /HudRenderer\.offsetOf\(/.test(elementsTabJava));
+  ok('the list switches a module, not an element',
+    /for \(String n : m\.elements\(\)\)[\s\S]{0,160}switchedTo\(next\)/.test(elementsTabJava));
+}
+if (behJava) {
+  ok('every feature that reads a key gets a binding at start, so its first key can be set from the menu',
+    /KEYED\.contains\(id\)/.test(behJava) && /GLFW_KEY_UNKNOWN : codeOf\(f\.key\)/.test(behJava),
+    'and only those: a Controls entry that does nothing is worse than none');
+  ok('and a key set in the menu is written to options.txt as well',
+    /static void rebind\([\s\S]{0,500}options\.write\(\)/.test(behJava),
+    'or Minecraft loads the key it remembers over it at the next launch');
+}
+
+/* ── 8c. the menu holds still ────────────────────────────────────────────
+   A live value creeping back into a preview looks like nothing in a diff,
+   and a moving preview is impossible to align against. */
+console.log('');
+console.log('nothing in a menu moves');
+const elementsJava = src('HudElements.java');
 if (elementsJava) {
   ok('there are two render modes, LIVE and SAMPLE',
     /int LIVE = 0/.test(elementsJava) && /int SAMPLE = 1/.test(elementsJava));
@@ -608,164 +734,61 @@ if (elementsJava) {
     sampleAt > 0 && fpsAt > sampleAt && posAt > sampleAt,
     'sample@' + sampleAt + ' fps@' + fpsAt + ' pos@' + posAt);
   ok('and every element has a sample, not just the drawn ones',
-    /default:/.test(elementsJava) && /shortLabel\(el, name\)/.test(elementsJava));
+    /default:\s*return armour\(name, el, null, face, true\);/.test(elementsJava));
+  /* ── ICONS, NOT WORDS — AND THE PLAYER'S OWN ─────────────────────────────
+     Armour and totems show the item itself, drawn by the game's item
+     renderer, so a resource pack that repaints diamond armour repaints the
+     HUD too. Nothing here ships a texture that could disagree with it. */
+  ok('armour and totems show the item itself, live and in samples',
+    /Run\.item\(sampleGear\(name\)\)/.test(elementsJava) && /List<Run> r = row\(Run\.item\(st\)\);/.test(elementsJava)
+      && (elementsJava.match(/Run\.item\(new ItemStack\(net\.minecraft\.item\.Items\.TOTEM_OF_UNDYING\)\)/g) || []).length === 2);
+  ok('keystrokes draw a mouse, not LMB and RMB',
+    /Run\.mouse\(lmb, rmb\)/.test(elementsJava) && elementsJava.indexOf('"LMB"') < 0 && elementsJava.indexOf('"RMB"') < 0);
+  const memAt = elementsJava.indexOf('private static List<Run> memorySample(');
+  ok('the memory sample is fixed numbers, not the live heap',
+    memAt > 0 && /case "memory":[\s\S]{0,400}memorySample\(el, face\)/.test(elementsJava)
+      && elementsJava.slice(memAt, memAt + 500).indexOf('Runtime') < 0,
+    'it read the runtime and moved every frame the menu was open');
+  ok('and the potion sample honours "Show time left"', /boolean times = el\.flag\("duration"\)/.test(elementsJava));
+}
+const rendererJava = src('HudRenderer.java');
+if (rendererJava) {
+  ok('an icon is drawn by the game\'s item renderer, so resource packs apply',
+    /ctx\.drawItem\(r\.item,/.test(rendererJava));
+  const resources = path.join(ROOT, 'client-mod', 'src', 'main', 'resources');
+  const pngs = [];
+  const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.png$/i.test(e.name)) pngs.push(path.relative(resources, p)); } };
+  walk(resources);
+  ok('and the mod ships no textures of its own to disagree with a pack', pngs.length === 0, pngs.join(', ') || 'no .png in resources');
+  /* the same fix the menu needed: centred on the capitals, not the line box */
+  ok('HUD text is centred on its capitals in every row, for both faces',
+    /rh \/ 2f - capMiddle\(r\.text\)/.test(rendererJava) && /VANILLA_CAP_MIDDLE = 3\.5f/.test(rendererJava)
+      && /KESTREL_CAP_MIDDLE = 8f - 0\.698f \* 9f \/ 2f/.test(rendererJava),
+    'three pixels over the text and five under it, before');
+  ok('and a row is as tall as its tallest run',
+    /static int rowHeight\(/.test(rendererJava) && /h \+= rowHeight\(r\)/.test(rendererJava));
 }
 
-for (const [file, java] of [['HudMenuScreen', menuJava], ['HudElementScreen', elemJava],
-                            ['HudLayoutScreen', layoutJava]]) {
-  if (!java) continue;
-  ok(file + ' asks for SAMPLE, never LIVE',
-    java.indexOf('HudElements.SAMPLE') >= 0 && java.indexOf('HudElements.LIVE') < 0);
-}
+ok('the editor asks for SAMPLE, never LIVE',
+  !!elementsTabJava && elementsTabJava.indexOf('HudElements.SAMPLE') >= 0
+    && menuFiles.every(([, j]) => !j || j.indexOf('HudElements.LIVE') < 0));
 if (clientJava) {
   ok('and only the world HUD asks for LIVE',
     clientJava.indexOf('HudElements.LIVE') >= 0 && clientJava.indexOf('HudElements.SAMPLE') < 0);
 }
 
-if (menuJava) ok('the menu blurs the world behind it', /applyBlur\(\)/.test(menuJava));
-if (elemJava) ok('and so does the options screen', /applyBlur\(\)/.test(elemJava));
-if (layoutJava) {
-  /* the layout editor deliberately does NOT: you are positioning a HUD
-     against the world, and blurring what you are positioning it against
-     defeats the screen */
-  ok('but the layout editor leaves the world alone', !/applyBlur\(\)/.test(layoutJava),
-    'you are arranging a HUD against that world');
-}
-
-const paintJava = src('Paint.java');
-if (paintJava) {
-  const alphaOf = (name) => {
-    const m = new RegExp('int ' + name + ' = 0x([0-9A-Fa-f]{2})').exec(paintJava);
-    return m ? parseInt(m[1], 16) : null;
-  };
-  const panel = alphaOf('PANEL');
-  /* THE PANEL IS GLASS, and this has been wrong in both directions — 95%,
-     which is 5% of nothing, then fully opaque, which made the menu a slab
-     dropped on Minecraft. A WIDE range on purpose: the exact value is a
-     judgement about how the blurred world reads through it, made by eye, and
-     a check that pins it to a number is a check that has to be edited every
-     time somebody looks at it properly. What is worth asserting is only that
-     it is neither of the two failures. */
-  ok('the panel is glass — you can see the blurred world through it',
-    panel !== null && panel >= 0x40 && panel <= 0xC0,
-    panel === null ? 'not found' : '0x' + panel.toString(16) + ' (want 0x40..0xC0)');
-
-  /* ── AND THE STACK ASCENDS — COMPOSITED, NOT RAW ──────────────────────
-     The first version of this compared the constants directly and would now
-     be failing: a card is 0x5E where the panel is 0x6E, which looks like the
-     card is the fainter of the two. It is not. The card is drawn OVER the
-     panel, so what anybody sees is the pair composited — and 43% then 37% of
-     what is left is 64%.
-
-     Comparing the constants was comparing two numbers that are never on
-     screen alone. This composites them the way the renderer does. */
-  const a = (v) => (v === null ? 0 : v / 255);
-  const over = (under, top) => under + top * (1 - under);
-  const pc = (v) => Math.round(v * 100) + '%';
-
-  const vPanel = a(panel);
-  const vCard = over(vPanel, a(alphaOf('RAISE')));
-  const vHover = over(vPanel, a(alphaOf('HOVER')));
-  const vActive = over(vPanel, a(alphaOf('ACTIVE')));
-  const vWell = over(vCard, a(alphaOf('WELL')));
-
-  ok('a card, composited over the panel, is more solid than the panel',
-    vCard > vPanel, 'panel ' + pc(vPanel) + ' -> card ' + pc(vCard));
-  ok('hover and pressed are both more solid than a resting card',
-    vHover > vCard && vActive > vCard,
-    'card ' + pc(vCard) + ' -> hover ' + pc(vHover) + ', pressed ' + pc(vActive));
-  ok('and the preview well is the most solid thing on the screen',
-    vWell > vCard && vWell > vHover,
-    'well ' + pc(vWell) + " — a plate's own transparency cannot be judged through a second one");
-
-  const scrim = alphaOf('SCRIM');
-  /* vanilla darkens its own in-game background from 0xC0 to 0xD0; the point
-     of blurring is to need far less than that, and dialling it by eye put it
-     at nothing at all */
-  ok('and the tint over the blur is lighter than vanilla darkening',
-    scrim !== null && scrim < 0xC0,
-    scrim === null ? 'not found' : '0x' + scrim.toString(16) + ' vs vanilla 0xC0-0xD0');
-
-  /* ── the corners ──────────────────────────────────────────────────────
-     The menu is softened and the HUD is not, which is a distinction worth
-     holding on to: a plate in the world should look like Minecraft's own
-     square panels, and a menu is Kestrel's own surface. */
-  const radiusOf = (n) => {
-    const m = new RegExp('int ' + n + ' = (\\d+)').exec(paintJava);
-    return m ? Number(m[1]) : null;
-  };
-  const rPanel = radiusOf('R_PANEL'), rCard = radiusOf('R_CARD'),
-        rWell = radiusOf('R_WELL'), rCtrl = radiusOf('R_CTRL');
-  ok('the menu declares corner radii', [rPanel, rCard, rWell, rCtrl].every((v) => v !== null),
-    'panel ' + rPanel + ', card ' + rCard + ', well ' + rWell + ', control ' + rCtrl);
-  ok('and they step down with the size of the thing',
-    rPanel >= rCard && rCard >= rWell && rPanel > rCtrl,
-    'a 12px button at the panel\'s radius is a lozenge');
-  ok('while the HUD plate itself stays square by default',
-    /rounded \? "rounded" : "sharp"/.test(cfgJava0) || /corners.*sharp/.test(hudJs),
-    'sharp is what looks native in the world; the menu is not in the world');
-}
-
 /* ── NO SHADOW, ANYWHERE ────────────────────────────────────────────────
    Minecraft's drawText takes a boolean for it and vanilla passes true almost
-   everywhere, which is why the debug screen looks the way it does: a hard
-   black offset copy of every glyph. The plate is this HUD's answer to the
-   problem the shadow solves, and a shadow on top of a plate is a smear.
-
-   This is asserted rather than trusted because it is a one-character
-   regression — flipping a `false` to a `true`, or to a condition — and it was
-   made once already, when a version here turned the shadow back on for
-   elements whose plate was switched off. */
-const shadowed = [...['HudRenderer.java', 'Ui.java'].map((f) => [f, src(f)])]
+   everywhere: a hard black offset copy of every glyph. The plate is this
+   HUD's answer to the problem the shadow solves, and the menu's type is set
+   flat. Asserted because it is a one-character regression, made once already. */
+const shadowed = [...['HudRenderer.java', 'Type.java'].map((f) => [f, src(f)])]
   .filter(([, j]) => j)
   .flatMap(([f, j]) => [...j.matchAll(/drawText\([^;]*?\);/gs)]
     .filter((m) => !/,\s*false\s*\)/.test(m[0]))
     .map((m) => f + ': ' + m[0].replace(/\s+/g, ' ').slice(0, 70)));
 ok('nothing draws text with a shadow', shadowed.length === 0,
   shadowed.length ? shadowed.join(' | ') : 'every drawText passes false');
-
-if (uiJava) {
-  ok('a rounded rectangle is built from horizontal spans',
-    /static void roundRect/.test(uiJava),
-    'Minecraft has fill() and no rounded-rect primitive');
-  /* THE ARC HAS TO BE CONVEX. Insets must not increase as you move inward
-     from the corner, or the shape bulges back out and stops being a corner.
-     The first table here was computed off a circle measured at the tangent
-     point and inset the top row by the FULL radius — a notch, not a curve. */
-  const arc = /int\[\]\[\] ARC = \{([\s\S]*?)\};/.exec(uiJava);
-  if (arc) {
-    const rows = [...arc[1].matchAll(/\{([^}]*)\}/g)]
-      .map((m) => m[1].split(',').map((s) => s.trim()).filter(Boolean).map(Number));
-    const bad = rows.filter((r) => r.some((v, i) => i > 0 && v > r[i - 1]));
-    ok('every tabled corner is convex — insets never grow inward',
-      bad.length === 0, bad.length ? JSON.stringify(bad) : rows.map((r) => '[' + r + ']').join(' '));
-    /* THE BUG THIS GUARDS was r=4 coming out as [4,2,1,1] — a top row inset
-       by the whole radius, which is a notch bitten out of the panel rather
-       than a curve. At r=1 and r=2 a full-radius first row IS the natural
-       pixel corner (two pixels cannot describe an arc), so the rule only
-       bites from 3 up, where the difference is visible. */
-    ok('and no corner of 3px or more is inset by its own full radius',
-      rows.every((r, ri) => ri < 3 || r.length === 0 || r[0] < ri),
-      'that is the tangent point of the circle, where its width is zero');
-
-    /* ── AND NOTHING IS OUTLINED AT ALL ──────────────────────────────────
-       There was a roundBorder here, and a rasteriser proving its outline
-       closed. Both are gone, because the answer to "the sides look thicker
-       than the top and bottom" turned out not to be "close the outline" but
-       "there should not be an outline". Depth is the alpha ladder — panel
-       43%, card 64%, hover 79%, well 81% composited — and a line around all
-       four was a second, louder answer to a question the fills had settled.
-
-       So the invariant flipped: what is asserted now is ABSENCE. A 1px edge
-       is the easiest thing in the world to add back one control at a time. */
-    ok('nothing outlines a surface — roundBorder is gone, not just unused',
-      !/roundBorder/.test(uiJava.replace(/\/\*[\s\S]*?\*\//g, '')),
-      'a method kept "in case" is a method that grows a caller back');
-    ok('and surface() takes a fill and no edge',
-      /static void surface\(DrawContext ctx, int x, int y, int w, int h, int r, int fill\)/
-        .test(uiJava));
-  }
-}
 
 /* ── 9. and the two languages, actually run against each other ──────────
    Everything above reads source. This runs the COMPILED mod against a

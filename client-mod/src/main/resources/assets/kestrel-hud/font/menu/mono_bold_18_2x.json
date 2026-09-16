@@ -5,10 +5,10 @@
       "file": "kestrel-hud:azeret-mono-bold.ttf",
       "shift": [
         0,
-        1
+        0
       ],
-      "size": 9,
-      "oversample": 4,
+      "size": 18,
+      "oversample": 2,
       "skip": ""
     }
   ],
@@ -17,10 +17,10 @@
       "type": "caxton",
       "regular": {
         "file": "kestrel-hud:azeret-mono-bold.ttf",
-        "scale_factor": 1.2047,
+        "scale_factor": 2.4094,
         "shift": [
           0,
-          1
+          0
         ]
       }
     }

@@ -109,9 +109,21 @@ public class KestrelHudClient implements ClientModInitializer {
                that only exists in a world, and opening it over the title
                screen would offer to arrange nothing against nothing. */
             if (client.player != null && client.currentScreen == null) {
-                client.setScreen(new HudMenuScreen(config, runDir));
+                client.setScreen(new EditorScreen(config, runDir));
             }
         }
+    }
+
+    /** the editor closes on the same key that opened it */
+    static boolean isMenuKey(int keyCode, int scanCode) {
+        return menuKey != null && menuKey.matchesKey(keyCode, scanCode);
+    }
+
+    /** the menu key as the top bar shows it: Right Shift reads RSHIFT */
+    static String menuKeyLabel() {
+        if (menuKey == null) return "RSHIFT";
+        String s = menuKey.getBoundKeyLocalizedText().getString().toUpperCase(java.util.Locale.ROOT);
+        return s.replace("RIGHT ", "R").replace("LEFT ", "L");
     }
 
     /** the face the config asked for, as a function — the screens draw the
@@ -132,14 +144,11 @@ public class KestrelHudClient implements ClientModInitializer {
         if (client.player == null) return;
         if (client.options != null && client.options.hudHidden) return;
 
-        /* THE HUD BELONGS TO THE WORLD — with one exception. Nothing draws
-           over a menu and F1 means F1, but the Kestrel menu is the one screen
-           where the HUD has to stay up: it is what you are configuring, and
-           watching an element vanish from the corner as you flip its toggle
-           is the entire reason to do this in game rather than in the
-           launcher. The LAYOUT screen is not in this exception — it draws its
-           own editable copy, and two of everything is not a preview. */
-        if (client.currentScreen != null && !(client.currentScreen instanceof HudMenuScreen)) return;
+        /* THE HUD BELONGS TO THE WORLD, and no screen draws over it — the
+           editor included. The editor's canvas draws the whole HUD itself, on
+           a picture of the screen, and the live copy peeking out between its
+           panels would be two of everything. */
+        if (client.currentScreen != null) return;
 
         /* WHAT IS ALREADY ON SCREEN, so nothing lands on top of anything.
            Rebuilt every frame: the elements move, and a stale rectangle would

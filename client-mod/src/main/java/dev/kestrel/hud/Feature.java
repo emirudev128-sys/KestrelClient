@@ -65,6 +65,11 @@ public final class Feature {
         return new Feature(id, nowOn, label, desc, key, opts);
     }
 
+    /** a GLFW key name, KEY_V, or empty for none */
+    Feature withKey(String nextKey) {
+        return new Feature(id, on, label, desc, nextKey, opts);
+    }
+
     Feature withOpt(String k, String rawToken) {
         Map<String, String> next = new LinkedHashMap<>(opts);
         if (next.containsKey(k)) next.put(k, rawToken);

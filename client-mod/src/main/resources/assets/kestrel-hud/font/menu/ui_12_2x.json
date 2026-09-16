@@ -2,13 +2,13 @@
   "providers": [
     {
       "type": "ttf",
-      "file": "kestrel-hud:azeret-mono-bold.ttf",
+      "file": "kestrel-hud:archivo-regular.ttf",
       "shift": [
         0,
-        1
+        0
       ],
-      "size": 9,
-      "oversample": 4,
+      "size": 12,
+      "oversample": 2,
       "skip": ""
     }
   ],
@@ -16,11 +16,11 @@
     {
       "type": "caxton",
       "regular": {
-        "file": "kestrel-hud:azeret-mono-bold.ttf",
-        "scale_factor": 1.2047,
+        "file": "kestrel-hud:archivo-regular.ttf",
+        "scale_factor": 1.5051,
         "shift": [
           0,
-          1
+          0
         ]
       }
     }

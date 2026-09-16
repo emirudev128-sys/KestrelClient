@@ -38,7 +38,7 @@ final class Behaviours {
 
     private Behaviours() { }
 
-    /** the bindings, one per feature that has a key, made at init */
+    /** the bindings, one per feature, made at init — unbound where there is no key */
     private static final Map<String, KeyBinding> KEYS = new LinkedHashMap<>();
 
     private static boolean sprintLatched = false;
@@ -51,16 +51,25 @@ final class Behaviours {
     private static boolean zoomed = false;
     private static Double sensitivityBefore = null;
 
-    /** Registers a binding per feature the document declares a key for.
-     *  Called once, at init, from the client entrypoint. */
+    /** the features something in this file reads a key for */
+    static final java.util.Set<String> KEYED = java.util.Set.of("sprint", "sneak", "zoom", "snaplook");
+
+    /** Registers a binding for every feature that uses a key — unbound where
+     *  the document has none yet. Called once, at init, from the client
+     *  entrypoint.
+     *
+     *  <p>UNBOUND ONES TOO, because Minecraft only accepts new bindings while
+     *  it starts: a feature given its first key from the menu has to have a
+     *  binding waiting for it already. But not hitboxes or chunk borders,
+     *  which are switched from the menu and read no key — a Controls entry
+     *  that does nothing is worse than no entry. */
     static void register(HudConfig config) {
         for (String id : config.featureNames()) {
             Feature f = config.feature(id);
-            if (f == null || f.key.isEmpty()) continue;
-            int code = codeOf(f.key);
-            if (code == GLFW.GLFW_KEY_UNKNOWN) {
+            if (f == null || (f.key.isEmpty() && !KEYED.contains(id))) continue;
+            int code = f.key.isEmpty() ? GLFW.GLFW_KEY_UNKNOWN : codeOf(f.key);
+            if (!f.key.isEmpty() && code == GLFW.GLFW_KEY_UNKNOWN) {
                 KestrelHudClient.LOG.warn("Kestrel HUD: {} asks for key \"{}\", which is not a key name", id, f.key);
-                continue;
             }
             KEYS.put(id, net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper.registerKeyBinding(
                 new KeyBinding("key." + KestrelHudClient.MOD_ID + "." + id,
@@ -68,12 +77,53 @@ final class Behaviours {
         }
     }
 
+    /* ── keys, from the editor ─────────────────────────────────────────────
+       A key set in the menu is set on Minecraft's own binding and written to
+       options.txt at once. Only writing the document would lose it: at the
+       next launch Minecraft loads the key it remembers over the default. */
+    static void rebind(MinecraftClient c, String id, String name) {
+        KeyBinding k = KEYS.get(id);
+        if (k == null) return;
+        int code = name.isEmpty() ? GLFW.GLFW_KEY_UNKNOWN : codeOf(name);
+        k.setBoundKey(InputUtil.Type.KEYSYM.createFromCode(code));
+        KeyBinding.updateKeysByCode();
+        if (c != null && c.options != null) c.options.write();
+    }
+
+    /** the key a feature is really bound to, as a document name; the fallback when there is no binding */
+    static String boundName(String id, String fallback) {
+        KeyBinding k = KEYS.get(id);
+        if (k == null) return fallback;
+        String name = nameOfTranslation(k.getBoundKeyTranslationKey());
+        return name == null ? "" : name;
+    }
+
+    /** KEY_C for the C key; null for a key the document cannot name */
+    static String nameOf(int keyCode) {
+        return nameOfTranslation(InputUtil.Type.KEYSYM.createFromCode(keyCode).getTranslationKey());
+    }
+
+    private static String nameOfTranslation(String t) {
+        if (t == null || !t.startsWith("key.keyboard.") || t.equals("key.keyboard.unknown")) return null;
+        String n = "KEY_" + t.substring("key.keyboard.".length()).replace('.', '_').toUpperCase(java.util.Locale.ROOT);
+        return n.matches("KEY_[A-Z0-9_]{1,24}") ? n : null;
+    }
+
     /* THE NAME, NOT THE CODE. "KEY_C" survives a remap and a keyboard layout
        where 67 does not, and InputUtil already knows every name there is —
-       keeping a second copy of that list here is how the two drift. */
+       keeping a second copy of that list here is how the two drift. Two
+       spellings are tried: left.alt for the modifier keys, and page.up for
+       the handful of other keys whose translation has a dot in it. */
     private static int codeOf(String name) {
+        int code = codeOfTranslation(glfwToTranslation(name));
+        if (code != GLFW.GLFW_KEY_UNKNOWN) return code;
+        String s = (name.startsWith("KEY_") ? name.substring(4) : name).toLowerCase(java.util.Locale.ROOT).replace('_', '.');
+        return codeOfTranslation(s);
+    }
+
+    private static int codeOfTranslation(String t) {
         try {
-            return InputUtil.fromTranslationKey("key.keyboard." + glfwToTranslation(name)).getCode();
+            return InputUtil.fromTranslationKey("key.keyboard." + t).getCode();
         } catch (Exception e) {
             return GLFW.GLFW_KEY_UNKNOWN;
         }
