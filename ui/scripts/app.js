@@ -2636,6 +2636,34 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     }).catch(function () {});
   }
 
+  /* ── FREE SPACE, FROM THE REAL DRIVE ─────────────────────────────────────
+     The status bar said "41.6 GB free on C:" whatever was true. With the
+     launcher behind the page it now asks for the drive the library lives on —
+     the one an install fills — when the window opens, whenever it regains
+     focus, after a game exits, and every two minutes. If the question cannot be
+     answered the readout is hidden rather than left showing a number nobody
+     measured. */
+  (function diskReadout() {
+    var el = document.getElementById('sbDisk');
+    if (!el || !host || !host.system || typeof host.system.disk !== 'function') return;
+    function paint() {
+      host.system.disk().then(function (d) {
+        var free = Number(d && d.free);
+        if (!(free >= 0)) throw new Error('no reading');
+        var gb = free / 1073741824;
+        var amount = gb >= 100 ? Math.round(gb) + ' GB' : gb >= 1 ? gb.toFixed(1) + ' GB' : Math.round(free / 1048576) + ' MB';
+        var drive = (d && d.drive) || 'this drive';
+        el.textContent = amount + ' free on ' + drive;
+        el.title = drive + ' has ' + amount + ' free of ' + Math.round(Number(d.total) / 1073741824) + ' GB';
+        el.hidden = false;
+      }).catch(function () { el.hidden = true; });
+    }
+    paint();
+    window.addEventListener('focus', paint);
+    if (host.game && typeof host.game.onExit === 'function') host.game.onExit(paint);
+    setInterval(paint, 120000);
+  })();
+
   /* ── launch options menu ────────────────────────────────────────────── */
 
   var launchMenu = document.getElementById('launchMenu');

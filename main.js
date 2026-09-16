@@ -217,6 +217,20 @@ function wireIpc() {
   ipcMain.handle('settings:get', ok(() => store.readSettings()));
   ipcMain.handle('settings:set', ok((_e, patch) => store.writeSettings(patch)));
 
+  /* FREE SPACE ON THE DRIVE THE LIBRARY LIVES ON. That is the drive an install
+     fills, so it is the one the status bar reports — not C: by assumption.
+     statfs is Node's own; bavail is what this OS user may still write, which is
+     the number that decides whether a download fits. */
+  ipcMain.handle('system:disk', okAsync(async () => {
+    const s = await require('node:fs').promises.statfs(store.root);
+    const root = path.parse(path.resolve(store.root)).root;
+    return {
+      free: Number(s.bavail) * Number(s.bsize),
+      total: Number(s.blocks) * Number(s.bsize),
+      drive: process.platform === 'win32' ? root.replace(/[\\/]+$/, '') : root
+    };
+  }));
+
   ipcMain.handle('shell:open-root', ok(() => { shell.openPath(store.root); return store.root; }));
 
   /* ── OPEN A FOLDER INSIDE AN INSTANCE ────────────────────────────────────

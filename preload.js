@@ -18,6 +18,8 @@
      .instances.get(id) .create(rec) .update(id, patch)
      .instances.remove(id) .duplicate(id, name)
      .settings.get() .settings.set(patch)
+     .system.disk()                          -> {free, total, drive} bytes, for the
+                                                drive the library lives on
      .openDataFolder()
      .auth.status()                          -> {mode:'demo'|'live', why, source,
                                                  canPersist, scope}
@@ -137,6 +139,10 @@ contextBridge.exposeInMainWorld('kestrel', {
   settings: {
     get() { return call('settings:get'); },
     set(patch) { return call('settings:set', plain(patch)); }
+  },
+
+  system: {
+    disk() { return call('system:disk'); }
   },
 
   auth: {
