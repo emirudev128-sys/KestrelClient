@@ -21,6 +21,11 @@
    the screen and typed on Microsoft's page - but the device code beside it
    is a bearer credential and stays here.
 
+   THE ONE EXIT is launchSession(): the Minecraft token, handed to the main
+   process's own launch code for the game it was issued to.  mc/launch.js
+   carries it the rest of the way, in an argument file rather than on a
+   command line, and nothing else in the app ever asks for it.
+
    WITHOUT A CLIENT ID IT DOES NOT PRETEND.  demoFlow() below runs the same
    state machine - code, waiting, cancel, expiry, done - against a local stub
    that makes no network request at all, and every account it produces is
@@ -426,6 +431,28 @@ class Auth {
     const account = this.accounts.upsert(chain, id);
     this.log('auth: renewed the session for ' + account.id);
     return account;
+  }
+
+  /* ── the session a launch uses ──────────────────────────────────────────
+     The active account, if it is a real one; null when there is nothing to
+     play online with, which the caller turns into an offline launch.
+
+     RENEWED FIRST WHEN IT IS CLOSE.  The sweep below renews a token ten
+     minutes before it expires, but a game started eleven minutes before
+     would outlive it, the sweep has not finished its first pass in the
+     seconds after the app opens, and a running game cannot be handed a new
+     token.  So a token with less than an hour left is renewed before it goes
+     anywhere, rather than handed to a game that the first server it joins
+     will turn away. */
+  async launchSession() {
+    const active = this.accounts.list().filter(function (a) { return a.active && !a.demo; })[0];
+    if (!active) return null;
+    if (!active.expiresAt || active.expiresAt < Date.now() + 60 * 60 * 1000) await this.refresh(active.id);
+    const rec = this.accounts.raw(active.id);
+    if (!rec || !rec.mcToken || !rec.uuid) {
+      throw new AuthError('no-session', 'This account has no Minecraft session stored on this PC, so it has to be signed in again.');
+    }
+    return { name: rec.name, uuid: rec.uuid, accessToken: rec.mcToken, userType: 'msa', xuid: '', clientId: '', offline: false };
   }
 
   /* PROACTIVELY, not on the way to a launch.  A minute's tick is cheap and

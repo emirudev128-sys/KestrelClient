@@ -370,7 +370,7 @@ else {
     if (!accounts.canPersist) logLine('auth: OS encryption is unavailable, so a sign-in will not be remembered after this run');
     auth = new Auth({ config: cfg, accounts: accounts, emit: toWindow, log: logLine });
     auth.schedule();
-    game = new Game({ store: store, accounts: accounts, emit: toWindowOn, log: logLine, userAgent: brand.userAgent });
+    game = new Game({ store: store, auth: auth, emit: toWindowOn, log: logLine, userAgent: brand.userAgent });
     logLine('net: identifying as ' + (brand.userAgent || 'the fallback user-agent in mc/net.js'));
     wireIpc();
     createWindow(brand);

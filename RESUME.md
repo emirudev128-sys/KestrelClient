@@ -197,7 +197,7 @@ will see nothing from them until they switch one on in the menu.
 | **Vanilla / Fabric / Forge / NeoForge** | all launch; NeoForge 1.21.1 into a world, processors run |
 | **Mods** | installed through the UI, hash-checked, dependencies resolved |
 | **Modpacks** | `.mrpack` end to end — 50 files, 55 overrides |
-| **Accounts** | Microsoft device-code flow, tokens never leave the main process |
+| **Accounts** | a real Microsoft sign-in, 16 September 2026, once Mojang allow-listed the Azure app; tokens never leave the main process |
 | **The HUD draws in-game** | confirmed on screen |
 | **The menu runs in-game** | opened repeatedly, saved revisions 9 → 20, **no exceptions in the log** |
 | **The magnet works** | a drag landed at `tc` with `x: 0` — it caught the centre line exactly |
@@ -206,6 +206,14 @@ will see nothing from them until they switch one on in the menu.
 
 **Still never seen on screen:** the nine new elements, the six features, and the **world overlays** —
 which is the part a compiler cannot check at all, since a render pass either draws or it does not.
+
+**Online play is wired, not yet seen.** Until the sign-in worked, every launch was offline: the Play
+button hard-coded it and `mc/index.js` threw on a real account. Now Play uses the account marked
+active on Accounts (`launchOpts()` in `app.js`), `msauth.js`'s `launchSession()` hands over the
+token (renewed first if under an hour is left), and a line of game output that repeats the token is
+masked. `tools/sessioncheck.mjs` proves all of it without a real account. **What it cannot prove:**
+the game opening with the real skin and joining an online-mode server. Java 8 versions still refuse
+a real token by design — see the header of `mc/launch.js`.
 
 ---
 
@@ -234,6 +242,7 @@ give 4 of 4, NeoForge 1.21.1 gives 4 of 4, Forge 1.20.1 gives 2 of 4, 1.8.9 give
     node tools/clicktest.mjs         every control, does it respond (337)
     node tools/audit.mjs ui          the design standard
     node tools/phase3check.mjs       download/launch security assertions
+    node tools/sessioncheck.mjs      online vs offline launch, and where the token goes (35)
     node tools/phase4check.mjs       loader merge rules
     node tools/phase5check.mjs       content install
     node tools/packcheck.mjs         what the packaged build contains
@@ -280,6 +289,7 @@ client id is still readable in history at `a46edfd` — that app is dead, but th
 **Repo:** https://github.com/emirudev128-sys/KestrelClient — **all rights reserved**, source-available
 for verification only. NOT open source; do not reintroduce MIT.
 
-**Current branch:** `hud-per-element-style`, **14 commits ahead of `origin/main`, unpushed.** The
+**Current branch:** `hud-per-element-style`, on GitHub with **no PR yet** — `git status` says whether
+anything local is still unpushed; a count written here goes stale the moment it is committed. The
 user wants to be happy with the menu before a PR is opened. `gh` is not installed on this machine —
 pushing works, opening the PR needs their browser.

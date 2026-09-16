@@ -13,13 +13,14 @@
    fast link - and every one of those crossing IPC would cost more than the
    download.
 
-   OFFLINE MODE IS LABELLED, NOT DISGUISED.  Phase 2's auth is in demo mode:
-   there is no Azure client id, so there is no real session and there cannot
-   be one.  Rather than fake a token, an offline launch sends the username the
-   user chose, the offline UUID that name deterministically produces, and the
-   literal access token "0" that every launcher has used for offline play
-   since 2011.  The game runs, singleplayer works, and Mojang's session server
-   refuses the join - which is the correct outcome, not a bug.
+   OFFLINE MODE IS LABELLED, NOT DISGUISED.  Play uses the signed-in
+   Microsoft account.  Play offline - or Play with no real account behind it,
+   which is every launch in demo mode - never fakes a token: it sends the
+   username the user chose, the offline UUID that name deterministically
+   produces, and the literal access token "0" that every launcher has used for
+   offline play since 2011.  The game runs, singleplayer works, and Mojang's
+   session server refuses the join - which is the correct outcome, not a bug -
+   and `offline` on the result says which of the two launches it was.
    ========================================================================= */
 
 const path = require('node:path');
@@ -60,7 +61,9 @@ class Game {
     this.store = o.store;
     this.emit = typeof o.emit === 'function' ? o.emit : function () {};
     this.log = typeof o.log === 'function' ? o.log : function () {};
-    this.accounts = o.accounts || null;
+    /* auth is msauth.js's Auth, asked for one thing: the session a launch
+       uses.  Without it every launch is offline. */
+    this.auth = o.auth || null;
     /* WHAT WE CALL OURSELVES ON THE WIRE.  main.js has the brand — it is the
        only thing that has read brand.js — so it hands the string down here
        rather than mc/ growing a second opinion about the product name.  A
@@ -416,8 +419,8 @@ class Game {
     }
     this.log('launch ' + instanceId + ': ' + versionId + ' on ' + jr.runtime.vendor + ' ' + jr.runtime.version + ' (' + jr.runtime.path + ')');
 
-    /* 3. the session.  Demo/offline is the only shape phase 2 can produce. */
-    const session = this._session(o);
+    /* 3. the session: the signed-in account's, or offline */
+    const session = await this._session(o);
 
     /* 4. go */
     report({ phase: 'launching', done: 0, total: 0, bytes: summary.bytes, totalBytes: summary.totalBytes, file: jr.runtime.vendor + ' ' + jr.runtime.version });
@@ -468,18 +471,27 @@ class Game {
     };
   }
 
-  /* THE SESSION, and the one decision in it.  With a live account we would
-     hand back its Minecraft token here; phase 2 cannot produce one, so this
-     builds the offline shape and marks it offline so every layer above knows
-     it is not a real session. */
-  _session(o) {
-    const active = this.accounts ? (this.accounts.list() || []).filter(function (a) { return a.active && !a.demo; })[0] : null;
-    if (active && !o.offline) {
-      /* Reserved for a live sign-in.  It is never reached today because
-         phase 2 only ever produces demo accounts, and it deliberately does
-         not reach into accounts.raw() from here - the token path stays in one
-         place when there is one. */
-      throw new Error('online launch needs a live Microsoft sign-in; this build is in demo mode, so use Play offline');
+  /* THE SESSION, and the one decision in it.  Unless the launch asked for
+     offline, the signed-in account's session is used when there is one.  It
+     comes from msauth.js and is not assembled here: this file never reads
+     accounts.raw(), so the path a token travels stays in one place.  With no
+     real account to use, the launch is offline and marked offline so every
+     layer above knows it is not a real session.
+
+     A SESSION THAT CANNOT BE RENEWED STOPS THE LAUNCH rather than quietly
+     turning it into an offline one.  The person pressed Play expecting their
+     account; a game that opens without it looks like it worked until the
+     first server refuses the join. */
+  async _session(o) {
+    if (!o.offline && this.auth) {
+      let live = null;
+      try { live = await this.auth.launchSession(); }
+      catch (e) {
+        const err = new Error((e && e.message ? e.message : 'The signed-in account has no usable session.') + ' Play offline still works.');
+        err.code = e && e.code ? e.code : 'NO_SESSION';
+        throw err;
+      }
+      if (live) return live;
     }
     let name = String(o.username || '').trim();
     if (!NAME_RE.test(name)) {

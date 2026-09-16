@@ -208,6 +208,14 @@ function tokenIsOnTheLine(args, token) {
   return args.some(function (a) { return String(a).indexOf(token) >= 0; });
 }
 
+/* NO OUTPUT LINE CARRIES IT EITHER.  The game prints no token, but a loader
+   or a mod that echoes its own arguments would, and every line below goes to
+   the Logs screen, which has a copy button on it. */
+function redact(line, token) {
+  if (!token || token === '0') return String(line);
+  return String(line).split(token).join('[session token]');
+}
+
 /* ── the running process ──────────────────────────────────────────────── */
 class Session {
   constructor(o) {
@@ -310,6 +318,7 @@ async function launch(o) {
     }, 1500);
   }
 
+  const say = function (stream, text) { if (o.onLine) o.onLine(stream, redact(text, token)); };
   const feed = function (stream, chunkStream) {
     let buf = '';
     chunkStream.setEncoding('utf8');
@@ -319,11 +328,11 @@ async function launch(o) {
       while ((i = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, i).replace(/\r$/, '');
         buf = buf.slice(i + 1);
-        if (o.onLine) o.onLine(stream, line);
+        say(stream, line);
       }
-      if (buf.length > 8192) { if (o.onLine) o.onLine(stream, buf); buf = ''; }
+      if (buf.length > 8192) { say(stream, buf); buf = ''; }
     });
-    chunkStream.on('end', function () { if (buf && o.onLine) o.onLine(stream, buf); });
+    chunkStream.on('end', function () { if (buf) say(stream, buf); });
   };
   feed('out', child.stdout);
   feed('err', child.stderr);
@@ -342,4 +351,4 @@ async function launch(o) {
   return sess;
 }
 
-module.exports = { buildArgs, launch, Session, argfileLine, fill, SEP };
+module.exports = { buildArgs, launch, Session, argfileLine, fill, redact, SEP };

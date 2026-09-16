@@ -2557,6 +2557,21 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     return { id: id, name: nameEl ? nameEl.textContent.trim().split('\n')[0] : id, ver: '' };
   }
 
+  /* WHICH SESSION PLAY MEANS.  The row marked active on Accounts decides — the
+     same row the rail foot and the Play note are drawn from: a Microsoft
+     account plays online, an offline profile plays offline under its own
+     name, and a demo profile has no session to offer.  Play offline is
+     offline whatever is active.  The main process decides again from its own
+     records, so a stale page can turn a launch offline but can never turn
+     one online. */
+  function launchOpts(offline) {
+    var li = accList ? accList.querySelector('.acc-row[data-active="true"]') : null;
+    var who = li ? accRead(li) : null;
+    var opts = { offline: offline === true || !who || who.demo || who.offline };
+    if (opts.offline && who && who.offline) opts.username = who.name;
+    return opts;
+  }
+
   function startReal(offline, from) {
     var inst = clickedInstance(from) || currentInstance();
     if (!inst || !inst.id) { say('This instance is not backed by a folder yet, so there is nothing to launch.'); return; }
@@ -2572,7 +2587,7 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
        is not hypothetical — tools/bridgetest caught a launch going out as
        instance "crystal-pvp" with version "1.8.9" while that instance is on
        1.21.4, because the id and the version were read from two places. */
-    host.game.play(inst.id, { offline: true }).then(function (r) {
+    host.game.play(inst.id, launchOpts(offline)).then(function (r) {
       run.session = r.session;
       SCENARIOS.running.sub = esc(inst.name) + ' · running ' + esc(r.version)
         + (r.offline ? ' <span class="kv-sub">offline</span>' : '');
@@ -2590,7 +2605,7 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     var now = root.dataset.launch;
     var live = !!(host && host.game);
     if (now === 'idle' || now === 'error' || now === 'offline') {
-      if (live) startReal(true, from); else runSequence();
+      if (live) startReal(false, from); else runSequence();
     } else if (live) { stopReal(); }
     else { clearTimers(); apply('normal'); }
   }
