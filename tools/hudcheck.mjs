@@ -297,8 +297,12 @@ ok('no option name means two different things on two elements',
   collide.length === 0, collide.join('; ') || Object.keys(byName).length + ' distinct names');
 
 ok('and every default a declaration states is one of its own values',
-  Object.values(hud.ELEMENT_OPTS).every((e) => Object.values(e).every((o) =>
-    o.type === 'bool' ? typeof o.def === 'boolean' : o.vals.indexOf(o.def) >= 0)));
+  Object.values(hud.ELEMENT_OPTS).concat(hud.FEATURE_NAMES.map((f) => hud.FEATURES[f].opts))
+    .every((e) => Object.values(e).every((o) =>
+      o.type === 'bool' ? typeof o.def === 'boolean'
+        : o.type === 'colour' ? /^#[0-9A-F]{6}$/.test(o.def)
+          : o.type === 'number' ? o.def >= o.min && o.def <= o.max && Number.isInteger((o.def - o.min) / o.step)
+            : o.vals.indexOf(o.def) >= 0)));
 
 if (fs.existsSync(javaFile)) {
   const styleJava = fs.readFileSync(javaFile, 'utf8');
@@ -450,6 +454,12 @@ try {
     elements: {
       fps: { on: true, module: 'FPS', label: 'FPS', anchor: 'br', x: 4, y: 4, scale: 2 },
       helmet: { on: false, module: 'Armor status', label: 'x', anchor: 'mr', x: 1, y: -9.6, scale: 1 }
+    },
+    /* switched in the in-game menu: zoom on at 8x, the TNT timer off.
+       Hitboxes are not named at all, as from a mod that predates them. */
+    features: {
+      zoom: { on: true, label: 'Zoom', desc: '', key: 'KEY_C', opts: { amount: '8x', smooth: true } },
+      tnt: { on: false, label: 'TNT timer', desc: '', key: '', opts: { ticks: false } }
     }
   };
   fs.mkdirSync(path.join(scratch, 'config'), { recursive: true });
@@ -458,7 +468,11 @@ try {
 
   /* the launcher had its own idea of the layout, including an element the
      game's copy of the mod never saw */
-  const had = { elements: { cps: { a: 'tl', x: 9, y: 9, s: 1 } }, modules: {} };
+  const had = {
+    elements: { cps: { a: 'tl', x: 9, y: 9, s: 1 }, tnt: { a: 'tc', x: 0, y: 12, s: 1 } },
+    modules: {},
+    features: { hitbox: { on: true, key: '', opts: { players: false, colour: '#55FFFF' } } }
+  };
   const first = await hud.sync(scratch, had);
   ok('a game-written document is taken back', first.imported === true);
   ok('and the drag reaches the launcher\'s settings',
@@ -472,6 +486,22 @@ try {
     first.settings.modules['Armor status'] === false && first.settings.modules.FPS === true,
     JSON.stringify(first.settings.modules));
   ok('the style comes back too', first.settings.style.corners === 'rounded');
+  /* THE FEATURES DID NOT, for as long as there were features: the merge
+     named elements, modules and style, and every launch wrote every feature
+     back at its default. */
+  ok('a feature switched in game comes back into the settings',
+    first.settings.features && first.settings.features.zoom && first.settings.features.zoom.on === true
+      && first.settings.features.zoom.opts.amount === '8x' && first.settings.features.tnt.on === false,
+    JSON.stringify(first.settings.features && first.settings.features.zoom));
+  ok('and reaches the next document the launcher writes',
+    first.built.doc.features.zoom.on === true && first.built.doc.features.tnt.on === false);
+  ok('a feature the game\'s document never named keeps the launcher\'s setting',
+    first.settings.features.hitbox && first.settings.features.hitbox.on === true
+      && first.built.doc.features.hitbox.opts.colour === '#55FFFF',
+    JSON.stringify(first.settings.features.hitbox));
+  ok('an element the launcher no longer declares is let go, not carried forever',
+    first.settings.elements.tnt === undefined && first.built.dropped === 0,
+    'dropped ' + first.built.dropped);
   ok('and the file is re-stamped as the launcher\'s',
     (await hud.read(scratch)).by === 'launcher');
 
@@ -515,7 +545,7 @@ ok('and writes them back whole, label and all',
   'dropping the label would leave the next launcher reading a nameless feature');
 if (behJava) {
   ok('the behaviours undo themselves when switched off',
-    /unzoom/.test(behJava) && /fovBefore/.test(behJava),
+    /unzoom/.test(behJava) && /sensitivityBefore/.test(behJava) && /snapZoomOut/.test(behJava),
     'a mod that changes a setting then stops running has broken the game');
   ok('and a key is resolved by NAME, not by code',
     /fromTranslationKey/.test(behJava), 'a code does not survive a keyboard layout');
@@ -529,9 +559,184 @@ if (overJava) {
   ok('chunk borders take their height from the world, not from 0..256',
     /getBottomY\(\)/.test(overJava) && /getHeight\(\)/.test(overJava));
 }
-ok('and none of it needed a mixin',
-  !fs.existsSync(path.join(ROOT, 'client-mod', 'src', 'main', 'resources', 'kestrel-hud.mixins.json')),
-  'a mixin is a build-time weave that breaks differently on every version');
+/* ── THE MIXINS: FREELOOK'S TWO, AND NO OTHERS ────────────────────────────
+   This used to assert there were none at all. Freelook cannot be done without
+   them, so the rule tightened instead of disappearing: exactly these two
+   classes, each one doing nothing unless freelook says it is on. A third
+   mixin should fail here until somebody decides it on purpose. */
+const mixinCfgFile = path.join(ROOT, 'client-mod', 'src', 'main', 'resources', 'kestrel-hud.mixins.json');
+const mixinCfg = fs.existsSync(mixinCfgFile) ? JSON.parse(fs.readFileSync(mixinCfgFile, 'utf8')) : null;
+ok('the only mixins are freelook\'s two, client-side',
+  !!mixinCfg && JSON.stringify(mixinCfg.client) === JSON.stringify(['CameraMixin', 'EntityMixin'])
+    && !(mixinCfg.mixins && mixinCfg.mixins.length) && !(mixinCfg.server && mixinCfg.server.length),
+  mixinCfg ? JSON.stringify({ client: mixinCfg.client, mixins: mixinCfg.mixins }) : 'no mixin config');
+const mixinDir = path.join(ROOT, 'client-mod', 'src', 'main', 'java', 'dev', 'kestrel', 'hud', 'mixin');
+const mixinSrc = (n) => { const f = path.join(mixinDir, n); return fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : ''; };
+ok('and each one does nothing unless freelook is on',
+  (mixinSrc('CameraMixin.java').match(/Freelook\.active\(\) \?/g) || []).length === 2
+    && /if \(!Freelook\.active\(\)\) return;/.test(mixinSrc('EntityMixin.java'))
+    && /!= MinecraftClient\.getInstance\(\)\.player\) return;/.test(mixinSrc('EntityMixin.java')),
+  'a mixin that changes the game while its feature is off is a bug nobody can switch off');
+ok('neither one redirects or overwrites a call another mod could also want',
+  !/@Redirect|@Overwrite/.test(mixinSrc('CameraMixin.java') + mixinSrc('EntityMixin.java')),
+  'two redirects of the same call crash the game');
+ok('and fabric.mod.json names the config',
+  fs.existsSync(path.join(ROOT, 'client-mod', 'src', 'main', 'resources', 'fabric.mod.json'))
+    && JSON.stringify(JSON.parse(fs.readFileSync(path.join(ROOT, 'client-mod', 'src', 'main', 'resources', 'fabric.mod.json'), 'utf8')).mixins) === '["kestrel-hud.mixins.json"]');
+
+/* ── 8a. the features do what they say ────────────────────────────────────
+   Each of these was reported from inside the game as not working, and each
+   failure was invisible in a diff: a latch that re-read its own output, a
+   zoom the option's validator quietly reset, corners drawn twice in two
+   colours. The checks pin the shape of the fix, not just its presence. */
+console.log('');
+console.log('the features do what they say');
+if (behJava) {
+  ok('toggle sprint can be switched off: the latch never reads back the binding it holds',
+    !/Latched \|\| c\.options\.(sprint|sneak)Key\.isPressed\(\)/.test(behJava)
+      && /InputUtil\.isKeyPressed\(window/.test(behJava),
+    'setPressed(latched || isPressed()) keeps itself pressed forever');
+  ok('and switching it off stops the sprint, not the next time you stop walking',
+    /setSprinting\(false\)/.test(behJava));
+  ok('Minecraft\'s own toggle mode is flipped, not fought',
+    /getSprintToggled\(\)/.test(behJava) && /getSneakToggled\(\)/.test(behJava));
+  ok('zoom does not go through the field of view option',
+    !/getFov\(\)\.setValue/.test(behJava) && /gameRenderer\.zoom = /.test(behJava),
+    'the option rejects anything under 30 and falls back to 70');
+  ok('and slows the mouse by the speed curve, not by dividing the slider',
+    /Math\.cbrt\(/.test(behJava));
+}
+const awFile = path.join(ROOT, 'client-mod', 'src', 'main', 'resources', 'kestrel-hud.accesswidener');
+const awLines = fs.existsSync(awFile)
+  ? fs.readFileSync(awFile, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
+  : [];
+ok('the access widener opens exactly one field, the renderer\'s zoom',
+  awLines.length === 2 && awLines[0] === 'accessWidener v2 named'
+    && awLines[1] === 'accessible field net/minecraft/client/render/GameRenderer zoom F',
+  awLines.join(' | ') || 'missing');
+const modJson = path.join(ROOT, 'client-mod', 'src', 'main', 'resources', 'fabric.mod.json');
+const gradleFile = path.join(ROOT, 'client-mod', 'build.gradle');
+ok('and both the build and the loader are told about it',
+  fs.existsSync(modJson) && JSON.parse(fs.readFileSync(modJson, 'utf8')).accessWidener === 'kestrel-hud.accesswidener'
+    && fs.existsSync(gradleFile) && /accessWidenerPath = file\('src\/main\/resources\/kestrel-hud\.accesswidener'\)/.test(fs.readFileSync(gradleFile, 'utf8')));
+if (overJava) {
+  ok('chunk borders draw every corner once, in one colour',
+    !/here \? Paint\.ACCENT : Paint\.EDGE/.test(overJava) && /i <= span \+ 1/.test(overJava),
+    'walking nine chunks drew each shared corner in amber and in grey');
+  ok('both overlays take the colour the menu picked',
+    (overJava.match(/f\.colour\("colour", DEFAULT_RGB\)/g) || []).length === 2);
+  ok('the see-through walls do not write depth, so water behind them survives',
+    /COLOR_MASK\.startDrawing\(\)/.test(overJava) && /TRANSLUCENT_TRANSPARENCY\.startDrawing\(\)/.test(overJava));
+  ok('and the TNT timer is drawn on the TNT, the way a name tag is',
+    /instanceof TntEntity/.test(overJava) && /TextLayerType\.SEE_THROUGH/.test(overJava)
+      && /getRotation\(\)/.test(overJava));
+}
+
+ok('the TNT timer is a feature now, not a HUD element',
+  hud.ELEMENTS.indexOf('tnt') < 0 && !!hud.FEATURES.tnt && !/data-el="tnt"/.test(html)
+    && !/"tnt"/.test(src('HudElements.java') || ''));
+ok('on for a document that never mentioned it, as the element was',
+  hud.build({}).doc.features.tnt.on === true && hud.build({}).doc.features.zoom.on === false);
+ok('and off once the menu has said off',
+  hud.build({ features: { tnt: { on: false } } }).doc.features.tnt.on === false);
+
+const hbColour = (v) => hud.build({ features: { hitbox: { opts: { colour: v } } } }).doc.features.hitbox.opts.colour;
+ok('a feature colour is kept, in one case', hbColour('#55ffff') === '#55FFFF', hbColour('#55ffff'));
+ok('and anything that is not #RRGGBB is the default', hbColour('red') === '#E3B439' && hbColour(12) === '#E3B439');
+ok('the spec says a colour is a colour, so an old mod cannot mistake it for a switch',
+  hud.build({}).doc.optSpec.colour && hud.build({}).doc.optSpec.colour.type === 'colour');
+ok('chunk borders offer the walls', hud.build({}).doc.features.chunks.opts.walls === false);
+/* ── FREELOOK ──────────────────────────────────────────────────────────── */
+ok('freelook is a feature on U, the key the user picked',
+  !!hud.FEATURES.freelook && hud.FEATURES.freelook.key === 'KEY_U');
+
+/* ── HOLD OR TOGGLE ───────────────────────────────────────────────────────
+   Every feature whose key keeps something on has a Mode, and each defaults
+   to what it did before it had one. */
+const modesDoc = hud.build({}).doc.features;
+ok('sprint, sneak, zoom and freelook can each be held or toggled',
+  ['sprint', 'sneak', 'zoom', 'freelook'].every((f) =>
+    hud.FEATURES[f].opts.mode && JSON.stringify(hud.FEATURES[f].opts.mode.vals) === '["hold","toggle"]'),
+  ['sprint', 'sneak', 'zoom', 'freelook'].map((f) => f + ':' + modesDoc[f].opts.mode).join(' '));
+ok('and each starts the way it already worked — sprint and sneak toggle, zoom and freelook hold',
+  modesDoc.sprint.opts.mode === 'toggle' && modesDoc.sneak.opts.mode === 'toggle'
+    && modesDoc.zoom.opts.mode === 'hold' && modesDoc.freelook.opts.mode === 'hold');
+ok('snap look has no mode: it is one instant turn',
+  !hud.FEATURES.snaplook.opts.mode);
+ok('a mode that is neither falls back to the default',
+  hud.build({ features: { zoom: { opts: { mode: 'sometimes' } } } }).doc.features.zoom.opts.mode === 'hold');
+/* one global spec table: a shared option name must mean the same thing on
+   every feature that uses it — mode on four, colour and thickness on two */
+const featSig = {};
+const featCollide = [];
+for (const fname of hud.FEATURE_NAMES) {
+  for (const [k, o] of Object.entries(hud.FEATURES[fname].opts)) {
+    const sig = o.type + '|' + o.label + '|' + (o.vals || []).join(',') + '|' + [o.min, o.max, o.step, o.unit].join(',');
+    if (featSig[k] && featSig[k].sig !== sig) featCollide.push(k + ' (' + featSig[k].f + ' vs ' + fname + ')');
+    else if (!featSig[k]) featSig[k] = { sig, f: fname };
+  }
+}
+ok('an option shared by several features means the same thing on each',
+  featCollide.length === 0, featCollide.join('; ') || Object.keys(featSig).length + ' feature option names');
+if (behJava) {
+  ok('the mod honours the mode: sprint and sneak can be held, zoom and freelook toggled',
+    /if \(holds\(f, "toggle"\)\) \{/.test(behJava)
+      && /while \(k\.wasPressed\(\)\) zoomLatched = !zoomLatched;/.test(behJava)
+      && /while \(k\.wasPressed\(\)\) freelookLatched = !freelookLatched;/.test(behJava));
+}
+const defaultKeys = hud.FEATURE_NAMES.map((f) => hud.FEATURES[f].key).filter((k) => k);
+ok('no two features default to the same key',
+  new Set(defaultKeys).size === defaultKeys.length, defaultKeys.join(' '));
+if (behJava) {
+  ok('freelook gets a binding at start and lets go when the world goes away',
+    /"freelook"\)/.test(behJava) && /KEYED = java\.util\.Set\.of\([^)]*"freelook"/.test(behJava)
+      && /Freelook\.stop\(c\);\s*freelookLatched = false;/.test(behJava));
+}
+const freelookJava = src('Freelook.java');
+if (freelookJava) {
+  ok('freelook puts the view back the way it found it',
+    /if \(now\.isFirstPerson\(\)\)/.test(freelookJava) && /setPerspective\(before\)/.test(freelookJava));
+  ok('and only takes over the camera for the player\'s own view',
+    /c\.getCameraEntity\(\) == c\.player/.test(freelookJava));
+}
+
+/* ── THICKNESS, AND THE NUMBER TYPE IT NEEDED ─────────────────────────── */
+const thick = (v) => hud.build({ features: { hitbox: { opts: { thickness: v } } } }).doc.features.hitbox.opts.thickness;
+ok('both overlays start at Minecraft\'s own line width, 2.5',
+  hud.build({}).doc.features.hitbox.opts.thickness === 2.5 && hud.build({}).doc.features.chunks.opts.thickness === 2.5);
+ok('a thickness is snapped to its step and kept inside its range',
+  thick(4) === 4 && thick(3.3) === 3.5 && thick(99) === 10 && thick(0) === 1,
+  [thick(4), thick(3.3), thick(99), thick(0)].join(' '));
+ok('and only a number is a number — not "4", not true',
+  thick('4') === 2.5 && thick(true) === 2.5 && thick(NaN) === 2.5);
+const tSpec = hud.build({}).doc.optSpec.thickness;
+ok('the spec carries the range, the step and the unit the menu draws',
+  !!tSpec && tSpec.type === 'number' && tSpec.min === 1 && tSpec.max === 10 && tSpec.step === 0.5 && tSpec.unit === 'px',
+  JSON.stringify(tSpec));
+const featTabSrc = src('FeaturesTab.java');
+if (cfgJava0 && featTabSrc && overJava) {
+  ok('the mod reads the range, and the menu draws a number as a slider',
+    /numOf\(body, "min"/.test(cfgJava0) && /numOf\(body, "step"/.test(cfgJava0)
+      && /spec\.isNumber\(\)/.test(featTabSrc) && /Chrome\.slider\(/.test(featTabSrc));
+  ok('the overlays draw at that thickness, scaled past 1080p the way vanilla scales its own',
+    (overJava.match(/Layers\.lines\(thickness\(f\)\)/g) || []).length === 2
+      && /RenderSystem\.lineWidth\(t \* Math\.max\(1f, fbWidth \/ 1920f\)\)/.test(overJava)
+      && !/RenderLayer\.getLines\(\)/.test(overJava));
+}
+const elemSrc = src('HudElements.java');
+const rendSrc = src('HudRenderer.java');
+if (elemSrc && rendSrc) {
+  ok('keystrokes put room between their rows',
+    (elemSrc.match(/Run\.spacer\(KEY_ROW_GAP\)/g) || []).length === 3 && /KEY_ROW_GAP = 3/.test(elemSrc));
+  ok('and a spacer row is measured as its own height, so the plate grows to fit it',
+    /runs\.get\(0\)\.kind == HudElements\.SPACER\) return runs\.get\(0\)\.width/.test(rendSrc));
+}
+
+if (cfgJava0 && featTabSrc) {
+  ok('the mod reads the option type, and the menu draws a colour as swatches',
+    /strOf\(body, "type"\)/.test(cfgJava0) && /spec\.isColour\(\)/.test(featTabSrc)
+      && /ElementsTab\.colour\(s, ctx, label/.test(featTabSrc));
+}
 
 
 if (cfgJava) {
@@ -935,6 +1140,22 @@ if (!fs.existsSync(classes)) {
       fromGame.hud.elements.helmet && fromGame.hud.elements.helmet.opts.wear === 'percent',
       JSON.stringify(fromGame.hud.elements.helmet && fromGame.hud.elements.helmet.opts));
     ok('nothing was dropped on the way back', fromGame.dropped === 0);
+    const featLine = (id) => (said.split(/\r?\n/).find((l) => l.startsWith('feat\t' + id + '\t')) || '').split('\t')[2];
+    ok('the mod reads a colour option as a colour',
+      /^spec\tcolour\tcolour$/m.test(said) && featLine('hitbox') === '#E3B439',
+      featLine('hitbox'));
+    ok('and a TNT timer that was never mentioned arrives on', featLine('tnt') === 'true', featLine('tnt'));
+    ok('a colour picked in game comes home in the launcher\'s own case',
+      fromGame.hud.features.hitbox.opts.colour === '#55FFFF',
+      JSON.stringify(fromGame.hud.features.hitbox.opts));
+    ok('and the TNT timer switched off in game stays off',
+      fromGame.hud.features.tnt.on === false);
+    ok('the mod parses a number option\'s range, step and unit',
+      /^spec\tthickness\tnumber\t1\.0\t10\.0\t0\.5\tpx\ttrue$/m.test(said) && featLine('hitbox-thickness') === '2.5',
+      (said.split(/\r?\n/).find((l) => l.startsWith('spec\tthickness')) || 'missing').replace(/\t/g, ' '));
+    ok('and a thickness dragged in game comes home as a number on the step',
+      fromGame.hud.features.hitbox.opts.thickness === 4.5,
+      JSON.stringify(fromGame.hud.features.hitbox.opts));
   } catch (e) {
     ok('the round trip runs', false, e.message.split('\n')[0]);
   } finally {

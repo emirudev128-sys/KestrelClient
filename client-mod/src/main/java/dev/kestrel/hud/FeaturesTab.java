@@ -26,29 +26,38 @@ final class FeaturesTab {
     private static int groupOf(String id) {
         switch (id) {
             case "sprint": case "sneak": case "snaplook": return 0;
-            case "zoom": return 1;
-            case "hitbox": case "chunks": return 2;
+            case "zoom": case "freelook": return 1;
+            case "hitbox": case "chunks": case "tnt": return 2;
             default: return 3;
         }
     }
 
-    /** pressed, held, or no key at all */
-    private static String verb(String id) {
-        switch (id) {
-            case "zoom": return "held";
-            case "hitbox": case "chunks": return "always";
+    /** pressed, held, or no key at all — whichever a feature's Mode says, where it has one */
+    private static String verb(Feature f) {
+        switch (f.id) {
+            case "sprint": case "sneak": return held(f, "toggle") ? "held" : "pressed";
+            case "zoom": case "freelook": return held(f, "hold") ? "held" : "pressed";
+            case "hitbox": case "chunks": case "tnt": return "always";
             default: return "pressed";
         }
     }
 
+    /** the Mode, with what the feature did before it had one */
+    private static boolean held(Feature f, String before) {
+        return "hold".equals(f.choice("mode", before));
+    }
+
     private static String action(Feature f) {
         switch (f.id) {
-            case "sprint": return "Toggle sprint";
-            case "sneak": return "Toggle sneak";
+            /* "While V held, sprint" — the word toggle is only true of a toggle */
+            case "sprint": return held(f, "toggle") ? "Sprint" : "Toggle sprint";
+            case "sneak": return held(f, "toggle") ? "Sneak" : "Toggle sneak";
             case "snaplook": return "Turn";
             case "zoom": return "Zoom";
             case "hitbox": return "Outline entities";
             case "chunks": return "Draw chunk edges";
+            case "tnt": return "Time every fuse";
+            case "freelook": return "Look around";
             default: return f.label;
         }
     }
@@ -117,7 +126,7 @@ final class FeaturesTab {
         Glass.box(ctx, x, y, w, Glass.ROW, fill, edge);
         float cy = y + Glass.ROW / 2f;
         String key = keyOf(f);
-        String tag = "always".equals(verb(f.id)) ? "··" : key.isEmpty() ? "—" : keyName(key).replace("LEFT ", "L").replace("RIGHT ", "R");
+        String tag = "always".equals(verb(f)) ? "··" : key.isEmpty() ? "—" : keyName(key).replace("LEFT ", "L").replace("RIGHT ", "R");
         float nameX = Math.max(x + 42, Type.draw(ctx, s.tr(), Type.TAG, tag, x + 12, cy, Glass.MUTE) + 12);
         int ink = current || hover ? Glass.INK : f.on ? Glass.BODY : Glass.MUTE;
         Type.draw(ctx, s.tr(), Type.NAME, Type.fit(s.tr(), Type.NAME, f.label, x + w - 30 - nameX), nameX, cy, ink);
@@ -182,7 +191,7 @@ final class FeaturesTab {
 
         /* the trigger */
         float cy = y + headH / 2f;
-        String verb = verb(f.id);
+        String verb = verb(f);
         float tx = x + 16;
         if ("always".equals(verb)) {
             Type.draw(ctx, s.tr(), Type.RULE, "While on", tx, cy, Glass.faded(Glass.INK, fade));
@@ -208,15 +217,31 @@ final class FeaturesTab {
         Glass.fill(ctx, ax + 14, ay + actH + 1, 20, 3, Glass.faded(hue, fade));
         float acy = ay + actH / 2f;
         float ox = Type.draw(ctx, s.tr(), Type.RULE, action(f), ax + 16, acy, Glass.faded(Glass.INK, fade)) + 12;
+        /* EACH OPTION IS MEASURED BEFORE IT IS DRAWN, and the row stops at
+           the first that would cross the edge — chunk borders carry three,
+           and a label cut in half reads worse than one left to the settings
+           panel, which lists them all. */
+        float end = ax + aw - 16;
         for (String k : f.optKeys()) {
             HudConfig.OptSpec spec = s.config.spec(k);
-            if (ox > ax + aw - 40) break;
             if (spec != null && spec.isEnum()) {
-                String now = f.choice(k, spec.vals.get(0));
-                String shown = now + ("turn".equals(k) ? "°" : "");
+                String shown = f.choice(k, spec.vals.get(0)) + ("turn".equals(k) ? "°" : "");
+                if (ox + Chrome.chipWidth(s, shown) > end) break;
                 ox += Chrome.chipButton(s, ctx, shown, ox, acy, Glass.INK, () -> cycle(s, f.id, k)) + 12;
+            } else if (spec != null && spec.isColour()) {
+                String label = spec.label.toLowerCase(Locale.ROOT);
+                if (ox + Type.width(s.tr(), Type.SOFT, label) + 12 + Chrome.SWATCH > end) break;
+                ox = Type.draw(ctx, s.tr(), Type.SOFT, label, ox, acy, Glass.MUTE) + 12;
+                ox += Chrome.swatch(s, ctx, f.colour(k, DEFAULT_RGB), ox, acy, () -> cycle(s, f.id, k)) + 16;
+            } else if (spec != null && spec.isNumber()) {
+                /* the value, as a chip that opens the feature — a range is
+                   a slider, and the slider is in the settings panel */
+                String shown = amount(f.number(k, spec.min), spec);
+                if (ox + Chrome.chipWidth(s, shown) > end) break;
+                ox += Chrome.chipButton(s, ctx, shown, ox, acy, Glass.INK, () -> select(s, f.id)) + 12;
             } else {
                 String label = spec == null ? k : spec.label.toLowerCase(Locale.ROOT);
+                if (ox + Type.width(s.tr(), Type.SOFT, label) + 12 + 10 > end) break;
                 ox = Type.draw(ctx, s.tr(), Type.SOFT, label, ox, acy, Glass.MUTE) + 12;
                 Chrome.dot(s, ctx, ox + 5, acy, f.flag(k), () -> cycle(s, f.id, k));
                 ox += 10 + 16;
@@ -224,6 +249,9 @@ final class FeaturesTab {
         }
         return y + h;
     }
+
+    /* the overlays' amber before anybody picks one — mc/hud.js declares the same */
+    private static final int DEFAULT_RGB = 0xE3B439;
 
     private static void cycle(EditorScreen s, String id, String key) {
         Feature f = s.config.feature(id);
@@ -234,6 +262,12 @@ final class FeaturesTab {
         if (spec != null && spec.isEnum()) {
             int i = spec.vals.indexOf(f.choice(key, spec.vals.get(0)));
             String next = spec.vals.get((i + 1) % spec.vals.size());
+            s.config.putFeature(id, f.withOpt(key, '"' + next + '"'));
+            shown = next;
+        } else if (spec != null && spec.isColour()) {
+            /* the swatch on the rule steps through the palette; the settings
+               panel has all fourteen at once */
+            String next = ElementsTab.hex(Chrome.nextColour(f.colour(key, DEFAULT_RGB)));
             s.config.putFeature(id, f.withOpt(key, '"' + next + '"'));
             shown = next;
         } else {
@@ -248,7 +282,7 @@ final class FeaturesTab {
     /** the keys in use, and whether two features want the same one */
     private static void keys(EditorScreen s, DrawContext ctx, List<Feature> all, float x, float y, float w) {
         List<Feature> bound = new ArrayList<>();
-        for (Feature f : all) if (!"always".equals(verb(f.id)) && !keyOf(f).isEmpty()) bound.add(f);
+        for (Feature f : all) if (!"always".equals(verb(f)) && !keyOf(f).isEmpty()) bound.add(f);
         List<String> clashes = new ArrayList<>();
         for (int i = 0; i < bound.size(); i++) {
             for (int j = 0; j < i; j++) {
@@ -324,7 +358,7 @@ final class FeaturesTab {
         Chrome.dot(s, ctx, x + w - 5, cy, f.on, () -> flip(s, f.id));
         y += Glass.ROW;
 
-        if (!"always".equals(verb(f.id))) {
+        if (!"always".equals(verb(f))) {
             cy = y + Glass.ROW / 2f;
             Chrome.label(s, ctx, "Key", x, cy);
             String button = s.rebinding ? "cancel" : "change";
@@ -354,6 +388,21 @@ final class FeaturesTab {
                 HudConfig.OptSpec spec = s.config.spec(k);
                 String label = spec == null ? k : spec.label;
                 float ocy = y + Glass.ROW / 2f;
+                if (spec != null && spec.isColour()) {
+                    /* the same row the element style uses: label, hex, swatches */
+                    y = ElementsTab.colour(s, ctx, label, f.colour(k, DEFAULT_RGB), x, y, w, rgb -> {
+                        Feature cur = s.config.feature(f.id);
+                        String hex = ElementsTab.hex(rgb);
+                        s.config.putFeature(f.id, cur.withOpt(k, '"' + hex + '"'));
+                        s.change(cur.label + " · " + label.toLowerCase(Locale.ROOT) + ": " + hex);
+                        s.click();
+                    });
+                    continue;
+                }
+                if (spec != null && spec.isNumber()) {
+                    y = numberRow(s, ctx, f, k, spec, label, x, y, w);
+                    continue;
+                }
                 if (spec != null && spec.isEnum()) {
                     String[] vals = new String[spec.vals.size()];
                     for (int i = 0; i < vals.length; i++) vals[i] = spec.vals.get(i) + ("turn".equals(k) ? "°" : "");
@@ -375,6 +424,42 @@ final class FeaturesTab {
         return y;
     }
 
+    /* ── a number: the same row the element's Size is ────────────────────
+       Label and value on one line, the slider under them, the two ends of
+       the range under that. Every value the drag passes through is written —
+       the overlay changes under you while you drag — but only where it lands
+       goes in the change log, as with Size and Opacity. */
+    private static float numberRow(EditorScreen s, DrawContext ctx, Feature f, String k, HudConfig.OptSpec spec,
+                                   String label, float x, float y, float w) {
+        float cy = y + Glass.ROW / 2f;
+        double now = spec.snap(f.number(k, spec.min));
+        Chrome.label(s, ctx, label, x, cy);
+        String shown = amount(now, spec);
+        Chrome.chip(s, ctx, shown, x + w - Chrome.chipWidth(s, shown), cy, Glass.INK);
+        y += Glass.ROW + 2;
+        final String id = f.id;
+        final double before = now;
+        y += Chrome.slider(s, ctx, x, y, w, (now - spec.min) / (spec.max - spec.min), t -> {
+            Feature cur = s.config.feature(id);
+            double next = spec.snap(spec.min + t * (spec.max - spec.min));
+            if (cur != null && cur.number(k, Double.NaN) != next) s.config.putFeature(id, cur.withOpt(k, HudConfig.num(next)));
+        }, () -> {
+            Feature cur = s.config.feature(id);
+            if (cur == null) return;
+            double landed = spec.snap(cur.number(k, spec.min));
+            if (landed != before) s.change(cur.label + " · " + label.toLowerCase(Locale.ROOT) + ": " + amount(landed, spec));
+        });
+        y += 2;
+        y += Chrome.ticks(s, ctx, x, y, w, amount(spec.min, spec), amount(spec.max, spec));
+        return y + 8;
+    }
+
+    /** 2.5 px, 4 px — the value and the launcher's unit, no trailing zeros */
+    static String amount(double v, HudConfig.OptSpec spec) {
+        String n = v == Math.rint(v) ? Long.toString((long) v) : String.format(Locale.ROOT, "%.1f", v);
+        return spec.unit.isEmpty() ? n : n + " " + spec.unit;
+    }
+
     private static void summary(EditorScreen s, DrawContext ctx, List<Feature> all, float x, float y, float w) {
         Glass.fill(ctx, x + 1, y, w - 2, 1, Glass.LINE);
         float px = x + Glass.PAD, pw = w - 2 * Glass.PAD;
@@ -382,7 +467,7 @@ final class FeaturesTab {
         int on = 0, keyed = 0, set = 0;
         for (Feature f : all) {
             if (f.on) on++;
-            if (!"always".equals(verb(f.id))) {
+            if (!"always".equals(verb(f))) {
                 keyed++;
                 if (!keyOf(f).isEmpty()) set++;
             }

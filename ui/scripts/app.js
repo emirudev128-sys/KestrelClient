@@ -1310,7 +1310,6 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     memory: 'bl:2.6:10.0',
     combo: 'mc:0.0:12.0',
     totems: 'br:12.0:4.0',
-    tnt: 'tc:0.0:12.0',
     reach: 'mc:0.0:18.0',
     pvp: 'ml:3.4:22.0'
   };

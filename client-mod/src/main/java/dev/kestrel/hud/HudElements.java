@@ -82,6 +82,16 @@ final class HudElements {
     static final int MOUSE = 3;
     static final int SPACE = 4;
     static final int CENTRE = 5;
+    /* A ROW OF NOTHING, a given number of pixels tall — the room between
+       rows that a stack of text rows does not have on its own */
+    static final int SPACER = 6;
+
+    /* THE KEYS BREATHE. Rows stacked flush put two pixels between W and the
+       A S D under it and one between those and the mouse, which reads as one
+       block of glyphs rather than as keys. Three more pixels between rows,
+       unscaled — the plate's own padding, so the gaps inside it match the
+       margin around it. */
+    static final int KEY_ROW_GAP = 3;
 
     static final class Run {
         final int kind;
@@ -124,6 +134,9 @@ final class HudElements {
         static Run space(boolean held) { return new Run(SPACE, null, held ? VALUE : LABEL, SPACE_MIN, null, null, 0); }
 
         static Run centre() { return new Run(CENTRE, null, VALUE, 0, null, null, 0); }
+
+        /** empty room, this many pixels tall, as a row of its own; the height rides in `width` */
+        static Run spacer(int height) { return new Run(SPACER, null, VALUE, height, null, null, 0); }
     }
 
     private static List<Run> row(Run... runs) {
@@ -153,7 +166,7 @@ final class HudElements {
     private static final List<String> DRAWN = List.of(
         "fps", "cps", "ping", "keys", "coords", "potion",
         "helmet", "chest", "legs", "boots", "held",
-        "day", "clock", "playtime", "memory", "combo", "totems", "tnt", "reach", "pvp");
+        "day", "clock", "playtime", "memory", "combo", "totems", "reach", "pvp");
 
     static boolean drawn(String name) {
         return DRAWN.contains(name);
@@ -252,15 +265,6 @@ final class HudElements {
                 return one(row(Run.item(new ItemStack(net.minecraft.item.Items.TOTEM_OF_UNDYING)),
                     new Run(face, Integer.toString(n), n == 0 ? ACCENT : VALUE)));
             }
-            case "tnt": {
-                Double fuse = nearestFuse(client);
-                if (fuse == null) return null;
-                return one(el.flag("ticks")
-                    ? row(new Run(face, Integer.toString((int) Math.round(fuse * 20)), ACCENT),
-                          new Run(face, "t", LABEL))
-                    : row(new Run(face, String.format(java.util.Locale.ROOT, "%.1f", fuse), ACCENT),
-                          new Run(face, "s", LABEL)));
-            }
             case "reach": {
                 double d = Combat.reach();
                 if (d < 0) return null;
@@ -308,10 +312,12 @@ final class HudElements {
            way the keys sit on a keyboard, rather than all four rows starting
            at the plate's left edge. */
         out.add(row(Run.centre(), new Run(face, "W", w ? VALUE : LABEL)));
+        out.add(row(Run.spacer(KEY_ROW_GAP)));
         out.add(row(Run.centre(), new Run(face, "A", a ? VALUE : LABEL),
             new Run(face, "S", s ? VALUE : LABEL),
             new Run(face, "D", d ? VALUE : LABEL)));
         if (el.flag("mouse")) {
+            out.add(row(Run.spacer(KEY_ROW_GAP)));
             /* A MOUSE, NOT "LMB RMB". The buttons light up the way the keys
                above them do. With CPS on, each button's count sits on its own
                side of the mouse — two digits do not fit inside a button — which
@@ -328,7 +334,10 @@ final class HudElements {
         }
         /* the spacebar as the key looks, not the word: a line with its ends
            turned up, stretched across the plate */
-        if (el.flag("space")) out.add(row(Run.space(sp)));
+        if (el.flag("space")) {
+            out.add(row(Run.spacer(KEY_ROW_GAP)));
+            out.add(row(Run.space(sp)));
+        }
         return out;
     }
 
@@ -469,10 +478,6 @@ final class HudElements {
                 return one(row(new Run(face, "5", VALUE), new Run(face, "hits", LABEL)));
             case "totems":
                 return one(row(Run.item(new ItemStack(net.minecraft.item.Items.TOTEM_OF_UNDYING)), new Run(face, "3", VALUE)));
-            case "tnt":
-                return one(el.flag("ticks")
-                    ? row(new Run(face, "48", ACCENT), new Run(face, "t", LABEL))
-                    : row(new Run(face, "2.4", ACCENT), new Run(face, "s", LABEL)));
             case "reach": {
                 List<Run> r = row(new Run(face, "3.42", VALUE));
                 if (el.flag("unit")) r.add(new Run(face, "blocks", LABEL));
@@ -558,21 +563,6 @@ final class HudElements {
             if (off != null && off.getItem() == net.minecraft.item.Items.TOTEM_OF_UNDYING) n -= off.getCount();
         }
         return Math.max(0, n);
-    }
-
-    /* THE NEAREST PRIMED TNT, in seconds. Nothing primed means no plate at all
-       rather than a plate reading zero — a countdown permanently on screen
-       showing nothing is a countdown you stop looking at. */
-    private static Double nearestFuse(MinecraftClient c) {
-        if (c == null || c.world == null || c.player == null) return null;
-        double best = Double.MAX_VALUE;
-        int fuse = -1;
-        for (net.minecraft.entity.Entity e : c.world.getEntities()) {
-            if (!(e instanceof net.minecraft.entity.TntEntity)) continue;
-            double d = c.player.squaredDistanceTo(e);
-            if (d < best) { best = d; fuse = ((net.minecraft.entity.TntEntity) e).getFuse(); }
-        }
-        return fuse < 0 ? null : Double.valueOf(fuse / 20.0);
     }
 
     /** 14.0 -> "14", 14.5 -> "14.5" — half a heart is worth a decimal and a

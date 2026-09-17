@@ -319,11 +319,34 @@ public final class HudConfig {
     public static final class OptSpec {
         public final String label;
         public final List<String> vals;   /* empty for a switch */
-        OptSpec(String label, List<String> vals) {
+        /* "colour" for a #RRGGBB, "number" for a value in a range, and empty
+           otherwise — the launcher only names a type where "no values" would
+           read as a switch */
+        public final String type;
+        /* A NUMBER'S RANGE, STEP AND UNIT, all the launcher's. NaN where the
+           spec is not a number, and a number spec missing any of the three is
+           not offered as one (see isNumber). */
+        public final double min, max, step;
+        public final String unit;
+        OptSpec(String label, List<String> vals, String type, double min, double max, double step, String unit) {
             this.label = label == null ? "" : label;
             this.vals = vals == null ? new ArrayList<>() : vals;
+            this.type = type == null ? "" : type;
+            this.min = min;
+            this.max = max;
+            this.step = step;
+            this.unit = unit == null ? "" : unit;
         }
         public boolean isEnum() { return !vals.isEmpty(); }
+        public boolean isColour() { return "colour".equals(type); }
+        public boolean isNumber() {
+            return "number".equals(type) && !Double.isNaN(min) && !Double.isNaN(max) && step > 0 && max > min;
+        }
+        /** a value moved onto the step and into the range — the launcher's own rule, so a drag never writes a value it would change */
+        public double snap(double v) {
+            double s = min + Math.round((v - min) / step) * step;
+            return Math.round(Math.max(min, Math.min(max, s)) * 1000.0) / 1000.0;
+        }
     }
 
     private final Map<String, OptSpec> spec;
@@ -555,7 +578,7 @@ public final class HudConfig {
        comma for a decimal point — String.format would use whatever locale the
        player's machine has, and "2,6" is not a number to any JSON parser.
        Root locale, stated rather than inherited. */
-    private static String num(double v) {
+    static String num(double v) {
         double r = Math.round(v * 100.0) / 100.0;
         if (r == Math.rint(r) && !Double.isInfinite(r)) return Long.toString((long) r);
         return String.format(java.util.Locale.ROOT, "%.2f", r);
@@ -707,7 +730,9 @@ public final class HudConfig {
                         }
                     }
                 }
-                out.put(key, new OptSpec(strOf(body, "label"), vals));
+                out.put(key, new OptSpec(strOf(body, "label"), vals, strOf(body, "type"),
+                    numOf(body, "min", Double.NaN), numOf(body, "max", Double.NaN),
+                    numOf(body, "step", Double.NaN), strOf(body, "unit")));
             }
             i = c2 + 1;
         }

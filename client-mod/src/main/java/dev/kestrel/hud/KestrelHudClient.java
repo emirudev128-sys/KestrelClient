@@ -85,6 +85,9 @@ public class KestrelHudClient implements ClientModInitializer {
            thing it outlines. */
         net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents.AFTER_ENTITIES
             .register(ctx -> Overlays.render(ctx, config));
+        /* zoom eases per frame rather than per tick — see Behaviours.frame */
+        net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents.START
+            .register(ctx -> Behaviours.frame(MinecraftClient.getInstance()));
     }
 
     /* Drained in a while loop rather than read once: wasPressed() pops one

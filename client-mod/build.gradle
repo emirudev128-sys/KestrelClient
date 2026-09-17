@@ -7,6 +7,11 @@ version = project.mod_version
 group = project.maven_group
 base { archivesName = project.archives_base_name }
 
+/* one private field made reachable, for zoom — the file says which and why */
+loom {
+    accessWidenerPath = file('src/main/resources/kestrel-hud.accesswidener')
+}
+
 repositories {
     maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }
     mavenCentral()

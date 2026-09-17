@@ -42,6 +42,8 @@ final class HudRenderer {
     /** A ROW IS AS TALL AS ITS TALLEST RUN: a line of text, an item icon, an
      *  effect icon or the mouse. Everything shorter is centred in it. */
     static int rowHeight(List<HudElements.Run> runs) {
+        /* a spacer row is exactly as tall as it says, not a line at least */
+        if (runs.size() == 1 && runs.get(0).kind == HudElements.SPACER) return runs.get(0).width;
         int h = Paint.LINE;
         for (HudElements.Run r : runs) {
             if (r.kind == HudElements.ITEM_ICON) h = Math.max(h, HudElements.ITEM);
@@ -77,7 +79,7 @@ final class HudRenderer {
     private static int rowWidth(TextRenderer tr, List<HudElements.Run> runs) {
         int inner = 0, n = 0;
         for (HudElements.Run r : runs) {
-            if (r.kind == HudElements.CENTRE) continue;
+            if (r.kind == HudElements.CENTRE || r.kind == HudElements.SPACER) continue;
             if (n++ > 0) inner += Paint.GAP;
             inner += runWidth(tr, r);
         }
@@ -207,7 +209,7 @@ final class HudRenderer {
         /* a centred row starts wherever leaves equal room either side of it */
         int x = centred(runs) ? (w - rowWidth(tr, runs)) / 2 + Paint.PAD_X : Paint.PAD_X;
         for (HudElements.Run r : runs) {
-            if (r.kind == HudElements.CENTRE) continue;
+            if (r.kind == HudElements.CENTRE || r.kind == HudElements.SPACER) continue;
             if (r.kind == HudElements.ITEM_ICON) {
                 /* the game's item renderer: the player's resource packs, their
                    enchantment glint, their custom models — nothing of ours */

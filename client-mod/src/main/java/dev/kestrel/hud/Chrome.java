@@ -258,6 +258,26 @@ final class Chrome {
         return size;
     }
 
+    static final float SWATCH = 14;
+
+    /** one colour as a small square, pressable; returns its width */
+    static float swatch(EditorScreen s, DrawContext ctx, int rgb, float x, float cy, Runnable r) {
+        float y = cy - SWATCH / 2f;
+        boolean hover = s.over(x - 6, cy - 13, SWATCH + 12, 26);
+        Glass.fill(ctx, x, y, SWATCH, SWATCH, 0xFF000000 | rgb);
+        Glass.edge(ctx, x, y, SWATCH, SWATCH, hover ? Glass.GO : Glass.argb(0xF1F4F7, 22));
+        s.onClick(x - 6, cy - 13, SWATCH + 12, 26, r);
+        return SWATCH;
+    }
+
+    /** the palette colour after this one; the first, for a colour not in it */
+    static int nextColour(int rgb) {
+        for (int i = 0; i < PALETTE.length; i++) {
+            if (PALETTE[i] == (rgb & 0xFFFFFF)) return PALETTE[(i + 1) % PALETTE.length];
+        }
+        return PALETTE[0];
+    }
+
     static final String[] ANCHORS = { "tl", "tc", "tr", "ml", "mc", "mr", "bl", "bc", "br" };
 
     /** the nine anchors as a grid, right-aligned; returns its left edge */

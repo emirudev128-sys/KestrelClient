@@ -2,28 +2,39 @@ package dev.kestrel.hud;
 
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.render.LightmapTextureManager;
+import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.render.VertexFormat;
+import net.minecraft.client.render.VertexFormats;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.TntEntity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.text.MutableText;
+import net.minecraft.text.Text;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
+import org.joml.Matrix4f;
+
+import java.util.Locale;
 
 /**
  * THE FEATURES DRAWN IN THE WORLD RATHER THAN ON THE HUD.
  *
- * <p>Hitboxes and chunk borders. Both are lines in 3D space with depth, which
- * is a different render pass from everything else in this mod — the HUD draws
- * flat rectangles in screen coordinates after the world is done, and these
- * have to go in while it is still being drawn or they would float on top of
- * terrain that should occlude them.
+ * <p>Hitboxes, chunk borders and the TNT timer. All three live in 3D space
+ * with depth, which is a different render pass from everything else in this
+ * mod — the HUD draws flat rectangles in screen coordinates after the world is
+ * done, and these have to go in while it is still being drawn or they would
+ * float on top of terrain that should occlude them.
  *
- * <p><b>VANILLA HAS BOTH ALREADY, ON F3+B AND F3+G.</b> That is worth being
- * honest about: the value here is not the lines, it is that they are switchable
- * from the same menu as everything else, and that hitboxes can be narrowed to
- * players — which is the only version of that feature anybody actually wants,
- * and the one vanilla does not offer.
+ * <p><b>VANILLA HAS THE FIRST TWO ALREADY, ON F3+B AND F3+G.</b> That is worth
+ * being honest about: the value here is not the lines, it is that they are
+ * switchable from the same menu as everything else, in a colour you picked,
+ * and that hitboxes can be narrowed to players — which is the only version of
+ * that feature anybody actually wants, and the one vanilla does not offer.
  *
  * <p><b>DRAWN RELATIVE TO THE CAMERA, NOT TO THE WORLD ORIGIN.</b> The matrix
  * a world render event hands over is already translated so the camera sits at
@@ -39,8 +50,21 @@ final class Overlays {
 
     private Overlays() { }
 
-    /** how far to look for entities worth outlining */
+    /** how far to look for entities worth outlining or timing — vanilla's own nametag distance */
     private static final double REACH = 64.0;
+
+    /* --go, the amber both overlays were drawn in before they had a colour
+       option. The declared default in mc/hud.js is the same value, so this
+       only matters for a document written before `colour` existed. */
+    private static final int DEFAULT_RGB = 0xE3B439;
+
+    /* THE CHUNKS AROUND YOURS ARE THE SAME COLOUR, FAINTER. They used to be a
+       dark grey — and the corners your chunk shares with them were drawn
+       twice, once amber and once grey, so they flickered between the two.
+       Now every corner is drawn once, and fainter only says "not yours". */
+    private static final int AROUND_ALPHA = 0x73;   /* 45% */
+    /* faint enough to see the world through, strong enough to see at all */
+    private static final int WALL_ALPHA = 0x2E;     /* 18% */
 
     static void render(WorldRenderContext ctx, HudConfig config) {
         MinecraftClient c = MinecraftClient.getInstance();
@@ -52,24 +76,39 @@ final class Overlays {
         if (vcp == null || matrices == null || ctx.camera() == null) return;
 
         Vec3d cam = ctx.camera().getPos();
-        VertexConsumer lines = vcp.getBuffer(net.minecraft.client.render.RenderLayer.getLines());
+        float delta = ctx.tickCounter().getTickDelta(true);
 
+        /* ONE LAYER AT A TIME. Asking the provider for a different layer
+           draws whatever the last one had collected and hands its buffer on,
+           so a consumer kept from before is a consumer writing into nothing.
+           Each section asks for its own, right before it writes. */
         Feature hb = config.feature("hitbox");
-        if (hb != null && hb.on) hitboxes(c, matrices, lines, cam, hb.flag("players"));
+        if (hb != null && hb.on) hitboxes(c, matrices, vcp, cam, delta, hb);
 
         Feature ch = config.feature("chunks");
-        if (ch != null && ch.on) chunkBorders(c, matrices, lines, cam, ch.flag("neighbours"));
+        if (ch != null && ch.on) chunkBorders(c, matrices, vcp, cam, ch);
+
+        Feature tnt = config.feature("tnt");
+        if (tnt != null && tnt.on) tntTimers(c, ctx, matrices, vcp, cam, delta, config, tnt);
     }
 
-    private static void hitboxes(MinecraftClient c, MatrixStack m, VertexConsumer v,
-                                 Vec3d cam, boolean playersOnly) {
+    /* ── hitboxes ─────────────────────────────────────────────────────────
+       WHERE THE ENTITY IS DRAWN, NOT WHERE IT WAS LAST TICK. The bounding box
+       moves twenty times a second and the entity is drawn between those
+       positions every frame; an outline that stays on the tick visibly trails
+       anything running. */
+    private static void hitboxes(MinecraftClient c, MatrixStack m, VertexConsumerProvider vcp,
+                                 Vec3d cam, float delta, Feature f) {
+        boolean playersOnly = f.flag("players");
+        int argb = 0xFF000000 | f.colour("colour", DEFAULT_RGB);
+        VertexConsumer v = vcp.getBuffer(Layers.lines(thickness(f)));
         for (Entity e : c.world.getEntities()) {
             if (e == c.player) continue;
             if (playersOnly && !(e instanceof PlayerEntity)) continue;
             if (e.squaredDistanceTo(c.player) > REACH * REACH) continue;
-            Box b = e.getBoundingBox();
-            box(m, v, b.minX - cam.x, b.minY - cam.y, b.minZ - cam.z,
-                b.maxX - cam.x, b.maxY - cam.y, b.maxZ - cam.z, Paint.ACCENT);
+            Vec3d p = e.getLerpedPos(delta);
+            Box b = e.getBoundingBox().offset(p.x - e.getX() - cam.x, p.y - e.getY() - cam.y, p.z - e.getZ() - cam.z);
+            box(m, v, b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ, argb);
         }
     }
 
@@ -78,28 +117,103 @@ final class Overlays {
        and optionally the eight around it. Bottom and height come off the world
        rather than being 0 and 256: a nether roof and a 1.18 overworld disagree
        about both, and hard-coding either draws lines through the floor. */
-    private static void chunkBorders(MinecraftClient c, MatrixStack m, VertexConsumer v,
-                                     Vec3d cam, boolean neighbours) {
+    private static void chunkBorders(MinecraftClient c, MatrixStack m, VertexConsumerProvider vcp,
+                                     Vec3d cam, Feature f) {
+        int rgb = f.colour("colour", DEFAULT_RGB);
         int cx = c.player.getBlockPos().getX() >> 4;
         int cz = c.player.getBlockPos().getZ() >> 4;
         double y0 = c.world.getBottomY() - cam.y;
         double y1 = c.world.getBottomY() + c.world.getHeight() - cam.y;
-        int span = neighbours ? 1 : 0;
-        for (int dx = -span; dx <= span; dx++) {
-            for (int dz = -span; dz <= span; dz++) {
-                double x0 = ((cx + dx) << 4) - cam.x;
-                double z0 = ((cz + dz) << 4) - cam.z;
-                double x1 = x0 + 16, z1 = z0 + 16;
-                boolean here = dx == 0 && dz == 0;
-                int colour = here ? Paint.ACCENT : Paint.EDGE;
-                /* the four vertical edges, which is what tells you where a
-                   chunk starts; a full grid is noise you cannot see past */
-                line(m, v, x0, y0, z0, x0, y1, z0, colour);
-                line(m, v, x1, y0, z0, x1, y1, z0, colour);
-                line(m, v, x0, y0, z1, x0, y1, z1, colour);
-                line(m, v, x1, y0, z1, x1, y1, z1, colour);
+        int span = f.flag("neighbours") ? 1 : 0;
+
+        /* THE CORNERS, EACH ONCE. Three chunks by three is four corners by
+           four, not nine chunks' worth of four corners each — walking the
+           chunks drew every shared corner two or four times, in two colours.
+           The four vertical edges are what tell you where a chunk starts; a
+           full grid is noise you cannot see past. */
+        VertexConsumer v = vcp.getBuffer(Layers.lines(thickness(f)));
+        for (int i = -span; i <= span + 1; i++) {
+            for (int j = -span; j <= span + 1; j++) {
+                boolean yours = (i == 0 || i == 1) && (j == 0 || j == 1);
+                double x = ((cx + i) << 4) - cam.x;
+                double z = ((cz + j) << 4) - cam.z;
+                line(m, v, x, y0, z, x, y1, z, (yours ? 0xFF000000 : AROUND_ALPHA << 24) | rgb);
             }
         }
+
+        if (f.flag("walls")) walls(m, vcp, (cx << 4) - cam.x, (cz << 4) - cam.z, y0, y1, (WALL_ALPHA << 24) | rgb);
+    }
+
+    /* ── the walls ────────────────────────────────────────────────────────
+       Four see-through sides around YOUR chunk only. Walls around the eight
+       neighbours as well would just be the outside of a bigger box, which is
+       not what anybody turning this on is asking where the edge is of. */
+    private static void walls(MatrixStack m, VertexConsumerProvider vcp,
+                              double x0, double z0, double y0, double y1, int argb) {
+        double x1 = x0 + 16, z1 = z0 + 16;
+        VertexConsumer q = vcp.getBuffer(Layers.WALLS);
+        wall(m, q, x0, z0, x1, z0, y0, y1, argb);
+        wall(m, q, x1, z0, x1, z1, y0, y1, argb);
+        wall(m, q, x1, z1, x0, z1, y0, y1, argb);
+        wall(m, q, x0, z1, x0, z0, y0, y1, argb);
+    }
+
+    private static void wall(MatrixStack m, VertexConsumer q, double ax, double az, double bx, double bz,
+                             double y0, double y1, int argb) {
+        float a = ((argb >>> 24) & 255) / 255f;
+        float r = ((argb >> 16) & 255) / 255f;
+        float g = ((argb >> 8) & 255) / 255f;
+        float b = (argb & 255) / 255f;
+        var pose = m.peek();
+        q.vertex(pose, (float) ax, (float) y0, (float) az).color(r, g, b, a);
+        q.vertex(pose, (float) bx, (float) y0, (float) bz).color(r, g, b, a);
+        q.vertex(pose, (float) bx, (float) y1, (float) bz).color(r, g, b, a);
+        q.vertex(pose, (float) ax, (float) y1, (float) az).color(r, g, b, a);
+    }
+
+    /* ── the TNT timer ────────────────────────────────────────────────────
+       ON THE TNT, NOT IN A CORNER. It was a HUD plate showing the nearest
+       fuse, and a plate cannot say which of four blocks is the one about to
+       go. So each primed TNT carries its own, where a name tag would be,
+       facing you — drawn the way Minecraft draws name tags: a faint copy
+       that shows through walls, and the real one on top where nothing is in
+       the way.
+
+       SMOOTH, NOT IN TENTHS OF A TICK. The fuse counts down once a tick; the
+       frame in between takes off the part of a tick that has passed, so the
+       number runs rather than steps. */
+    private static void tntTimers(MinecraftClient c, WorldRenderContext ctx, MatrixStack m, VertexConsumerProvider vcp,
+                                  Vec3d cam, float delta, HudConfig config, Feature f) {
+        TextRenderer tr = c.textRenderer;
+        HudElements.Face face = KestrelHudClient.face(config);
+        boolean inTicks = f.flag("ticks");
+        /* the HUD's plate colour at the opacity the player set for name tags */
+        int plate = ((int) (c.options.getTextBackgroundOpacity(0.25f) * 255f) << 24) | (Paint.PLATE & 0xFFFFFF);
+        int light = LightmapTextureManager.MAX_LIGHT_COORDINATE;
+        for (Entity e : c.world.getEntities()) {
+            if (!(e instanceof TntEntity tnt)) continue;
+            if (e.squaredDistanceTo(c.player) > REACH * REACH) continue;
+            Text label = fuse(face, Math.max(0f, tnt.getFuse() - delta), inTicks);
+            Vec3d p = e.getLerpedPos(delta);
+            m.push();
+            m.translate(p.x - cam.x, p.y + e.getHeight() + 0.5 - cam.y, p.z - cam.z);
+            m.multiply(ctx.camera().getRotation());
+            m.scale(0.025f, -0.025f, 0.025f);
+            Matrix4f pose = m.peek().getPositionMatrix();
+            float x = -tr.getWidth(label) / 2f;
+            tr.draw(label, x, 0, 0x80FFFFFF, false, pose, vcp, TextRenderer.TextLayerType.SEE_THROUGH, plate, light);
+            tr.draw(label, x, 0, 0xFFFFFFFF, false, pose, vcp, TextRenderer.TextLayerType.NORMAL, 0, light);
+            m.pop();
+        }
+    }
+
+    /** "2.4s", or "48t" — the number in the accent, the unit in the label grey, as the HUD plate had them */
+    private static Text fuse(HudElements.Face face, float ticksLeft, boolean inTicks) {
+        String number = inTicks
+            ? Integer.toString((int) Math.ceil(ticksLeft))
+            : String.format(Locale.ROOT, "%.1f", ticksLeft / 20f);
+        MutableText t = face.of(number).copy().withColor(Paint.ACCENT & 0xFFFFFF);
+        return t.append(face.of(inTicks ? "t" : "s").copy().withColor(Paint.LABEL & 0xFFFFFF));
     }
 
     /* ── the primitives ───────────────────────────────────────────────────
@@ -140,5 +254,83 @@ final class Overlays {
         line(m, v, x2, y1, z1, x2, y2, z1, argb);
         line(m, v, x2, y1, z2, x2, y2, z2, argb);
         line(m, v, x1, y1, z2, x1, y2, z2, argb);
+    }
+
+    /** the thickness the menu set, onto the half-pixel grid and inside a
+     *  range a hand-edited file cannot push past — every distinct value is a
+     *  render layer kept for the session, so the set of them has to be small */
+    private static float thickness(Feature f) {
+        double t = f.number("thickness", DEFAULT_THICKNESS);
+        t = Math.max(1.0, Math.min(10.0, t));
+        return (float) (Math.round(t * 2.0) / 2.0);
+    }
+
+    /* Minecraft's own lines: 2.5 pixels on a 1920-wide window. The declared
+       default in mc/hud.js is the same number. */
+    private static final double DEFAULT_THICKNESS = 2.5;
+
+    /* ── the layers ───────────────────────────────────────────────────────
+       BUILT FROM MINECRAFT'S OWN RENDER PHASES, which a subclass of
+       RenderLayer may use — so the blend, the depth test, the target and the
+       nudge towards the camera are the game's own and not a copy of them.
+       Only the one thing each layer is here for differs from vanilla's. */
+    private static final class Layers extends RenderLayer {
+
+        private Layers(String name, VertexFormat format, VertexFormat.DrawMode mode, boolean translucent,
+                       Runnable begin, Runnable end) {
+            super(name, format, mode, 1536, false, translucent, begin, end);
+        }
+
+        /* THE WALLS. Minecraft's translucent quad layer writes DEPTH, and
+           these buffers are drawn before water and glass are: a wall that
+           wrote depth would delete every lake behind it. So: that layer's
+           recipe, with the depth write left out. */
+        static final RenderLayer WALLS = new Layers("kestrel_hud_chunk_walls",
+            VertexFormats.POSITION_COLOR, VertexFormat.DrawMode.QUADS, true, () -> {
+                POSITION_COLOR_PROGRAM.startDrawing();
+                TRANSLUCENT_TRANSPARENCY.startDrawing();
+                LEQUAL_DEPTH_TEST.startDrawing();
+                DISABLE_CULLING.startDrawing();
+                COLOR_MASK.startDrawing();
+                VIEW_OFFSET_Z_LAYERING.startDrawing();
+            }, () -> {
+                VIEW_OFFSET_Z_LAYERING.endDrawing();
+                COLOR_MASK.endDrawing();
+                DISABLE_CULLING.endDrawing();
+                LEQUAL_DEPTH_TEST.endDrawing();
+                TRANSLUCENT_TRANSPARENCY.endDrawing();
+                POSITION_COLOR_PROGRAM.endDrawing();
+            });
+
+        private static final java.util.Map<Float, RenderLayer> BY_THICKNESS = new java.util.HashMap<>();
+
+        /* THE LINES, AT A CHOSEN THICKNESS. Vanilla's line layer asks for
+           max(2.5, window width / 1920 * 2.5) pixels — 2.5 at 1080p, scaled
+           past it — and has no way to ask for anything else. This is that
+           layer, phase for phase, with the 2.5 replaced by the menu's value;
+           the width is worked out as it draws, so resizing the window
+           rescales it the way vanilla's does. One layer per thickness,
+           because a buffer collected for one width cannot be drawn at two. */
+        static RenderLayer lines(float thickness) {
+            return BY_THICKNESS.computeIfAbsent(thickness, t -> new Layers("kestrel_hud_lines_" + t,
+                VertexFormats.LINES, VertexFormat.DrawMode.LINES, false, () -> {
+                    LINES_PROGRAM.startDrawing();
+                    TRANSLUCENT_TRANSPARENCY.startDrawing();
+                    LEQUAL_DEPTH_TEST.startDrawing();
+                    DISABLE_CULLING.startDrawing();
+                    VIEW_OFFSET_Z_LAYERING.startDrawing();
+                    ITEM_ENTITY_TARGET.startDrawing();
+                    int fbWidth = MinecraftClient.getInstance().getWindow().getFramebufferWidth();
+                    com.mojang.blaze3d.systems.RenderSystem.lineWidth(t * Math.max(1f, fbWidth / 1920f));
+                }, () -> {
+                    com.mojang.blaze3d.systems.RenderSystem.lineWidth(1f);
+                    ITEM_ENTITY_TARGET.endDrawing();
+                    VIEW_OFFSET_Z_LAYERING.endDrawing();
+                    DISABLE_CULLING.endDrawing();
+                    LEQUAL_DEPTH_TEST.endDrawing();
+                    TRANSLUCENT_TRANSPARENCY.endDrawing();
+                    LINES_PROGRAM.endDrawing();
+                }));
+        }
     }
 }

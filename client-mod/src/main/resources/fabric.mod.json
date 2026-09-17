@@ -13,6 +13,8 @@
   "entrypoints": {
     "client": ["dev.kestrel.hud.KestrelHudClient"]
   },
+  "accessWidener": "kestrel-hud.accesswidener",
+  "mixins": ["kestrel-hud.mixins.json"],
   "depends": {
     "fabricloader": ">=0.16.0",
     "fabric-api": "*",

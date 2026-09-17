@@ -69,6 +69,21 @@ public final class RoundTrip {
              .append('\t').append(e.style.textAlpha)
              .append('\n');
         }
+        /* A COLOUR OPTION, as the mod understood it: the spec has to say
+           "colour" or the menu draws a switch, and the value has to parse or
+           the world is drawn in the fallback */
+        HudConfig.OptSpec colourSpec = c.spec("colour");
+        r.append("spec\tcolour\t").append(colourSpec == null ? "" : colourSpec.type).append('\n');
+        Feature hitbox = c.feature("hitbox");
+        r.append("feat\thitbox\t").append(hitbox == null ? "" : hex6(hitbox.colour("colour", 0))).append('\n');
+        Feature tntTimer = c.feature("tnt");
+        r.append("feat\ttnt\t").append(tntTimer == null ? "" : String.valueOf(tntTimer.on)).append('\n');
+        /* and a number option: its range as parsed, and its value */
+        HudConfig.OptSpec thicknessSpec = c.spec("thickness");
+        r.append("spec\tthickness\t").append(thicknessSpec == null ? "" : thicknessSpec.type + "\t"
+            + thicknessSpec.min + "\t" + thicknessSpec.max + "\t" + thicknessSpec.step + "\t" + thicknessSpec.unit
+            + "\t" + thicknessSpec.isNumber()).append('\n');
+        r.append("feat\thitbox-thickness\t").append(hitbox == null ? "" : String.valueOf(hitbox.number("thickness", -1))).append('\n');
         /* WRITTEN TO A FILE, NOT PRINTED. A label carries a middle dot, and
            on Windows System.out encodes to the console's codepage — which
            turned "Armor status · helmet" into a question mark and failed a
@@ -98,6 +113,13 @@ public final class RoundTrip {
         if (co != null) c.put("coords", co.withOpt("compass", "true"));
         HudConfig.Element he = c.get("helmet");
         if (he != null) c.put("helmet", he.withOpt("wear", "\"percent\""));
+        /* and a feature's: a colour picked off the palette, and the TNT timer
+           — on by default — switched off */
+        if (hitbox != null) {
+            c.putFeature("hitbox", hitbox.withOpt("colour", "\"#55FFFF\"")
+                .withOpt("thickness", HudConfig.num(thicknessSpec == null ? 4.5 : thicknessSpec.snap(4.4))));
+        }
+        if (tntTimer != null) c.putFeature("tnt", tntTimer.switchedTo(false));
         c.rounded = !c.rounded;
         c.kestrelFont = !c.kestrelFont;
         c.touch();

@@ -1,0 +1,9 @@
+accessWidener v2 named
+
+# ONE FIELD, AND ONLY TO READ AND SET IT. GameRenderer.zoom scales the world's
+# projection about the centre of the screen; it exists for huge screenshots
+# and sits at 1 otherwise. Zoom sets it while the key is held. The field of
+# view option cannot do this job: it rejects anything under 30 degrees and
+# falls back to its default, so a 4x zoom at 70 came out as 70. See
+# Behaviours.zoom. Nothing here injects code into a Minecraft method.
+accessible field net/minecraft/client/render/GameRenderer zoom F

@@ -112,7 +112,9 @@ const ELEMENT_MODULE = {
   memory: 'Memory',
   combo: 'Combo counter',
   totems: 'Totem counter',
-  tnt: 'TNT countdown',
+  /* NO TNT COUNTDOWN HERE. It was an element — one plate, one number, the
+     nearest fuse — and a plate cannot say WHICH block is about to go. It is
+     a feature now, drawn over every primed TNT in the world; see FEATURES. */
   reach: 'Reach display',
   pvp: 'PvP info'
 };
@@ -165,10 +167,16 @@ function labelOf(name) {
    `compass` moved in and is read from its old position on the way through, so
    a config written before this keeps its setting.
 
-   TYPES ARE 'bool' AND 'enum' AND NOTHING ELSE. A number wants a range, a
-   step, a slider and a decision about units; none of the nine needs one, and
-   the day one does is the day to design it rather than to have left a hole
-   open for it. */
+   TYPES ARE 'bool' AND 'enum', AND 'colour' AND 'number' FOR THE WORLD
+   FEATURES. A colour is the same #RRGGBB the element style already validates —
+   no new rule, one more place the old rule applies.
+
+   A NUMBER CARRIES ITS OWN RANGE, STEP AND UNIT, because a number without
+   them is not a setting, it is an invitation to type 400. This comment used
+   to say the day one was needed was the day to design it; line thickness was
+   that day. The launcher snaps a value to the step and clamps it to the
+   range, the menu draws the range as a slider, and the unit is printed after
+   the value — a word the launcher owns, like every other word here. */
 const ELEMENT_OPTS = {
   cps: {
     buttons: { type: 'enum', vals: ['left', 'right', 'both'], def: 'left', label: 'Count' }
@@ -221,9 +229,6 @@ const ELEMENT_OPTS = {
   totems: {
     offhand: { type: 'bool', def: true, label: 'Count the offhand' }
   },
-  tnt: {
-    ticks: { type: 'bool', def: false, label: 'Count in ticks' }
-  },
   reach: {
     unit: { type: 'bool', def: true, label: 'Show the unit' }
   },
@@ -244,9 +249,17 @@ function optSpec() {
   const add = function (spec) {
     for (const key of Object.keys(spec)) {
       if (out[key]) continue;
-      out[key] = spec[key].type === 'enum'
-        ? { label: spec[key].label, vals: spec[key].vals.slice() }
-        : { label: spec[key].label };
+      /* a switch is a label alone and an enum carries its values, as
+         before; a colour says so, because "no values" already means switch
+         to a mod that predates colours and must not mean it here */
+      const sp = spec[key];
+      out[key] = sp.type === 'enum'
+        ? { label: sp.label, vals: sp.vals.slice() }
+        : sp.type === 'colour'
+          ? { label: sp.label, type: 'colour' }
+          : sp.type === 'number'
+            ? { label: sp.label, type: 'number', min: sp.min, max: sp.max, step: sp.step, unit: sp.unit }
+            : { label: sp.label };
     }
   };
   for (const el of Object.keys(ELEMENT_OPTS)) add(ELEMENT_OPTS[el]);
@@ -271,8 +284,7 @@ function optsFor(name, raw, legacy) {
     let v = src[key];
     /* compass lived at the top level before version 5 */
     if (v === undefined && legacy && Object.prototype.hasOwnProperty.call(legacy, key)) v = legacy[key];
-    if (s.type === 'bool') out[key] = v === undefined ? s.def : v === true;
-    else out[key] = s.vals.indexOf(String(v)) >= 0 ? String(v) : s.def;
+    out[key] = optValue(s, v);
   }
   return out;
 }
@@ -312,7 +324,6 @@ const ELEMENT_STOCK = {
   memory: { a: 'bl', x: 2.6, y: 10, s: 1 },
   combo: { a: 'mc', x: 0, y: 12, s: 1 },
   totems: { a: 'br', x: 12, y: 4, s: 1 },
-  tnt: { a: 'tc', x: 0, y: 12, s: 1 },
   reach: { a: 'mc', x: 0, y: 18, s: 1 },
   pvp: { a: 'ml', x: 3.4, y: 22, s: 1 }
 };
@@ -357,29 +368,54 @@ const FONTS = ['minecraft', 'kestrel'];
    something else turns it on.
 
    NOT EVERYTHING ASKED FOR IS HERE, and the gaps are deliberate rather than
-   forgotten — see docs/hud-backlog.md. Freelook and hit colours need a MIXIN,
-   which is a build-time weave into somebody else's class with its own config
-   and refmap that breaks differently on every Minecraft version; adding the
-   mod's first one for a HUD convenience, untested in a running game, is a bad
-   trade. They are named in the backlog with that reason. */
+   forgotten — see docs/hud-backlog.md. Hit colours need a MIXIN, a build-time
+   weave into somebody else's class that breaks differently on every Minecraft
+   version. Freelook needed two, and has them — the mod's only ones, added once
+   the game could be tested — because a camera that turns apart from the
+   player has no other way in. */
+
+/* ── HOW THICK A WORLD LINE IS ─────────────────────────────────────────────
+   In pixels at 1080p, scaled with the window's width past that — exactly the
+   rule Minecraft's own lines follow, which draw at 2.5 on a 1920-wide window
+   and 5 on a 3840-wide one. So the default, 2.5, is the thickness hitboxes
+   and chunk borders already had, and a 4K screen does not make "2" mean
+   hairline. One declaration for both overlays, like `colour`: one name in the
+   spec table is one option. */
+const LINE_THICKNESS = { type: 'number', min: 1, max: 10, step: 0.5, def: 2.5, unit: 'px', label: 'Thickness' };
+
+/* ── HOLD OR TOGGLE, FOR EVERYTHING WITH A KEY THAT LASTS ──────────────────
+   Sprint, sneak, zoom and freelook each stay on for a while, and which of the
+   two ways that should work is the player's call, not ours. One option, the
+   same name and the same two values on all four — one spec entry — with the
+   default each already had: sprint and sneak were toggles, zoom and freelook
+   were holds. Snap look has none; it is one instant turn, held or not. */
+function modeOpt(def) {
+  return { type: 'enum', vals: ['hold', 'toggle'], def: def, label: 'Mode' };
+}
+
 const FEATURES = {
   sprint: {
     label: 'Toggle sprint',
-    desc: 'Hold it once and stay sprinting',
+    desc: 'Sprint on a key of your own, pressed once or held',
     key: 'KEY_V',
-    opts: {}
+    opts: {
+      mode: modeOpt('toggle')
+    }
   },
   sneak: {
     label: 'Toggle sneak',
-    desc: 'Hold it once and stay sneaking',
+    desc: 'Sneak on a key of your own, pressed once or held',
     key: '',
-    opts: {}
+    opts: {
+      mode: modeOpt('toggle')
+    }
   },
   zoom: {
     label: 'Zoom',
-    desc: 'Narrow the field of view while held',
+    desc: 'Narrow the field of view, held or pressed once',
     key: 'KEY_C',
     opts: {
+      mode: modeOpt('hold'),
       amount: { type: 'enum', vals: ['2x', '4x', '8x'], def: '4x', label: 'How far' },
       smooth: { type: 'bool', def: true, label: 'Smooth the mouse while zoomed' }
     }
@@ -392,12 +428,32 @@ const FEATURES = {
       turn: { type: 'enum', vals: ['180', '90', '45'], def: '180', label: 'Degrees' }
     }
   },
+  /* ── FREELOOK ──────────────────────────────────────────────────────────
+     U, the user's choice. NOT LEFT ALT, which is snap look's key — a key
+     stored in somebody's settings wins over a default here, so giving
+     freelook Alt would fire both on every press for anyone who already had
+     snap look. U is unbound in vanilla. hudcheck asserts no two features
+     default to the same key. */
+  freelook: {
+    label: 'Freelook',
+    desc: 'Look around you without turning, held or pressed once',
+    key: 'KEY_U',
+    opts: {
+      mode: modeOpt('hold')
+    }
+  },
+  /* THE COLOURS DEFAULT TO --go, #E3B439, the amber both overlays were
+     drawn in before they had a choice — so turning one on after this looks
+     the way it did before it. Both options are called `colour`: one global
+     spec table, and it is the same option with the same label on both. */
   hitbox: {
     label: 'Hitboxes',
     desc: 'Outline entities in the world',
     key: '',
     opts: {
-      players: { type: 'bool', def: true, label: 'Players only' }
+      players: { type: 'bool', def: true, label: 'Players only' },
+      colour: { type: 'colour', def: '#E3B439', label: 'Colour' },
+      thickness: LINE_THICKNESS
     }
   },
   chunks: {
@@ -405,7 +461,25 @@ const FEATURES = {
     desc: 'Draw the edges of the chunk you are in',
     key: '',
     opts: {
-      neighbours: { type: 'bool', def: false, label: 'Include the chunks around it' }
+      neighbours: { type: 'bool', def: false, label: 'Include the chunks around it' },
+      walls: { type: 'bool', def: false, label: 'See-through walls' },
+      colour: { type: 'colour', def: '#E3B439', label: 'Colour' },
+      thickness: LINE_THICKNESS
+    }
+  },
+  /* ── ON BY DEFAULT, UNLIKE THE OTHERS ──────────────────────────────────
+     This was the TNT countdown ELEMENT until it moved into the world, and
+     that element was on unless somebody switched it off. Arriving off would
+     have made the move look like a removal. `on` here is only the answer
+     for a document that has never mentioned tnt; once the menu has, what it
+     wrote wins. */
+  tnt: {
+    label: 'TNT timer',
+    desc: 'The fuse, counting down over every primed TNT',
+    key: '',
+    on: true,
+    opts: {
+      ticks: { type: 'bool', def: false, label: 'Count in ticks' }
     }
   }
 };
@@ -421,7 +495,10 @@ function featureFor(name, raw) {
   if (!spec) return null;
   const r = (raw && typeof raw === 'object') ? raw : {};
   const key = KEY_RE.test(String(r.key)) ? String(r.key) : (r.key === '' ? '' : spec.key);
-  const out = { on: r.on === true, label: spec.label, desc: spec.desc, key: key };
+  /* on only when it says so — or, when it says nothing at all, when the
+     declaration does */
+  const on = typeof r.on === 'boolean' ? r.on : spec.on === true;
+  const out = { on: on, label: spec.label, desc: spec.desc, key: key };
   const o = optsFrom(spec.opts, r.opts);
   if (Object.keys(o).length) out.opts = o;
   return out;
@@ -433,13 +510,29 @@ function optsFrom(spec, raw) {
   const out = {};
   if (!spec) return out;
   const src = (raw && typeof raw === 'object') ? raw : {};
-  for (const key of Object.keys(spec)) {
-    const sp = spec[key];
-    const v = src[key];
-    if (sp.type === 'bool') out[key] = v === undefined ? sp.def : v === true;
-    else out[key] = sp.vals.indexOf(String(v)) >= 0 ? String(v) : sp.def;
-  }
+  for (const key of Object.keys(spec)) out[key] = optValue(spec[key], src[key]);
   return out;
+}
+
+/* ONE VALUE AGAINST ITS DECLARATION. A switch is true only when it says
+   true, an enum is one of its values, a colour is #RRGGBB — and anything
+   else is the default, never a guess at what was meant. */
+function optValue(sp, v) {
+  if (sp.type === 'bool') return v === undefined ? sp.def : v === true;
+  if (sp.type === 'colour') return colour(v, sp.def);
+  if (sp.type === 'number') return numberIn(sp, v);
+  return sp.vals.indexOf(String(v)) >= 0 ? String(v) : sp.def;
+}
+
+/* A NUMBER, and only a number: "4" and true are not thicknesses, whatever
+   Number() would make of them. Snapped to the step from the bottom of the
+   range, then clamped, then rounded off to three places so 0.1 + 0.2 never
+   reaches the document as 0.30000000000000004. */
+function numberIn(sp, v) {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return sp.def;
+  const snapped = sp.min + Math.round((v - sp.min) / sp.step) * sp.step;
+  const clamped = snapped < sp.min ? sp.min : (snapped > sp.max ? sp.max : snapped);
+  return Math.round(clamped * 1000) / 1000;
 }
 
 /* who last wrote the document, and the only two answers there are */
@@ -756,8 +849,20 @@ async function sync(gameDir, hud, log) {
          because some instance's copy of the mod predates it. */
       const before = (hud && typeof hud === 'object') ? hud : {};
       next = {
-        elements: Object.assign({}, before.elements, back.hud.elements),
+        elements: knownElements(Object.assign({}, before.elements, back.hud.elements)),
         modules: Object.assign({}, before.modules, back.hud.modules),
+        /* THE FEATURES COME HOME TOO. This object used to be elements,
+           modules and style, and nothing else — so a feature switched on in
+           the in-game menu reached the document, was read back here, and was
+           left out of the settings. The store replaces `hud` whole, the next
+           build() found no features and wrote every one at its default, and
+           hitboxes the player had turned on were off again at the next
+           launch. Every launch.
+
+           Only the features the document actually NAMES are taken: fromDoc
+           defaults the rest, and a default standing in for "this mod never
+           heard of that feature" must not overwrite what the launcher had. */
+        features: Object.assign({}, before.features, namedIn(found.doc.features, back.hud.features)),
         style: back.hud.style
       };
       settings = next;
@@ -769,6 +874,27 @@ async function sync(gameDir, hud, log) {
 
   const built = await write(gameDir, next, say, found.rev);
   return { built: built, imported: settings !== null, settings: settings };
+}
+
+/* Elements this launcher still declares. A name it has stopped declaring —
+   `tnt`, since the TNT timer moved into the world — would otherwise ride
+   along in the settings forever, reported as dropped on every launch. */
+function knownElements(src) {
+  const out = {};
+  for (const name of Object.keys(src)) {
+    if (Object.prototype.hasOwnProperty.call(ELEMENT_MODULE, name)) out[name] = src[name];
+  }
+  return out;
+}
+
+/* the entries of `parsed` whose names appear in the raw document */
+function namedIn(raw, parsed) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const name of Object.keys(parsed)) {
+    if (Object.prototype.hasOwnProperty.call(raw, name)) out[name] = parsed[name];
+  }
+  return out;
 }
 
 /* Writes the file into an instance's game directory. gameDir comes from

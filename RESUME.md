@@ -42,13 +42,64 @@ installed into their `1-21-4-fabric` instance. Their next message is most likely
   (`.hel-t`, `--w-med`) — with tabular figures under Caxton. It was Azeret Mono Bold, and the player saw
   a different HUD in game from the one the launcher showed.
 
+**The latest round fixed what the user found broken in the features. It is built, checked and
+installed in `1-21-4-fabric`; none of it has been seen in game yet:**
+
+- **Toggle sprint turns off.** The latch re-asserted `latched || binding.isPressed()` every tick, and
+  `isPressed()` answers what it was last told — so once on, the binding held itself down forever.
+  Now the latch only holds the key down, and the press that unlatches sets the binding to the
+  physical key once (`InputUtil.isKeyPressed`) and stops the sprint. Same for sneak.
+- **Zoom works.** It set the FOV option to a quarter of 70; that option only takes 30–110 and
+  replaces anything else with its DEFAULT, so a 4x zoom came out at exactly 70. Zoom now sets
+  `GameRenderer.zoom`, which scales the projection — opened by **the mod's one access widener**
+  (`kestrel-hud.accesswidener`, one field; not a mixin). Eased per frame on `WorldRenderEvents.START`;
+  the hand is hidden while zoomed (it goes through the same projection); the mouse slows by the cube
+  root, because sensitivity is cubic.
+- **Hitbox and chunk border colours** — a third option type, `colour` (`#RRGGBB`), declared in
+  `mc/hud.js`, written into `optSpec` with `"type": "colour"`, drawn in the Features tab as the
+  element style's swatch row. Both default to the amber they were before.
+- **Chunk corners are drawn once.** Walking nine chunks drew each shared corner twice, amber and dark
+  grey, which is the black-and-yellow the user saw. Neighbours are now the same colour, fainter.
+- **See-through walls** around your chunk (`walls`), in a render layer built from Minecraft's own
+  phases with the depth write left out, so water behind a wall still draws.
+- **The TNT timer is on the TNT.** It was the `tnt` HUD element; it is a feature now (`tnt`, World
+  group), drawn over each primed TNT like a name tag, and **on by default** — the only feature that
+  is, because the element it replaced was.
+- **Line thickness** for hitboxes and chunk borders — the fourth option type, `number`, which carries
+  its own `min` / `max` / `step` / `unit` in `optSpec`. The launcher snaps and clamps (1–10 px, step
+  0.5); the Features tab draws it as the Size-style slider. Pixels are 1080p pixels scaled with the
+  window, vanilla's own rule, so the default 2.5 is exactly the width the lines had. Drawn through
+  one render layer per thickness, built from vanilla's line phases with the width swapped.
+- **Freelook** (`Freelook.java`, default **U** — the user's pick) — the mod's first mixins, two of them:
+  the camera takes freelook's rotation instead of the player's (both yaw and pitch reads in
+  `Camera.update`, the minecart path included), and the mouse turns that camera instead of the
+  player. Switches to third person if you were in first, and puts the view back. Targets were
+  verified in the intermediary jar (`class_4184.method_19321`, `class_1297.method_5872`); a wrong one
+  would crash at startup with `defaultRequire: 1`, so if the game will not start, look here first.
+- **Hold or toggle, per feature** — a `mode` enum (`hold` / `toggle`, label "Mode") on sprint, sneak,
+  zoom and freelook, each defaulting to what it did before: sprint and sneak toggle, zoom and freelook
+  hold. Snap look has none. The Features tab rule reads "While U held" or "When U pressed" from it.
+  If Minecraft's own Sprint/Sneak "Toggle" setting is on, the Kestrel key just flips vanilla's latch.
+- **Keystrokes have room between rows** — a `SPACER` run, 3 unscaled pixels, between W, A S D, the
+  mouse and the spacebar. The plate grows to fit; it is measured, not drawn over.
+- **Features now survive a launch.** `hud.sync()` merged a game-written document back as elements,
+  modules and style — never features — and the store replaces `hud` whole, so every launch wrote
+  every feature at its default: whatever was switched on in game was off again next time. Found by
+  reading the config after the user's launch. The merge now takes the features the document names,
+  and drops element names the launcher no longer declares (the old `tnt`). A launcher window opened
+  before this fix still has the old code in memory — restart it.
+
 **The launcher's own HUD screen still draws armour and totems as words** — it cannot read a
 player's resource packs the way the game can.
 
 **Earlier jars are backed up** in that session's scratchpad: `kestrel-hud-0.1.0.previous.jar` (the card-grid
 menu), `kestrel-hud-0.1.0.editor-v1.jar` (the new editor before icons, mouse and Caxton),
 `kestrel-hud-0.1.0.editor-v2.jar` (before centred keystrokes, durability numbers and effect icons),
-`kestrel-hud-0.1.0.editor-v3.jar` (the Kestrel HUD font still Azeret Mono Bold).
+`kestrel-hud-0.1.0.editor-v3.jar` (the Kestrel HUD font still Azeret Mono Bold), `kestrel-hud-0.1.0.editor-v4.jar`
+(before the feature fixes: toggle sprint stuck on, zoom through the FOV option, TNT as a HUD plate),
+`kestrel-hud-0.1.0.editor-v5.jar` (before line thickness and keystrokes spacing), `kestrel-hud-0.1.0.editor-v6.jar`
+(before freelook — the last jar with no mixins; put it back if the game will not start),
+`kestrel-hud-0.1.0.editor-v7.jar` (freelook on Z, before hold/toggle modes).
 
 ### The loop, end to end
 
@@ -58,7 +109,7 @@ menu), `kestrel-hud-0.1.0.editor-v1.jar` (the new editor before icons, mouse and
     & $g -p client-mod build
 
     # 2. verify
-    node tools/hudcheck.mjs        # 201 assertions; the last twenty run the COMPILED mod
+    node tools/hudcheck.mjs        # 254 assertions; the last twenty-eight run the COMPILED mod
 
     # 3. hand over  client-mod/build/libs/kestrel-hud-0.1.0.jar
     #    ONLY that file. Not -sources.jar: it has an unexpanded ${version} and Fabric warns.
@@ -108,8 +159,9 @@ port the numbers, doubled.
 
 Each is asserted by `hudcheck`, so breaking one fails a check rather than shipping.
 
-- **NO MIXINS.** Everything goes through supported Fabric entry points. Four backlog items need one;
-  read `docs/hud-backlog.md` before adding the first.
+- **MIXINS ONLY FOR FREELOOK.** Everything else goes through supported Fabric entry points and one
+  access widener. Freelook's two mixins (`CameraMixin`, `EntityMixin`) are inert unless it is on, and
+  `hudcheck` fails on a third — read `docs/hud-backlog.md` before adding one.
 - **NO SHADOWS.** Every `drawText` passes `false`. Minecraft draws a shadow as a hard offset copy of
   every glyph — the look the plate exists to avoid. This was reverted once already.
 - **HAIRLINES AND SQUARE CORNERS on the menu** — the user's choice, reversing the earlier "no
@@ -151,7 +203,8 @@ that loses a sign.
 { "version": 6, "rev": 20, "by": "launcher",
   "style":    { "corners": "sharp", "font": "minecraft" },
   "optSpec":  { "compass": { "label": "Show the compass" },
-                "wear": { "label": "Durability", "vals": ["bar","percent","none"] }, … },
+                "wear": { "label": "Durability", "vals": ["number","percent","none"] },
+                "colour": { "label": "Colour", "type": "colour" }, … },
   "elements": { "fps": { "on": true, "module": "FPS", "label": "FPS",
                          "anchor": "tl", "x": 2.6, "y": 4.2, "scale": 1,
                          "plate": true, "plateColour": "#0A0E13", "plateAlpha": 72,
@@ -164,8 +217,8 @@ that loses a sign.
 **Two nouns, and the distinction is load-bearing.**
 
 - An **element** is a plate of text at one of nine anchors, with an offset, a scale and a style.
-  Twenty.
-- A **feature** is on-or-off, a key, and its own options. No anchor, no colour, no scale. Six.
+  Nineteen.
+- A **feature** is on-or-off, a key, and its own options. No anchor, no scale, no plate. Seven.
 
 Forcing a feature into `elements` would put `plateAlpha` on a toggle-sprint and show a colour picker
 to somebody opening the options for Zoom.
@@ -215,15 +268,15 @@ B, return to A, and a rev comparison silently discards A's edit.
 | `Chrome` | top bar, hint bar, and every control both tabs share |
 | `Glass` / `Type` | the menu's surfaces and measurements; its fonts, placed on cap height |
 | `PanelBlur` | blurs only what sits behind a panel, and gives the canvas the sharp world |
-| `Behaviours` | sprint, sneak, zoom, snap look — and their keys, rebindable from the menu |
-| `Overlays` | hitboxes and chunk borders, in the world render pass |
+| `Behaviours` | sprint, sneak, zoom, snap look — and their keys, rebindable from the menu; zoom through the one access widener |
+| `Overlays` | hitboxes, chunk borders (and their walls) and the TNT timer, in the world render pass |
 | `Clicks` / `Combat` / `Session` | the state the counters need |
 
-**Twenty elements:** fps, cps, ping, keystrokes, coords, potion effects, helmet/chest/legs/boots/held,
-day, clock, playtime, memory, combo, totems, tnt, reach, pvp.
+**Nineteen elements:** fps, cps, ping, keystrokes, coords, potion effects, helmet/chest/legs/boots/held,
+day, clock, playtime, memory, combo, totems, reach, pvp.
 
-**Six features:** sprint, sneak, zoom, snaplook, hitbox, chunks — **all off by default**, so the user
-will see nothing from them until they switch one on in the menu.
+**Seven features:** sprint, sneak, zoom, snaplook, hitbox, chunks, tnt — **all off by default except
+the TNT timer**, so the user will see nothing from the rest until they switch one on in the menu.
 
 ---
 
@@ -241,8 +294,10 @@ will see nothing from them until they switch one on in the menu.
 | **The round trip** | the compiled mod read a launcher document, edited it, wrote it back; the launcher imported it exactly once |
 | **Packaging** | `Kestrel-0.5.0-Setup.exe`, 106 MB, launches from its own asar |
 
-**Still never seen on screen:** the nine new elements, the six features, and the **world overlays** —
-which is the part a compiler cannot check at all, since a render pass either draws or it does not.
+**Still never seen on screen:** the feature fixes listed at the top of this file — the chunk walls and
+the TNT timer especially, which is the part a compiler cannot check at all, since a render pass either
+draws or it does not. Hitboxes and chunk borders themselves HAVE been seen: the user reported their
+colours mixing.
 
 **Online play works** — the user launched with their Microsoft account and joined a server on
 16 September 2026; the game log shows the connection and no session errors. Until the sign-in
@@ -305,8 +360,7 @@ tool and run them, rather than piping a heredoc into `python`.
 1. **Cache the HUD render.** It rebuilds every string every frame — `config.names()` allocates a
    fresh list per frame just to iterate — and there are now twenty elements in that loop. The
    cheapest real win left; see the end of `docs/hud-backlog.md`.
-2. **`docs/hud-backlog.md`** — what is left, including the four items that need a mixin and why none
-   was added.
+2. **`docs/hud-backlog.md`** — what is left, including the three items that still need a mixin.
 3. **Five dead switches** in the Tweaks list: Chat, Compass, Crosshair, Level head, Nick hider. Build
    them or delete the rows. A switch that does nothing is worse than an absent feature.
 4. **The instance detail screen** still shows fixture data describing some other instance.

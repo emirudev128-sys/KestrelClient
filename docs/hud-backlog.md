@@ -7,12 +7,15 @@ shipped, what was deliberately not built and why, and what is genuinely left.
 
 ## Done
 
-### Elements — twenty of them, all drawn
+### Elements — nineteen of them, all drawn
 
 | | |
 |---|---|
 | First eleven | fps, cps, ping, keystrokes, coords, potion effects, and the five armour slots |
-| Second nine | day counter, clock, playtime, memory, combo counter, totem counter, TNT countdown, reach display, PvP info |
+| Second eight | day counter, clock, playtime, memory, combo counter, totem counter, reach display, PvP info |
+
+The TNT countdown was the ninth. It moved into the world as a feature — a plate
+in a corner cannot say which of four primed blocks is the one about to go.
 
 Each has its own options, declared in `mc/hud.js` and carried in the document.
 Each exists on all three sides: the launcher's HUD screen arranges it, the
@@ -20,38 +23,49 @@ Tweaks list switches it, the mod draws it.
 
 ### Features — the second noun
 
-`sprint`, `sneak`, `zoom`, `snaplook`, `hitbox`, `chunks`. A feature is **on or
-off, a key, and its own options** — no anchor, no colour, no scale. It reuses the
+`sprint`, `sneak`, `zoom`, `snaplook`, `freelook`, `hitbox`, `chunks`, `tnt`. A feature is
+**on or off, a key, and its own options** — no anchor, no scale, no plate. It reuses the
 element option machinery and the same top-level `optSpec`, so the menu builds a
 feature's rows exactly the way it builds an element's.
 
 - **Behaviours** (`Behaviours.java`): toggle sprint, toggle sneak, zoom, snap
-  look. Each undoes itself when switched off, on key release, and when the world
-  goes away.
-- **World overlays** (`Overlays.java`): hitboxes and chunk borders, through
-  Fabric's `WorldRenderEvents`.
+  look, freelook. Each undoes itself when switched off, on key release, and when
+  the world goes away. Sprint, sneak, zoom and freelook each have a **Mode** —
+  hold or toggle — defaulting to how they worked before it existed.
+- **Freelook** (`Freelook.java`) has the mod's only two mixins, in
+  `dev.kestrel.hud.mixin`: `CameraMixin` gives the camera freelook's yaw and
+  pitch in place of the player's, `EntityMixin` sends mouse movement to that
+  camera instead of the player. Both do nothing unless freelook is on, neither
+  redirects or overwrites, and `hudcheck` fails on a third.
+- **World overlays** (`Overlays.java`): hitboxes and chunk borders — each in a
+  colour picked in the menu, chunk borders optionally with see-through walls —
+  and the TNT timer over every primed TNT, through Fabric's `WorldRenderEvents`.
+- **Zoom goes through one access widener**, not a mixin: it opens
+  `GameRenderer.zoom`, the projection scale. The field of view option could not
+  do it — it rejects anything under 30 degrees and resets to its default.
 
 ---
 
 ## NOT built, and why — read this before starting any of them
 
-### The four that need a MIXIN
+### The three that need a MIXIN
 
-A mixin is a build-time weave into somebody else's compiled class. It needs its
-own config and refmap, it fails in ways that are hard to read, and it breaks
-differently on every Minecraft version. **This mod has none**, and `hudcheck`
-asserts that — deliberately, so adding the first one is a decision somebody
-makes on purpose rather than drifts into.
+A mixin is a build-time weave into somebody else's compiled class. It fails in
+ways that are hard to read, and it breaks differently on every Minecraft version.
+**This mod has exactly two, both freelook's** — added once the game could be
+tested, after the targets were checked against the game's own bytecode — and
+`hudcheck` fails on a third, so the next one is a decision somebody makes on
+purpose rather than drifts into.
 
 | | what it would take |
 |---|---|
-| **Freelook** | The camera's yaw and pitch have to come apart from the player's. `Camera` computes both from the entity; nothing outside it can intervene. |
 | **Hit colours** | The damage flash is a hard-coded tint inside the entity renderer. |
 | **Scoreboard** | Vanilla draws the sidebar itself. Our own version can read the scores and draw them anywhere — but vanilla's still draws, so you get two. Cancelling vanilla's is the mixin. |
 | **Inventory sorter** | Not strictly a mixin, but it needs to send slot-click packets in the right order and a button in a screen somebody else owns. Fiddly, and a wrong packet order desyncs an inventory. |
 
-If mixins are ever added, do it once and deliberately: add the config, add ONE
-mixin, launch the game, and only then write the second.
+Adding one: put it in the existing config, keep it inert unless its feature is
+on, prefer a value modification or a cancellable inject to a redirect, check the
+target in the intermediary jar, and launch the game before writing the next.
 
 ### The two that are their own piece of work
 

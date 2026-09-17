@@ -4,5 +4,6 @@
   "key.kestrel-hud.sprint": "Toggle sprint",
   "key.kestrel-hud.sneak": "Toggle sneak",
   "key.kestrel-hud.zoom": "Zoom",
-  "key.kestrel-hud.snaplook": "Snap look"
+  "key.kestrel-hud.snaplook": "Snap look",
+  "key.kestrel-hud.freelook": "Freelook"
 }

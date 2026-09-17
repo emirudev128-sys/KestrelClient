@@ -57,6 +57,33 @@ public final class Feature {
         return v;
     }
 
+    /** a {@code "#RRGGBB"} option as 0xRRGGBB; the fallback for anything
+     *  that is not exactly that — a half-read colour paints the world in one
+     *  nobody picked */
+    public int colour(String k, int fallbackRgb) {
+        String s = choice(k, "");
+        if (s.length() != 7 || s.charAt(0) != '#') return fallbackRgb;
+        int v = 0;
+        for (int i = 1; i < 7; i++) {
+            int d = Character.digit(s.charAt(i), 16);
+            if (d < 0) return fallbackRgb;
+            v = (v << 4) | d;
+        }
+        return v;
+    }
+
+    /** a bare number token as a double; the fallback for a string, a switch, or nothing */
+    public double number(String k, double fallback) {
+        String s = opts.get(k);
+        if (s == null || s.isEmpty() || s.charAt(0) == '"') return fallback;
+        try {
+            double v = Double.parseDouble(s);
+            return Double.isFinite(v) ? v : fallback;
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
     public List<String> optKeys() {
         return new ArrayList<>(opts.keySet());
     }

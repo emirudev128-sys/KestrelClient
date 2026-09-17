@@ -32,7 +32,7 @@ final class ElementsTab {
     /* ── the groups the list is sorted into ─────────────────────────────── */
     private static final String[] ORDER = {
         "fps", "ping", "memory", "cps", "keys", "coords", "day", "clock", "playtime",
-        "combo", "reach", "pvp", "totems", "tnt", "helmet", "chest", "legs", "boots", "held", "potion"
+        "combo", "reach", "pvp", "totems", "helmet", "chest", "legs", "boots", "held", "potion"
     };
     private static final String[] GROUP_NAMES = { "Performance", "Input", "World", "Session", "Combat", "Gear", "Other" };
     private static final int[] GROUP_HUES = {
@@ -45,7 +45,7 @@ final class ElementsTab {
             case "cps": case "keys": return 1;
             case "coords": case "day": return 2;
             case "clock": case "playtime": return 3;
-            case "combo": case "reach": case "pvp": case "totems": case "tnt": return 4;
+            case "combo": case "reach": case "pvp": case "totems": return 4;
             case "helmet": case "chest": case "legs": case "boots": case "held": case "potion": return 5;
             default: return 6;
         }
@@ -516,12 +516,12 @@ final class ElementsTab {
         y = sub(s, ctx, "Box", x, y, w);
         y = dotRow(s, ctx, "Show the box", st.plate, x, y, w,
             () -> restyle(s, n, cur -> cur.withPlate(!cur.plate), st.plate ? "box off" : "box on"));
-        y = colour(s, ctx, st.plateRgb, x, y, w, rgb -> restyle(s, n, cur -> cur.withPlateRgb(rgb), "box colour " + hex(rgb)));
+        y = colour(s, ctx, "Colour", st.plateRgb, x, y, w, rgb -> restyle(s, n, cur -> cur.withPlateRgb(rgb), "box colour " + hex(rgb)));
         y = opacity(s, ctx, st.plateAlpha, x, y, w, a -> quiet(s, n, cur -> cur.withPlateAlpha(a)),
             () -> "box opacity " + cfg.get(n).style.plateAlpha + "%");
 
         y = sub(s, ctx, "Text", x, y, w);
-        y = colour(s, ctx, st.textRgb, x, y, w, rgb -> restyle(s, n, cur -> cur.withTextRgb(rgb), "text colour " + hex(rgb)));
+        y = colour(s, ctx, "Colour", st.textRgb, x, y, w, rgb -> restyle(s, n, cur -> cur.withTextRgb(rgb), "text colour " + hex(rgb)));
         y = opacity(s, ctx, st.textAlpha, x, y, w, a -> quiet(s, n, cur -> cur.withTextAlpha(a)),
             () -> "text opacity " + cfg.get(n).style.textAlpha + "%");
 
@@ -593,10 +593,12 @@ final class ElementsTab {
         return y + Glass.ROW;
     }
 
-    private static float colour(EditorScreen s, DrawContext ctx, int rgb, float x, float y, float w,
-                                java.util.function.IntConsumer pick) {
+    /** a colour row: the label, the hex, and the fourteen swatches under
+     *  them — shared with the Features tab, whose world overlays have colours */
+    static float colour(EditorScreen s, DrawContext ctx, String label, int rgb, float x, float y, float w,
+                        java.util.function.IntConsumer pick) {
         float cy = y + Glass.ROW / 2f;
-        Chrome.label(s, ctx, "Colour", x, cy);
+        Chrome.label(s, ctx, label, x, cy);
         String h = hex(rgb);
         Chrome.chip(s, ctx, h, x + w - Chrome.chipWidth(s, h), cy, Glass.INK);
         y += Glass.ROW + 4;
