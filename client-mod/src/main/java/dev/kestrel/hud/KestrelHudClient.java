@@ -28,12 +28,17 @@ import java.util.List;
  * rule that keeps the two writers from erasing each other, is
  * {@link HudConfig}.
  *
- * <p><b>NO NETWORK, AND NOTHING TOLD TO A SERVER.</b> Kestrel's claim is that
- * it never talks to a game server and has nothing to disclose. A client mod
- * is exactly where that could quietly stop being true — mods register plugin
- * channels routinely and a HUD has no business doing so. This one opens no
- * channel, registers no packet handler and makes no request. Adding a screen
- * did not change that: a menu reads a file and writes a file.
+ * <p><b>NO CHANNEL, NOTHING ANNOUNCED, AND NOTHING SENT YOU DID NOT DO.</b>
+ * Kestrel's claim is that it never talks to a game server behind your back
+ * and has nothing to disclose. A client mod is exactly where that could
+ * quietly stop being true — mods register plugin channels routinely and a HUD
+ * has no business doing so. This one opens no channel, registers no packet
+ * handler and tells no server it is here. Two things do reach the server,
+ * each only when you press for it, and each exactly what the game sends when
+ * you do it by hand: the inventory sorter's slot clicks ({@link Sorter}), and
+ * a waypoint's Teleport — the {@code /tp} command a player allowed to use it
+ * could type ({@link WaypointsPanel#teleport}). The menu itself reads a file
+ * and writes a file.
  */
 public class KestrelHudClient implements ClientModInitializer {
 
@@ -55,6 +60,11 @@ public class KestrelHudClient implements ClientModInitializer {
        than a hard-coded GLFW check in a tick handler would have given them. */
     private static KeyBinding menuKey;
 
+    /* THE MINIMAP'S ZOOM, on = and -: in the Controls screen like every other
+       key, and stepping the element's own zoom option, so the menu shows the
+       same value the keys set */
+    private static KeyBinding mapZoomIn, mapZoomOut;
+
     private HudConfig config;
     private Path runDir;
 
@@ -70,6 +80,10 @@ public class KestrelHudClient implements ClientModInitializer {
 
         menuKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
             "key." + MOD_ID + ".menu", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, "category." + MOD_ID));
+        mapZoomIn = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key." + MOD_ID + ".minimap_in", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_EQUAL, "category." + MOD_ID));
+        mapZoomOut = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "key." + MOD_ID + ".minimap_out", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_MINUS, "category." + MOD_ID));
 
         /* the features that DO something rather than draw something: their
            keys are registered from the document, so a feature added in
@@ -77,6 +91,8 @@ public class KestrelHudClient implements ClientModInitializer {
         Behaviours.register(config);
 
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
+        /* the world map reads each chunk as it loads, and any it missed as it leaves */
+        WorldMap.register();
         HudRenderCallback.EVENT.register(this::draw);
         /* AND THE ONES DRAWN IN THE WORLD. A different pass entirely — these
            are lines in 3D with depth, and they have to go in while the world
@@ -88,6 +104,37 @@ public class KestrelHudClient implements ClientModInitializer {
         /* zoom eases per frame rather than per tick — see Behaviours.frame */
         net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents.START
             .register(ctx -> Behaviours.frame(MinecraftClient.getInstance()));
+
+        /* ── ONE SCOREBOARD, NOT TWO ──────────────────────────────────────
+           While the Kestrel scoreboard is on, vanilla's sidebar steps aside.
+           Fabric's HUD layers name vanilla's sidebar, so its layer is wrapped
+           rather than removed: the wrapper asks every frame, and the moment
+           the element is switched off vanilla's draws again. No mixin. */
+        net.fabricmc.fabric.api.client.rendering.v1.HudLayerRegistrationCallback.EVENT.register(layers ->
+            layers.replaceLayer(net.fabricmc.fabric.api.client.rendering.v1.IdentifiedLayer.SCOREBOARD, vanilla ->
+                net.fabricmc.fabric.api.client.rendering.v1.IdentifiedLayer.of(
+                    net.fabricmc.fabric.api.client.rendering.v1.IdentifiedLayer.SCOREBOARD,
+                    (ctx, tickCounter) -> {
+                        if (!ownScoreboard()) vanilla.render(ctx, tickCounter);
+                    })));
+
+        sorterKeys();
+    }
+
+    /* the sorter's key inside an inventory screen, where key bindings are
+       not updated — the screen gets the key, and this listens after it */
+    private void sorterKeys() {
+        net.fabricmc.fabric.api.client.screen.v1.ScreenEvents.AFTER_INIT.register((client, screen, w, h) -> {
+            if (!(screen instanceof net.minecraft.client.gui.screen.ingame.HandledScreen<?>)) return;
+            net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents.afterKeyPress(screen).register(
+                (scr, key, scancode, modifiers) -> Sorter.pressedIn(scr, key, scancode, config, Behaviours.key("sorter")));
+        });
+    }
+
+    /** true while this mod draws the sidebar itself */
+    private boolean ownScoreboard() {
+        HudConfig.Element el = config == null ? null : config.get("scoreboard");
+        return el != null && el.on && HudElements.drawn("scoreboard");
     }
 
     /* Drained in a while loop rather than read once: wasPressed() pops one
@@ -109,6 +156,17 @@ public class KestrelHudClient implements ClientModInitializer {
         Combat.tick(client);
         if (client.world == null) Combat.reset();
         Behaviours.tick(client, config);
+        /* underground or not, once, for both maps */
+        Terrain.tick(client);
+        Minimap.tick(client, config);
+        zoomKeys(client);
+        WorldMap.tick(client, config, client.currentScreen instanceof EditorScreen es && es.onMap);
+        /* M: the menu, opened on its map */
+        Feature map = config.feature("worldmap");
+        if (Behaviours.presses(client, "worldmap") > 0
+                && map != null && map.on && client.player != null && client.currentScreen == null) {
+            client.setScreen(new EditorScreen(config, runDir, true));
+        }
         while (menuKey.wasPressed()) {
             /* IN A WORLD, AND NOT OVER ANOTHER SCREEN. This configures a HUD
                that only exists in a world, and opening it over the title
@@ -117,6 +175,21 @@ public class KestrelHudClient implements ClientModInitializer {
                 client.setScreen(new EditorScreen(config, runDir));
             }
         }
+    }
+
+    /* a step of minimap zoom per press, written straight to the document —
+       a key pressed in the world has no menu closing behind it to save it */
+    private void zoomKeys(MinecraftClient client) {
+        int by = 0;
+        while (mapZoomIn.wasPressed()) by++;
+        while (mapZoomOut.wasPressed()) by--;
+        if (by == 0 || client.player == null || client.currentScreen != null) return;
+        HudConfig.Element el = config.get("minimap");
+        if (el == null || !el.on) return;
+        String now = Minimap.step(config, by > 0 ? 1 : -1);
+        if (now == null) return;
+        config.save(runDir);
+        client.player.sendMessage(Text.literal("Minimap zoom: " + now), true);
     }
 
     /** the editor closes on the same key that opened it */

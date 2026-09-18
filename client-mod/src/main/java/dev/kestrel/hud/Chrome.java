@@ -50,20 +50,25 @@ final class Chrome {
             + " elements on · " + fon + " of " + cfg.featureNames().size() + " features", sep + 18, cy + 10, Glass.MUTE);
 
         /* THE TABS ARE CENTRED ON THE BAR, whatever sits either side of them */
-        String[] tabs = { "Elements", "Features" };
+        String[] tabs = { "Elements", "Features", "Map" };
         float gap = 40;
         float total = gap;
         for (String t : tabs) total += Type.width(s.tr(), Type.TAB, t);
         float tx = x + (w - total) / 2f;
         for (int i = 0; i < tabs.length; i++) {
             float tw = Type.width(s.tr(), Type.TAB, tabs[i]);
-            boolean selected = (i == 1) == s.onFeatures;
+            boolean selected = i == 2 ? s.onMap : !s.onMap && (i == 1) == s.onFeatures;
             boolean hover = s.over(tx - 10, y, tw + 20, h);
             Type.draw(ctx, s.tr(), Type.TAB, tabs[i], tx, cy, selected ? Glass.INK : hover ? Glass.BODY : Glass.META);
             if (selected) Glass.fill(ctx, tx, y + h - 17, tw, 3, Glass.GO);
-            final boolean features = i == 1;
+            final int tab = i;
             s.onClick(tx - 10, y, tw + 20, h, () -> {
-                if (s.onFeatures != features) { s.onFeatures = features; s.click(); }
+                boolean map = tab == 2, features = tab == 1;
+                if (s.onMap != map || (!map && s.onFeatures != features)) {
+                    s.onMap = map;
+                    if (!map) s.onFeatures = features;
+                    s.click();
+                }
             });
             tx += tw + gap;
         }
@@ -95,6 +100,8 @@ final class Chrome {
         Glass.panel(ctx, x, y, w, h);
         String[][] hints = s.rebinding
             ? new String[][] { { "any key", "sets it" }, { "backspace", "clears it" }, { "esc", "cancels" } }
+            : s.onMap
+                ? new String[][] { { "drag", "pan" }, { "scroll", "zoom" }, { "click", "pin" }, { "right-click", "add a waypoint" }, { "esc", "close" } }
             : s.onFeatures
                 ? new String[][] { { "click", "select" }, { "backspace", "clears a key while changing" }, { "esc", "save and close" } }
                 : new String[][] { { "click", "select" }, { "drag", "move" }, { "alt", "free placement" }, { "esc", "save and close" } };
@@ -256,6 +263,64 @@ final class Chrome {
             s.onClick(sx - 2, y - 2, size + 4, size + 4, () -> pick.accept(rgb));
         }
         return size;
+    }
+
+    /** a text box: shows its value, or what is being typed when it is the
+     *  field in use; a press makes it the field in use. The placeholder shows,
+     *  dimmed, when the value is empty. */
+    static void field(EditorScreen s, DrawContext ctx, String id, String value, String placeholder,
+                      float x, float cy, float w, boolean numeric, Consumer<String> commit) {
+        boolean editing = id.equals(s.fieldId);
+        boolean hover = s.over(x, cy - 11, w, 22);
+        Glass.box(ctx, x, cy - 11, w, 22, Glass.WELL,
+            editing ? Glass.argb(0xE3B439, 70) : hover ? Glass.LINE_STRONG : Glass.LINE);
+        String shown = editing ? s.fieldText : value;
+        boolean empty = shown == null || shown.isEmpty();
+        String text = empty && !editing ? (placeholder == null ? "" : placeholder) : (shown == null ? "" : shown);
+        float end = Type.draw(ctx, s.tr(), Type.VALUE, Type.fit(s.tr(), Type.VALUE, text, w - 14), x + 7, cy,
+            empty && !editing ? Glass.MUTE : Glass.INK);
+        if (editing) Glass.fill(ctx, (empty ? x + 7 : end) + 1, cy - 6, 1, 12, Glass.INK);
+        s.onClick(x, cy - 11, w, 22, () -> s.editField(id, value, numeric, commit));
+    }
+
+    /* THE COLOUR WHEEL AND ITS BRIGHTNESS: press or drag on the wheel for hue
+       (round it) and saturation (out from the middle), and the slider beside
+       it for how bright. `pick` gets every colour the drag passes through, so
+       whatever it paints changes under the cursor; `done` once, at the end. */
+    static float wheel(EditorScreen s, DrawContext ctx, float x, float y, float w, int rgb,
+                       IntConsumer pick, Runnable done) {
+        float r = 44, cx = x + r + 2, cy = y + r + 2;
+        float[] hsv = Shapes.toHsv(rgb);
+        float value = Math.max(0.25f, hsv[2]);
+        Shapes.wheel(ctx, cx, cy, r, value);
+        double a = hsv[0] * Math.PI * 2;
+        Shapes.dot(ctx, cx + (float) Math.cos(a) * hsv[1] * r, cy + (float) Math.sin(a) * hsv[1] * r, 3.5f,
+            0xFF000000 | rgb, 0xFFF1F4F7);
+        s.onDrag(cx - r - 4, cy - r - 4, 2 * r + 8, 2 * r + 8, () -> new EditorScreen.Drag() {
+            @Override
+            public void move(float px, float py, boolean alt) {
+                float dx = px - cx, dy = py - cy;
+                float h = (float) (Math.atan2(dy, dx) / (Math.PI * 2));
+                float sat = Math.min(1f, (float) Math.sqrt(dx * dx + dy * dy) / r);
+                pick.accept(Shapes.hsv(h, sat, value) & 0xFFFFFF);
+            }
+
+            @Override
+            public void end() {
+                done.run();
+            }
+        });
+
+        /* beside it: the colour as a block, its hex, and the brightness */
+        float sx = x + 2 * r + 20, sw = w - (sx - x);
+        Glass.box(ctx, sx, y + 6, 26, 26, 0xFF000000 | rgb, Glass.LINE_STRONG);
+        String hex = ElementsTab.hex(rgb);
+        chip(s, ctx, hex, sx + 34, y + 19, Glass.INK);
+        Type.draw(ctx, s.tr(), Type.CAPS, "Brightness", sx, y + 52, Glass.META);
+        float h0 = hsv[0], s0 = hsv[1];
+        slider(s, ctx, sx, y + 62, sw, (value - 0.25f) / 0.75f,
+            t -> pick.accept(Shapes.hsv(h0, s0, 0.25f + (float) t * 0.75f) & 0xFFFFFF), done);
+        return 2 * r + 4;
     }
 
     static final float SWATCH = 14;

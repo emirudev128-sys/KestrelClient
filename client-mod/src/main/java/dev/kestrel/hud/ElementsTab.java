@@ -32,7 +32,7 @@ final class ElementsTab {
     /* ── the groups the list is sorted into ─────────────────────────────── */
     private static final String[] ORDER = {
         "fps", "ping", "memory", "cps", "keys", "coords", "day", "clock", "playtime",
-        "combo", "reach", "pvp", "totems", "helmet", "chest", "legs", "boots", "held", "potion"
+        "combo", "reach", "pvp", "totems", "helmet", "chest", "legs", "boots", "held", "potion", "scoreboard", "minimap"
     };
     private static final String[] GROUP_NAMES = { "Performance", "Input", "World", "Session", "Combat", "Gear", "Other" };
     private static final int[] GROUP_HUES = {
@@ -43,7 +43,7 @@ final class ElementsTab {
         switch (id) {
             case "fps": case "ping": case "memory": return 0;
             case "cps": case "keys": return 1;
-            case "coords": case "day": return 2;
+            case "coords": case "day": case "minimap": return 2;
             case "clock": case "playtime": return 3;
             case "combo": case "reach": case "pvp": case "totems": return 4;
             case "helmet": case "chest": case "legs": case "boots": case "held": case "potion": return 5;
@@ -198,9 +198,13 @@ final class ElementsTab {
                 rx + 4, ly + 20, Glass.MUTE);
         }
         float content = cursor + s.listScroll - ly;
-        s.listScroll = Math.max(0, Math.min(s.listScroll, content - lh + 6));
+        /* THE LIMIT IS KNOWN NOW, SO THE WHEEL STOPS AT IT. Clamping only after
+           drawing let every notch past the end draw one frame overscrolled and
+           then snap back, which is the stutter at the bottom of a list. */
+        final float listMax = Math.max(0, content - lh + 6);
+        s.listScroll = Math.max(0, Math.min(s.listScroll, listMax));
         s.unclip(ctx);
-        s.onWheel(rx, ly, rw, lh, by -> s.listScroll = Math.max(0, s.listScroll + by));
+        s.onWheel(rx, ly, rw, lh, by -> s.listScroll = Math.max(0, Math.min(listMax, s.listScroll + by)));
     }
 
     private static void row(EditorScreen s, DrawContext ctx, Module m, int hue, float x, float y, float w) {
@@ -437,9 +441,10 @@ final class ElementsTab {
             float top = y + Glass.PAD_TOP - s.inspScroll;
             float end = settings(s, ctx, el, mods, x + Glass.PAD, top, w - 2 * Glass.PAD);
             float content = end - top + Glass.PAD_TOP * 2;
-            s.inspScroll = Math.max(0, Math.min(s.inspScroll, content - ah));
+            final float inspMax = Math.max(0, content - ah);
+            s.inspScroll = Math.max(0, Math.min(s.inspScroll, inspMax));
             s.unclip(ctx);
-            s.onWheel(x, y, w, ah, by -> s.inspScroll = Math.max(0, s.inspScroll + by));
+            s.onWheel(x, y, w, ah, by -> s.inspScroll = Math.max(0, Math.min(inspMax, s.inspScroll + by)));
         }
         hud(s, ctx, x, y + h - HUD_H - Chrome.CHANGES_H, w);
         Chrome.changes(s, ctx, x, y + h - Chrome.CHANGES_H, w);

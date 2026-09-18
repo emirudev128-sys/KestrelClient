@@ -7,12 +7,14 @@ shipped, what was deliberately not built and why, and what is genuinely left.
 
 ## Done
 
-### Elements — nineteen of them, all drawn
+### Elements — twenty-one of them, all drawn
 
 | | |
 |---|---|
 | First eleven | fps, cps, ping, keystrokes, coords, potion effects, and the five armour slots |
 | Second eight | day counter, clock, playtime, memory, combo counter, totem counter, reach display, PvP info |
+| Minimap | the loaded world from above in map colours, shaded by height, or the caves at your height with the rock left clear and lava its own orange (Depth: auto, surface, caves; the nether is always caves); turns with you or keeps north up, four zooms, other players and waypoints as dots. A 256×256 texture shifted as you move and re-read middle first for a millisecond a tick |
+| Scoreboard | the server's sidebar as a plate — title, numbers and the server's colours each switchable. While it is on, vanilla's sidebar is not drawn: its HUD layer is wrapped through Fabric's layer API, no mixin |
 
 The TNT countdown was the ninth. It moved into the world as a feature — a plate
 in a corner cannot say which of four primed blocks is the one about to go.
@@ -23,7 +25,7 @@ Tweaks list switches it, the mod draws it.
 
 ### Features — the second noun
 
-`sprint`, `sneak`, `zoom`, `snaplook`, `freelook`, `hitbox`, `chunks`, `tnt`. A feature is
+`sprint`, `sneak`, `zoom`, `snaplook`, `freelook`, `hitbox`, `chunks`, `tnt`, `hitcolour`, `sorter`, `waypoints`, `worldmap`. A feature is
 **on or off, a key, and its own options** — no anchor, no scale, no plate. It reuses the
 element option machinery and the same top-level `optSpec`, so the menu builds a
 feature's rows exactly the way it builds an element's.
@@ -37,18 +39,41 @@ feature's rows exactly the way it builds an element's.
   pitch in place of the player's, `EntityMixin` sends mouse movement to that
   camera instead of the player. Both do nothing unless freelook is on, neither
   redirects or overwrites, and `hudcheck` fails on a third.
+- **Inventory sorter** (`Sorter.java`, `SortPlan.java`): R sorts the open
+  container, or your inventory anywhere else — by ordinary left clicks, planned
+  by `SortPlan`, which has no Minecraft in it so `tools/hudroundtrip/SortCheck`
+  runs it against a thousand random chests with vanilla's click rules.
+- **Waypoints** (`Waypoints.java`, `WaypointsPanel.java`): B marks where you
+  stand; a death is marked automatically. Kept per world — the save folder in
+  singleplayer, the address on a server — and per dimension, in the mod's own
+  `config/kestrel-waypoints.json`. A crossed see-through beam, and a label that
+  is pulled inside the far plane and scaled so it reads at any distance. Listed
+  in the Features tab and beside the map: colour, rename, coordinates, hide,
+  remove, filed in folders (shut or open, hidden or shown together), and a
+  teleport that is only offered when the server lets the player use `/tp` —
+  the one command the mod ever sends, and only on a press.
+- **World map** (`WorldMap.java`, `MapTab.java`): M opens the menu on a Map
+  tab showing every chunk you have loaded, kept between games in the instance's
+  kestrel-map folder, never asking for one — each
+  chunk read as it loads, or on its way out if it was not yet — with a picture
+  kept per world and dimension, so the nether does not wipe the overworld, and
+  the same Depth choice as the minimap — the caves kept as floor heights and lit
+  for where you stand; a four-blocks-to-a-pixel overview for the furthest zoom,
+  so everything explored shows at once; the biome under the pointer anywhere you
+  have been, and the block where the chunk is loaded; add waypoints by
+  right-clicking it, manage them beside it.
 - **World overlays** (`Overlays.java`): hitboxes and chunk borders — each in a
   colour picked in the menu, chunk borders optionally with see-through walls —
   and the TNT timer over every primed TNT, through Fabric's `WorldRenderEvents`.
-- **Zoom goes through one access widener**, not a mixin: it opens
-  `GameRenderer.zoom`, the projection scale. The field of view option could not
-  do it — it rejects anything under 30 degrees and resets to its default.
+- **Zoom and hit colour go through the access widener**, not mixins: it opens
+  `GameRenderer.zoom`, the projection scale — the field of view option rejects
+  anything under 30 degrees — and `OverlayTexture.texture`, whose top half is
+  the hurt flash that hit colour repaints.
 
 ---
 
 ## NOT built, and why — read this before starting any of them
 
-### The three that need a MIXIN
 
 A mixin is a build-time weave into somebody else's compiled class. It fails in
 ways that are hard to read, and it breaks differently on every Minecraft version.
@@ -57,25 +82,18 @@ tested, after the targets were checked against the game's own bytecode — and
 `hudcheck` fails on a third, so the next one is a decision somebody makes on
 purpose rather than drifts into.
 
-| | what it would take |
-|---|---|
-| **Hit colours** | The damage flash is a hard-coded tint inside the entity renderer. |
-| **Scoreboard** | Vanilla draws the sidebar itself. Our own version can read the scores and draw them anywhere — but vanilla's still draws, so you get two. Cancelling vanilla's is the mixin. |
-| **Inventory sorter** | Not strictly a mixin, but it needs to send slot-click packets in the right order and a button in a screen somebody else owns. Fiddly, and a wrong packet order desyncs an inventory. |
-
 Adding one: put it in the existing config, keep it inert unless its feature is
 on, prefer a value modification or a cancellable inject to a redirect, check the
 target in the intermediary jar, and launch the game before writing the next.
 
-### The two that are their own piece of work
+### Nothing from the original list is left
 
-- **Waypoints** — a beacon in the world, a marker on the HUD edge, and storage
-  per world. The storage is the hard part: a waypoint belongs to a world, and
-  "which world is this" is a different question on a server than in singleplayer.
-- **Minimap** — the largest single item on the original list by a distance.
-  Chunk sampling, a texture, a cache, per-world storage, and it is the one thing
-  here that can itself cost frames. Worth building only when somebody wants to
-  spend a session on it alone.
+Every item asked for on 27 August is built. What is worth watching instead: the
+two maps are the one thing here that can cost frames. Both now read on a clock,
+not a count — the minimap a millisecond a tick, the world map one (four while
+open) and two a frame to send tiles to the GPU — and read blocks from the chunk's
+own sections, which is what the nether needed. If they show up in a profiler,
+those budgets (`Minimap.BUDGET_NS`, `WorldMap.READ_NS`, `UPLOAD_NS`) are the dials.
 
 ---
 

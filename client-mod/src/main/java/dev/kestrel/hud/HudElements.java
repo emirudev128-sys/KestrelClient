@@ -85,6 +85,12 @@ final class HudElements {
     /* A ROW OF NOTHING, a given number of pixels tall — the room between
        rows that a stack of text rows does not have on its own */
     static final int SPACER = 6;
+    /* EVERYTHING AFTER THIS GOES TO THE RIGHT EDGE — the scoreboard's numbers,
+       lined up down the plate's edge however long each name is. It takes a
+       small minimum width, so a long name never runs into its number. */
+    static final int FILL = 7;
+    /* THE MINIMAP, drawn by Minimap, a fixed square */
+    static final int MAP = 8;
 
     /* THE KEYS BREATHE. Rows stacked flush put two pixels between W and the
        A S D under it and one between those and the mouse, which reads as one
@@ -101,6 +107,7 @@ final class HudElements {
         final ItemStack item;   /* ITEM_ICON only */
         final net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.effect.StatusEffect> effect;
         final int buttons;      /* MOUSE only: bit 0 left held, bit 1 right held */
+        HudConfig.Element element;   /* MAP only: the options it is drawn with */
 
         Run(Face face, String text, int role) {
             this(TEXT, face.of(text), role, 0, null, null, 0);
@@ -137,6 +144,19 @@ final class HudElements {
 
         /** empty room, this many pixels tall, as a row of its own; the height rides in `width` */
         static Run spacer(int height) { return new Run(SPACER, null, VALUE, height, null, null, 0); }
+
+        /** push what follows to the right edge */
+        static Run fill() { return new Run(FILL, null, VALUE, 8, null, null, 0); }
+
+        /** the minimap, with the element whose options it reads */
+        static Run map(HudConfig.Element el) {
+            Run r = new Run(MAP, null, VALUE, Minimap.SIZE, null, null, 0);
+            r.element = el;
+            return r;
+        }
+
+        /** text somebody else styled — a server's scoreboard line, colours and all */
+        static Run styled(Text text, int role) { return new Run(TEXT, text, role, 0, null, null, 0); }
     }
 
     private static List<Run> row(Run... runs) {
@@ -166,7 +186,7 @@ final class HudElements {
     private static final List<String> DRAWN = List.of(
         "fps", "cps", "ping", "keys", "coords", "potion",
         "helmet", "chest", "legs", "boots", "held",
-        "day", "clock", "playtime", "memory", "combo", "totems", "reach", "pvp");
+        "day", "clock", "playtime", "memory", "combo", "totems", "reach", "pvp", "scoreboard", "minimap");
 
     static boolean drawn(String name) {
         return DRAWN.contains(name);
@@ -287,6 +307,10 @@ final class HudElements {
                 }
                 return one(r);
             }
+            case "scoreboard":
+                return scoreboard(el, client, face, false);
+            case "minimap":
+                return one(row(Run.map(el)));
             default: return armour(name, el, client, face, false);
         }
     }
@@ -489,8 +513,73 @@ final class HudElements {
                 if (el.flag("distance")) r.add(new Run(face, "3.1m", LABEL));
                 return one(r);
             }
+            case "scoreboard":
+                return scoreboard(el, null, face, true);
+            case "minimap":
+                return one(row(Run.map(el)));
             default: return armour(name, el, null, face, true);
         }
+    }
+
+    /* ── the scoreboard ───────────────────────────────────────────────────
+       THE SAME OBJECTIVE VANILLA WOULD SHOW, chosen the way it chooses: the
+       sidebar slot for your team's colour if a server set one, the ordinary
+       sidebar otherwise. The same lines in the same order — highest score
+       first, then by name — hidden ones left out, at most fifteen, each name
+       decorated with its team's prefix and suffix the way vanilla does.
+
+       Nothing on screen when there is no objective, as vanilla. */
+    private static final java.util.Comparator<net.minecraft.scoreboard.ScoreboardEntry> SIDEBAR_ORDER =
+        java.util.Comparator.comparing(net.minecraft.scoreboard.ScoreboardEntry::value, java.util.Comparator.reverseOrder())
+            .thenComparing(net.minecraft.scoreboard.ScoreboardEntry::owner, String.CASE_INSENSITIVE_ORDER);
+
+    private static List<List<Run>> scoreboard(HudConfig.Element el, MinecraftClient c, Face face, boolean fake) {
+        boolean title = el.flag("title"), numbers = el.flag("numbers"), colours = el.flag("colours");
+        List<List<Run>> out = new ArrayList<>();
+        if (fake) {
+            if (title) out.add(row(Run.centre(), new Run(face, "Bed Wars", VALUE)));
+            String[][] lines = { { "Beds left", "3" }, { "Kills", "7" }, { "Final kills", "2" } };
+            for (String[] l : lines) {
+                out.add(numbers ? row(new Run(face, l[0], VALUE), Run.fill(), new Run(face, l[1], ACCENT))
+                                : row(new Run(face, l[0], VALUE)));
+            }
+            return out;
+        }
+        if (c == null || c.world == null || c.player == null) return null;
+
+        net.minecraft.scoreboard.Scoreboard board = c.world.getScoreboard();
+        net.minecraft.scoreboard.ScoreboardObjective objective = null;
+        net.minecraft.scoreboard.Team team = board.getScoreHolderTeam(c.player.getNameForScoreboard());
+        if (team != null) {
+            net.minecraft.scoreboard.ScoreboardDisplaySlot slot =
+                net.minecraft.scoreboard.ScoreboardDisplaySlot.fromFormatting(team.getColor());
+            if (slot != null) objective = board.getObjectiveForSlot(slot);
+        }
+        if (objective == null) objective = board.getObjectiveForSlot(net.minecraft.scoreboard.ScoreboardDisplaySlot.SIDEBAR);
+        if (objective == null) return null;
+
+        net.minecraft.scoreboard.number.NumberFormat format =
+            objective.getNumberFormatOr(net.minecraft.scoreboard.number.StyledNumberFormat.RED);
+        if (title) out.add(row(Run.centre(), serverText(face, objective.getDisplayName(), colours, VALUE)));
+        List<net.minecraft.scoreboard.ScoreboardEntry> entries = board.getScoreboardEntries(objective).stream()
+            .filter(e -> !e.hidden()).sorted(SIDEBAR_ORDER).limit(15).toList();
+        for (net.minecraft.scoreboard.ScoreboardEntry e : entries) {
+            Text name = net.minecraft.scoreboard.Team.decorateName(board.getScoreHolderTeam(e.owner()), e.name());
+            Run nameRun = serverText(face, name, colours, VALUE);
+            out.add(numbers ? row(nameRun, Run.fill(), serverText(face, e.formatted(format), colours, ACCENT))
+                            : row(nameRun));
+        }
+        return out;
+    }
+
+    /* A SERVER'S TEXT, IN THE HUD'S FACE. With colours kept, the styled text
+       goes through whole — team colours, ticks and crosses — with only the
+       font swapped for the one the HUD is set to. Without them, the words
+       alone, formatting codes stripped, in the plate's own ink. */
+    private static Run serverText(Face face, Text t, boolean colours, int role) {
+        if (!colours) return new Run(face, net.minecraft.util.Formatting.strip(t.getString()), role);
+        net.minecraft.util.Identifier font = face.of("").getStyle().getFont();
+        return Run.styled(t.copy().styled(s -> s.withFont(font)), role);
     }
 
     /* ── the second wave's arithmetic ─────────────────────────────────────

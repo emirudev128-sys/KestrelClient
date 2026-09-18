@@ -27,11 +27,12 @@ final class Paint {
     private Paint() { }
 
     /* ── the plate ────────────────────────────────────────────────────────
-       --s-app #0A0E13 at 72%. Dark enough to carry white text over snow,
-       transparent enough that it never becomes a black box sitting on the
-       world. The border is --line-region #2D3137, kept faint: at 1px a
+       --s-app #0A0E13 at 42%. It was 72%, which carried white text over
+       snow and sat on the world as a dark box; 42% is the user's call, and
+       still reads against the sky. A stored 72 that was only ever the old
+       default moves with it (mc/hud.js, STYLE_REV). The border is --line-region #2D3137, kept faint: at 1px a
        bright edge reads as a mistake rather than an outline. */
-    static final int PLATE = 0xB80A0E13;
+    static final int PLATE = 0x6B0A0E13;
     static final int EDGE = 0x662D3137;
 
     /* ── the text ─────────────────────────────────────────────────────────

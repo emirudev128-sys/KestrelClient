@@ -5,5 +5,10 @@
   "key.kestrel-hud.sneak": "Toggle sneak",
   "key.kestrel-hud.zoom": "Zoom",
   "key.kestrel-hud.snaplook": "Snap look",
-  "key.kestrel-hud.freelook": "Freelook"
+  "key.kestrel-hud.freelook": "Freelook",
+  "key.kestrel-hud.sorter": "Sort inventory",
+  "key.kestrel-hud.waypoints": "Add a waypoint",
+  "key.kestrel-hud.worldmap": "Open the map",
+  "key.kestrel-hud.minimap_in": "Minimap zoom in",
+  "key.kestrel-hud.minimap_out": "Minimap zoom out"
 }

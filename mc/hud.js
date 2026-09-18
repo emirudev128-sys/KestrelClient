@@ -116,7 +116,14 @@ const ELEMENT_MODULE = {
      nearest fuse — and a plate cannot say WHICH block is about to go. It is
      a feature now, drawn over every primed TNT in the world; see FEATURES. */
   reach: 'Reach display',
-  pvp: 'PvP info'
+  pvp: 'PvP info',
+  /* THE SERVER'S SIDEBAR, drawn as a plate like everything else — and
+     while it is on, vanilla's own sidebar is not drawn, or there would be
+     two. See the scoreboard layer in KestrelHudClient. */
+  scoreboard: 'Scoreboard',
+  /* the world from above, drawn by the mod from the map colours of the
+     blocks around you — see client-mod Minimap.java */
+  minimap: 'Minimap'
 };
 const ELEMENTS = Object.keys(ELEMENT_MODULE);
 
@@ -236,6 +243,28 @@ const ELEMENT_OPTS = {
     health: { type: 'bool', def: true, label: 'Show their health' },
     distance: { type: 'bool', def: false, label: 'Show the distance' }
   },
+  minimap: {
+    rotate: { type: 'bool', def: true, label: 'Turn with you' },
+    /* furthest to nearest, which is also the order the zoom keys step
+       through: half a pixel, one, two and four pixels a block */
+    zoom: { type: 'enum', vals: ['far', 'normal', 'near', 'close'], def: 'normal', label: 'Zoom' },
+    others: { type: 'bool', def: true, label: 'Show other players' },
+    waypoints: { type: 'bool', def: true, label: 'Show waypoints' },
+    /* the surface, or the caves at your height; auto is the caves while
+       you are underground. The nether has no surface and is always caves.
+       The world map has the same choice, as `layer` — one name is one
+       option in the spec table, and these are two settings. */
+    depth: { type: 'enum', vals: ['auto', 'surface', 'caves'], def: 'auto', label: 'Depth' }
+  },
+  scoreboard: {
+    title: { type: 'bool', def: true, label: 'Show the title' },
+    /* ON, as vanilla has them. A lot of servers only use the numbers to
+       order the lines, and that is what the switch is for. */
+    numbers: { type: 'bool', def: true, label: 'Show the numbers' },
+    /* team colours and ticks and crosses carry meaning, so they are kept
+       unless somebody asks for the plate's own ink instead */
+    colours: { type: 'bool', def: true, label: "Keep the server's colours" }
+  },
   helmet: { wear: { type: 'enum', vals: ['number', 'percent', 'none'], def: 'number', label: 'Durability' } },
   chest: { wear: { type: 'enum', vals: ['number', 'percent', 'none'], def: 'number', label: 'Durability' } },
   legs: { wear: { type: 'enum', vals: ['number', 'percent', 'none'], def: 'number', label: 'Durability' } },
@@ -325,7 +354,9 @@ const ELEMENT_STOCK = {
   combo: { a: 'mc', x: 0, y: 12, s: 1 },
   totems: { a: 'br', x: 12, y: 4, s: 1 },
   reach: { a: 'mc', x: 0, y: 18, s: 1 },
-  pvp: { a: 'ml', x: 3.4, y: 22, s: 1 }
+  pvp: { a: 'ml', x: 3.4, y: 22, s: 1 },
+  scoreboard: { a: 'mr', x: 14, y: 0, s: 1 },
+  minimap: { a: 'tr', x: 2.6, y: 18, s: 1 }
 };
 
 /* the nine the screen offers, and nothing else is an anchor */
@@ -481,6 +512,66 @@ const FEATURES = {
     opts: {
       ticks: { type: 'bool', def: false, label: 'Count in ticks' }
     }
+  },
+  /* ── HIT COLOUR ─────────────────────────────────────────────────────────
+     The flash anything gives when it is hurt. Vanilla's is red at a strength
+     of 30% — its overlay texture is #FF0000 at alpha 0xB2, and a shader mixes
+     in 1 - 0xB2/255 of it — so those are the defaults, and turning this on
+     without touching anything looks exactly like the game. `colour` is the
+     same option hitboxes and chunk borders have. */
+  hitcolour: {
+    label: 'Hit colour',
+    desc: 'The flash a player or mob gives when it is hit',
+    key: '',
+    opts: {
+      colour: { type: 'colour', def: '#FF0000', label: 'Colour' },
+      strength: { type: 'number', min: 0, max: 100, step: 5, def: 30, unit: '%', label: 'Strength' }
+    }
+  },
+  /* ── INVENTORY SORTER ───────────────────────────────────────────────────
+     R, unbound in vanilla. In a chest it sorts the chest; anywhere else, your
+     inventory. It sorts by clicking, as a hand would, which some servers with
+     strict anti-cheat dislike — so it is off until somebody switches it on. */
+  sorter: {
+    label: 'Inventory sorter',
+    desc: 'Sort a chest, or your own inventory, with one key',
+    key: 'KEY_R',
+    opts: {
+      order: { type: 'enum', vals: ['type', 'name'], def: 'type', label: 'Order' },
+      hotbar: { type: 'bool', def: false, label: 'Include the hotbar' }
+    }
+  },
+  /* ── WAYPOINTS ──────────────────────────────────────────────────────────
+     B, unbound in vanilla, marks where you stand. The waypoints themselves
+     are not settings and do not travel in this document: the mod keeps them
+     in its own config/kestrel-waypoints.json, per world. These are only how
+     they are shown. */
+  waypoints: {
+    label: 'Waypoints',
+    desc: 'Named places with a beam and a label, kept per world',
+    key: 'KEY_B',
+    opts: {
+      beam: { type: 'bool', def: true, label: 'Show beams' },
+      range: { type: 'bool', def: true, label: 'Show how far away' },
+      death: { type: 'bool', def: true, label: 'Mark where you die' }
+    }
+  },
+  /* ── THE WORLD MAP ──────────────────────────────────────────────────────
+     M, unbound in vanilla, opens the menu on its Map tab. ON BY DEFAULT,
+     because the key is how anybody finds it. It shows only chunks the game
+     has already loaded, and keeps them between games in the instance's
+     kestrel-map folder, on this computer only — see client-mod WorldMap.java
+     and MapFiles.java. */
+  worldmap: {
+    label: 'World map',
+    desc: 'Everywhere you have been, from above, kept between games; add waypoints on it',
+    key: 'KEY_M',
+    on: true,
+    opts: {
+      /* the minimap's `depth`, for the big map: the surface, the caves at
+         your height, or auto — the caves while you are underground */
+      layer: { type: 'enum', vals: ['auto', 'surface', 'caves'], def: 'auto', label: 'Depth' }
+    }
   }
 };
 const FEATURE_NAMES = Object.keys(FEATURES);
@@ -550,10 +641,10 @@ const SCALE_MAX = 4;
    picked out from the rest: coordinates bigger, ping in red, the fps counter
    with no box behind it at all.
 
-   THE DEFAULTS ARE EXACTLY WHAT THE HUD ALREADY LOOKED LIKE. #0A0E13 at 72%
-   is Paint.PLATE to the byte, #F1F4F7 is Paint.VALUE. An element nobody has
-   styled is drawn by the same numbers as before this existed, so nothing
-   moves under anyone who has not asked for it to.
+   THE DEFAULTS ARE Paint.PLATE AND Paint.VALUE TO THE BYTE: #0A0E13 at 42%,
+   and #F1F4F7. The plate was 72% until the user found 42% cleaner — see
+   STYLE_REV below for how a stored 72 that was only ever the old default
+   becomes the new one without touching a value somebody chose.
 
    COLOURS ARE #RRGGBB AND ALPHA IS A SEPARATE 0..100. Packing them into one
    #AARRGGBB would have been fewer fields and worse: alpha is the control
@@ -561,11 +652,33 @@ const SCALE_MAX = 4;
    own, and hiding it in the top two characters of a hex string makes it the
    hardest thing on the screen to change. */
 const PLATE_COLOUR = '#0A0E13';   /* --s-app */
-const PLATE_ALPHA = 72;
+const PLATE_ALPHA = 42;
 const TEXT_COLOUR = '#F1F4F7';    /* --ink */
 const TEXT_ALPHA = 100;
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+/* ── WHEN A DEFAULT CHANGES ────────────────────────────────────────────────
+   Every element's plateAlpha is written out whole, so a stored 72 cannot
+   tell "the default when this was saved" from "somebody chose 72". The
+   settings carry styleRev: below 2, a plateAlpha of exactly the old default
+   is the old default, and moves to the new one — once, after which styleRev
+   is 2 and a 72 anybody sets stays 72. */
+const STYLE_REV = 2;
+const OLD_PLATE_ALPHA = 72;
+
+function migrateStyle(hud) {
+  const h = (hud && typeof hud === 'object') ? hud : {};
+  if (Number(h.styleRev) >= STYLE_REV) return { hud: h, changed: false };
+  const elements = {};
+  const src = (h.elements && typeof h.elements === 'object') ? h.elements : {};
+  for (const name of Object.keys(src)) {
+    const e = src[name];
+    elements[name] = (e && typeof e === 'object' && Number(e.plateAlpha) === OLD_PLATE_ALPHA)
+      ? Object.assign({}, e, { plateAlpha: PLATE_ALPHA }) : e;
+  }
+  return { hud: Object.assign({}, h, { elements: elements, styleRev: STYLE_REV }), changed: true };
+}
 
 /* Normalised to upper case so that #e3b439 and #E3B439 are one value rather
    than two that compare unequal — the mod writes one form, a hand-edited file
@@ -863,7 +976,10 @@ async function sync(gameDir, hud, log) {
            defaults the rest, and a default standing in for "this mod never
            heard of that feature" must not overwrite what the launcher had. */
         features: Object.assign({}, before.features, namedIn(found.doc.features, back.hud.features)),
-        style: back.hud.style
+        style: back.hud.style,
+        /* the migration mark is the launcher's, and the game's document
+           does not carry it — without this every import would re-run it */
+        styleRev: before.styleRev
       };
       settings = next;
       say('hud: took back an in-game edit — revision ' + found.rev + ', '
@@ -872,8 +988,20 @@ async function sync(gameDir, hud, log) {
     }
   }
 
+  const migration = migrateStyle(next);
+  if (migration.changed) {
+    next = migration.hud;
+    say('hud: box opacity default is now ' + PLATE_ALPHA + '%; elements still at the old ' + OLD_PLATE_ALPHA + '% moved with it');
+  }
+
   const built = await write(gameDir, next, say, found.rev);
-  return { built: built, imported: settings !== null, settings: settings };
+  return {
+    built: built,
+    imported: settings !== null,
+    /* what to persist: the import, the migration, or both */
+    settings: settings !== null || migration.changed ? next : null,
+    migrated: migration.changed
+  };
 }
 
 /* Elements this launcher still declares. A name it has stopped declaring —
@@ -916,7 +1044,7 @@ async function write(gameDir, hud, log, rev) {
 }
 
 module.exports = {
-  sync, read, write, build, fromDoc, labelOf,
+  sync, read, write, build, fromDoc, labelOf, migrateStyle, STYLE_REV,
   ELEMENTS, ELEMENT_MODULE, ELEMENT_SUB, ELEMENT_OPTS, ELEMENT_STOCK, optsFor, optSpec,
   FEATURES, FEATURE_NAMES, featureFor, featuresOf,
   ANCHORS, CORNERS, FONTS, WRITERS,

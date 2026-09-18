@@ -2953,6 +2953,13 @@ html[data-ar="4"] .frame { aspect-ratio: 4 / 3; }
 .hel-keys b.bar { grid-column: 1 / 7; height: 4px; }
 .hel-keys b.on { background: var(--hud-bg-hi); color: var(--hud-on-hi); }
 .hel-item { position: relative; display: block; width: 15px; height: 15px; }
+/* the minimap: a square of terrain-ish tones, the player's arrow in the middle.
+   The game draws the real thing from the world; this only has to read as a map. */
+.hel-map { position: relative; display: block; width: 44px; height: 44px; background:
+  linear-gradient(135deg, transparent 58%, rgba(64, 104, 190, 0.55) 58% 66%, transparent 66%),
+  linear-gradient(0deg, rgba(90, 120, 60, 0.75), rgba(120, 150, 80, 0.75)); box-shadow: inset 0 0 0 1px var(--hud-bg); }
+.hel-map i { position: absolute; left: 50%; top: 50%; width: 0; height: 0; margin: -3px 0 0 -3px;
+  border-left: 3px solid transparent; border-right: 3px solid transparent; border-bottom: 6px solid var(--game-ink); }
 .hel-item .it { position: absolute; inset: 0 0 3px 0; border-radius: 1px; }
 .it-1 { background: var(--item-1); }
 .it-2 { background: var(--item-2); }

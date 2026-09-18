@@ -1311,7 +1311,9 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     combo: 'mc:0.0:12.0',
     totems: 'br:12.0:4.0',
     reach: 'mc:0.0:18.0',
-    pvp: 'ml:3.4:22.0'
+    pvp: 'ml:3.4:22.0',
+    scoreboard: 'mr:14.0:0.0',
+    minimap: 'tr:2.6:18.0'
   };
 
   HELS.forEach(function (el) {

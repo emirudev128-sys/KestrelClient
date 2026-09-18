@@ -397,7 +397,7 @@ class Game {
        would make the direction of that dependency a matter of opinion. */
     try {
       const synced = await hud.sync(this.L.gameDir(instanceId), this.store.readSettings().hud, this.log);
-      if (synced.imported) this.store.writeSettings({ hud: synced.settings });
+      if ((synced.imported || synced.migrated) && synced.settings) this.store.writeSettings({ hud: synced.settings });
     } catch (e) {
       /* A HUD IS NOT A REASON NOT TO PLAY. If this cannot be written the mod
          falls back to its own defaults, which is a worse HUD and not a

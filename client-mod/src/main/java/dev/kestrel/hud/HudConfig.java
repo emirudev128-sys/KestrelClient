@@ -105,8 +105,8 @@ public final class HudConfig {
        element picked out of the rest — coordinates bigger, ping in red, the
        fps counter with no box behind it at all.
 
-       THE DEFAULTS ARE THE OLD CONSTANTS TO THE BYTE. #0A0E13 at 72% is what
-       Paint.PLATE always was; #F1F4F7 is Paint.VALUE. An element nobody has
+       THE DEFAULTS ARE THE PAINT CONSTANTS TO THE BYTE. #0A0E13 at 42% is
+       Paint.PLATE (72% until the user found 42% cleaner); #F1F4F7 is Paint.VALUE. An element nobody has
        styled draws exactly as it did before this field existed.
 
        A COLOUR AND ITS ALPHA ARE TWO FIELDS, not one packed #AARRGGBB.
@@ -115,7 +115,7 @@ public final class HudConfig {
        hardest thing on the screen to change. */
     public static final class Style {
         static final int DEF_PLATE_RGB = 0x0A0E13;
-        static final int DEF_PLATE_ALPHA = 72;
+        static final int DEF_PLATE_ALPHA = 42;
         static final int DEF_TEXT_RGB = 0xF1F4F7;
         static final int DEF_TEXT_ALPHA = 100;
 

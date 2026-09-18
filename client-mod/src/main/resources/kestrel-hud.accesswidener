@@ -7,3 +7,8 @@ accessWidener v2 named
 # falls back to its default, so a 4x zoom at 70 came out as 70. See
 # Behaviours.zoom. Nothing here injects code into a Minecraft method.
 accessible field net/minecraft/client/render/GameRenderer zoom F
+
+# AND THE HURT FLASH'S TEXTURE. OverlayTexture keeps the 16x16 image every
+# entity is drawn with; its top half is the red a hit flashes. Hit colour
+# repaints those pixels and uploads them again. See HitColour.
+accessible field net/minecraft/client/render/OverlayTexture texture Lnet/minecraft/client/texture/NativeImageBackedTexture;

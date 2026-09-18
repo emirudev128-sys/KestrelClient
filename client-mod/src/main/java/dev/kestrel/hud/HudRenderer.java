@@ -49,6 +49,7 @@ final class HudRenderer {
             if (r.kind == HudElements.ITEM_ICON) h = Math.max(h, HudElements.ITEM);
             else if (r.kind == HudElements.EFFECT_ICON) h = Math.max(h, HudElements.EFFECT);
             else if (r.kind == HudElements.MOUSE) h = Math.max(h, HudElements.MOUSE_H);
+            else if (r.kind == HudElements.MAP) h = Math.max(h, Minimap.SIZE);
         }
         return h;
     }
@@ -75,15 +76,58 @@ final class HudRenderer {
         return KestrelHudClient.FONT.equals(font) ? KESTREL_CAP_MIDDLE : VANILLA_CAP_MIDDLE;
     }
 
+    /* ── THE ROOM AROUND THE CONTENTS, EVEN ON EVERY SIDE ─────────────────
+       A PLATE OF ICONS IS PADDED TIGHTER. A text row carries its own pixel
+       above and below the capitals, so three pixels of padding over it reads
+       as four — the same as the four at each side. An item, an effect icon or
+       the map fills its row to the edge, so the same padding left them
+       sitting in a box a size too big, and the map visibly off centre: four
+       each side, three above and below. Rows that are all icon rows get two
+       on every side instead. */
+    static final int COMPACT_PAD = 2;
+
+    private static boolean compact(List<List<HudElements.Run>> rows) {
+        if (rows.isEmpty()) return false;
+        for (List<HudElements.Run> row : rows) {
+            boolean icon = false;
+            for (HudElements.Run r : row) {
+                if (r.kind == HudElements.ITEM_ICON || r.kind == HudElements.EFFECT_ICON || r.kind == HudElements.MAP) {
+                    icon = true;
+                    break;
+                }
+            }
+            if (!icon) return false;
+        }
+        return true;
+    }
+
+    static int padX(List<List<HudElements.Run>> rows) { return compact(rows) ? COMPACT_PAD : Paint.PAD_X; }
+
+    static int padY(List<List<HudElements.Run>> rows) { return compact(rows) ? COMPACT_PAD : Paint.PAD_Y; }
+
+    /* THE LAST PIXEL OF MINECRAFT'S FONT IS NOT INK. Every glyph's advance is
+       its width plus one pixel of spacing, and the spacing after the last
+       glyph is counted in the text's width — so a plate measured by it had
+       four pixels of padding on the left and five on the right. The Kestrel
+       face is a TrueType font whose side bearings are already roughly even,
+       so nothing comes off it. */
+    private static int trailing(HudElements.Run r) {
+        if (r.kind != HudElements.TEXT || r.text == null) return 0;
+        return KestrelHudClient.FONT.equals(r.text.getStyle().getFont()) ? 0 : 1;
+    }
+
     /** the unscaled width of one row, padding included; the CENTRE mark takes no room */
-    private static int rowWidth(TextRenderer tr, List<HudElements.Run> runs) {
+    private static int rowWidth(TextRenderer tr, List<HudElements.Run> runs, int padX) {
         int inner = 0, n = 0;
+        HudElements.Run last = null;
         for (HudElements.Run r : runs) {
             if (r.kind == HudElements.CENTRE || r.kind == HudElements.SPACER) continue;
             if (n++ > 0) inner += Paint.GAP;
             inner += runWidth(tr, r);
+            last = r;
         }
-        return inner + Paint.PAD_X * 2;
+        if (last != null) inner -= trailing(last);
+        return inner + padX * 2;
     }
 
     /** THE WIDEST ROW IS THE ELEMENT'S WIDTH. A plate sized to its first row
@@ -91,8 +135,8 @@ final class HudRenderer {
      *  is here to prevent — and the layout editor measures with the same call,
      *  so a dragged box is the size the drawn one will be. */
     static int width(TextRenderer tr, List<List<HudElements.Run>> rows) {
-        int w = 0;
-        for (List<HudElements.Run> r : rows) w = Math.max(w, rowWidth(tr, r));
+        int w = 0, padX = padX(rows);
+        for (List<HudElements.Run> r : rows) w = Math.max(w, rowWidth(tr, r, padX));
         return w;
     }
 
@@ -101,7 +145,7 @@ final class HudRenderer {
         if (rows.isEmpty()) return Paint.LINE + Paint.PAD_Y * 2;
         int h = 0;
         for (List<HudElements.Run> r : rows) h += rowHeight(r);
-        return h + Paint.PAD_Y * 2;
+        return h + padY(rows) * 2;
     }
 
     /* ── forward: anchor + percentage -> pixels ────────────────────────────
@@ -203,13 +247,32 @@ final class HudRenderer {
            been wired to the fill. */
         if (st.plate) plate(ctx, w, h, rounded, st);
 
-        int y = Paint.PAD_Y;
+        int padX = padX(rows);
+        int y = padY(rows);
         for (List<HudElements.Run> runs : rows) {
         int rh = rowHeight(runs);
         /* a centred row starts wherever leaves equal room either side of it */
-        int x = centred(runs) ? (w - rowWidth(tr, runs)) / 2 + Paint.PAD_X : Paint.PAD_X;
-        for (HudElements.Run r : runs) {
+        int x = centred(runs) ? (w - rowWidth(tr, runs, padX)) / 2 + padX : padX;
+        for (int ri = 0; ri < runs.size(); ri++) {
+            HudElements.Run r = runs.get(ri);
             if (r.kind == HudElements.CENTRE || r.kind == HudElements.SPACER) continue;
+            if (r.kind == HudElements.FILL) {
+                /* what follows ends at the right padding: measure it, jump to
+                   where it has to start, and never backwards onto what is
+                   already drawn */
+                int rest = 0, m = 0;
+                HudElements.Run tail = null;
+                for (int j = ri + 1; j < runs.size(); j++) {
+                    HudElements.Run q = runs.get(j);
+                    if (q.kind == HudElements.CENTRE || q.kind == HudElements.SPACER || q.kind == HudElements.FILL) continue;
+                    if (m++ > 0) rest += Paint.GAP;
+                    rest += runWidth(tr, q);
+                    tail = q;
+                }
+                if (tail != null) rest -= trailing(tail);
+                x = Math.max(x + r.width, w - padX - rest);
+                continue;
+            }
             if (r.kind == HudElements.ITEM_ICON) {
                 /* the game's item renderer: the player's resource packs, their
                    enchantment glint, their custom models — nothing of ours */
@@ -231,13 +294,18 @@ final class HudRenderer {
                 x += r.width + Paint.GAP;
                 continue;
             }
+            if (r.kind == HudElements.MAP) {
+                Minimap.draw(ctx, x, y + (rh - Minimap.SIZE) / 2, r.element, st);
+                x += r.width + Paint.GAP;
+                continue;
+            }
             if (r.kind == HudElements.MOUSE) {
                 mouse(ctx, x, y + (rh - HudElements.MOUSE_H) / 2, r.buttons, st);
                 x += r.width + Paint.GAP;
                 continue;
             }
             if (r.kind == HudElements.SPACE) {
-                space(ctx, Paint.PAD_X, w - Paint.PAD_X, y + (rh - 4) / 2, HudElements.colourOf(r.role, st));
+                space(ctx, padX, w - padX, y + (rh - 4) / 2, HudElements.colourOf(r.role, st));
                 continue;
             }
             /* ── NO SHADOW. NOT OVER A PLATE, AND NOT WITHOUT ONE EITHER ───

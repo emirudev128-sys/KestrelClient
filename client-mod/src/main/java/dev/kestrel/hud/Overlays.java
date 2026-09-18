@@ -90,6 +90,111 @@ final class Overlays {
 
         Feature tnt = config.feature("tnt");
         if (tnt != null && tnt.on) tntTimers(c, ctx, matrices, vcp, cam, delta, config, tnt);
+
+        Feature wp = config.feature("waypoints");
+        if (wp != null && wp.on) waypoints(c, ctx, matrices, vcp, cam, config, wp);
+    }
+
+    /* ── waypoints ────────────────────────────────────────────────────────
+       A BEAM, where the chunks are loaded: two thin see-through planes
+       crossed at the spot, the whole height of the world, so it reads from
+       every side and does not hide what is behind it.
+
+       A LABEL THAT SAYS HOW FAR. A waypoint three thousand blocks away is past
+       the far plane and would simply not draw, so the label is pulled in along
+       the line to it — never further than LABEL_REACH — and scaled so its size
+       on screen is set by distance, not by where it was drawn: full name-tag
+       size close by, smaller as you go, and past DOT_BEYOND nothing but a
+       small dot of its colour, which is all a far waypoint needs to say. Drawn
+       through walls, because a waypoint you can only see when nothing is in
+       the way is not much of one. The distance is in the waypoint's own
+       colour: the grey it was disappeared against half the sky. */
+    private static final double LABEL_REACH = 48.0;
+    private static final double DOT_BEYOND = 250.0;
+
+    private static void waypoints(MinecraftClient c, WorldRenderContext ctx, MatrixStack m, VertexConsumerProvider vcp,
+                                  Vec3d cam, HudConfig config, Feature f) {
+        java.util.List<Waypoints.Point> all = Waypoints.here(c);
+        if (all.isEmpty()) return;
+        String dim = Waypoints.dimension(c);
+
+        if (f.flag("beam")) {
+            double reach = (c.options.getClampedViewDistance() + 1) * 16.0;
+            double y0 = c.world.getBottomY() - cam.y;
+            double y1 = c.world.getBottomY() + c.world.getHeight() - cam.y;
+            VertexConsumer q = vcp.getBuffer(Layers.WALLS);
+            for (Waypoints.Point p : all) {
+                if (!p.on || !dim.equals(p.dim)) continue;
+                double bx = p.x + 0.5 - cam.x, bz = p.z + 0.5 - cam.z;
+                if (bx * bx + bz * bz > reach * reach) continue;
+                int argb = (0x66 << 24) | p.rgb();
+                double r = 0.15;
+                wall(m, q, bx - r, bz - r, bx + r, bz + r, y0, y1, argb);
+                wall(m, q, bx - r, bz + r, bx + r, bz - r, y0, y1, argb);
+            }
+        }
+
+        TextRenderer tr = c.textRenderer;
+        HudElements.Face face = KestrelHudClient.face(config);
+        int plate = ((int) (c.options.getTextBackgroundOpacity(0.25f) * 255f) << 24) | (Paint.PLATE & 0xFFFFFF);
+        boolean range = f.flag("range");
+        /* the far ones are dots, drawn after the labels in a layer of their own */
+        java.util.List<Object[]> far = new java.util.ArrayList<>();
+        for (Waypoints.Point p : all) {
+            if (!p.on || !dim.equals(p.dim)) continue;
+            double wx = p.x + 0.5 - cam.x, wy = p.y + 1.5 - cam.y, wz = p.z + 0.5 - cam.z;
+            double dist = Math.sqrt(wx * wx + wy * wy + wz * wz);
+            if (dist < 0.5) continue;
+            double shown = Math.min(dist, LABEL_REACH);
+            double k = shown / dist;
+            double metres = c.player.getPos().distanceTo(new Vec3d(p.x + 0.5, p.y, p.z + 0.5));
+            /* full size up to 16 blocks, down to 55% by 250 */
+            double shrink = 1.0 - 0.45 * Math.max(0.0, Math.min(1.0, (metres - 16.0) / (DOT_BEYOND - 16.0)));
+            float scale = 0.025f * (float) (Math.max(1.0, shown / 6.0) * shrink);
+
+            m.push();
+            m.translate(wx * k, wy * k, wz * k);
+            m.multiply(ctx.camera().getRotation());
+            m.scale(scale, -scale, scale);
+            Matrix4f pose = m.peek().getPositionMatrix();
+            if (metres > DOT_BEYOND) {
+                /* a copy: the stack's own matrix is reused once this entry is popped */
+                far.add(new Object[] { new Matrix4f(pose), p.rgb() });
+            } else {
+                MutableText label = face.of(p.name).copy().withColor(p.rgb());
+                if (range) label.append(face.of("  " + Math.round(metres) + " m").copy().withColor(p.rgb()));
+                float x = -tr.getWidth(label) / 2f;
+                tr.draw(label, x, 0, 0xFFFFFFFF, false, pose, vcp, TextRenderer.TextLayerType.SEE_THROUGH, plate,
+                    LightmapTextureManager.MAX_LIGHT_COORDINATE);
+            }
+            m.pop();
+        }
+        if (!far.isEmpty()) {
+            VertexConsumer dots = vcp.getBuffer(Layers.MARKERS);
+            for (Object[] d : far) farDot(dots, (Matrix4f) d[0], (Integer) d[1]);
+        }
+    }
+
+    /* A SMALL ROUND DOT at the label's place, in label units: three across,
+       with a dark rim a unit wider, sixteen slices so it is round */
+    private static void farDot(VertexConsumer v, Matrix4f pose, int rgb) {
+        disc(v, pose, 4.2f, 0xB00A0E13);
+        disc(v, pose, 3.0f, 0xFF000000 | rgb);
+    }
+
+    private static void disc(VertexConsumer v, Matrix4f pose, float r, int argb) {
+        float a = ((argb >>> 24) & 255) / 255f, red = ((argb >> 16) & 255) / 255f;
+        float g = ((argb >> 8) & 255) / 255f, b = (argb & 255) / 255f;
+        int n = 16;
+        for (int i = 0; i < n; i++) {
+            double a0 = Math.PI * 2 * i / n, a1 = Math.PI * 2 * (i + 1) / n;
+            float x0 = (float) Math.cos(a0) * r, y0 = (float) Math.sin(a0) * r;
+            float x1 = (float) Math.cos(a1) * r, y1 = (float) Math.sin(a1) * r;
+            v.vertex(pose, 0f, 0f, 0f).color(red, g, b, a);
+            v.vertex(pose, x0, y0, 0f).color(red, g, b, a);
+            v.vertex(pose, x1, y1, 0f).color(red, g, b, a);
+            v.vertex(pose, x1, y1, 0f).color(red, g, b, a);
+        }
     }
 
     /* ── hitboxes ─────────────────────────────────────────────────────────
@@ -298,6 +403,25 @@ final class Overlays {
                 COLOR_MASK.endDrawing();
                 DISABLE_CULLING.endDrawing();
                 LEQUAL_DEPTH_TEST.endDrawing();
+                TRANSLUCENT_TRANSPARENCY.endDrawing();
+                POSITION_COLOR_PROGRAM.endDrawing();
+            });
+
+        /* A FAR WAYPOINT'S DOT: seen through everything, since a waypoint
+           hidden by the hill in front of it is the one you need, and drawn
+           with no culling, because a billboard flipped to face you is wound
+           backwards */
+        static final RenderLayer MARKERS = new Layers("kestrel_hud_waypoint_dots",
+            VertexFormats.POSITION_COLOR, VertexFormat.DrawMode.QUADS, false, () -> {
+                POSITION_COLOR_PROGRAM.startDrawing();
+                TRANSLUCENT_TRANSPARENCY.startDrawing();
+                ALWAYS_DEPTH_TEST.startDrawing();
+                DISABLE_CULLING.startDrawing();
+                COLOR_MASK.startDrawing();
+            }, () -> {
+                COLOR_MASK.endDrawing();
+                DISABLE_CULLING.endDrawing();
+                ALWAYS_DEPTH_TEST.endDrawing();
                 TRANSLUCENT_TRANSPARENCY.endDrawing();
                 POSITION_COLOR_PROGRAM.endDrawing();
             });

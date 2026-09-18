@@ -26,8 +26,8 @@ final class FeaturesTab {
     private static int groupOf(String id) {
         switch (id) {
             case "sprint": case "sneak": case "snaplook": return 0;
-            case "zoom": case "freelook": return 1;
-            case "hitbox": case "chunks": case "tnt": return 2;
+            case "zoom": case "freelook": case "worldmap": return 1;
+            case "hitbox": case "chunks": case "tnt": case "hitcolour": case "waypoints": return 2;
             default: return 3;
         }
     }
@@ -37,7 +37,7 @@ final class FeaturesTab {
         switch (f.id) {
             case "sprint": case "sneak": return held(f, "toggle") ? "held" : "pressed";
             case "zoom": case "freelook": return held(f, "hold") ? "held" : "pressed";
-            case "hitbox": case "chunks": case "tnt": return "always";
+            case "hitbox": case "chunks": case "tnt": case "hitcolour": return "always";
             default: return "pressed";
         }
     }
@@ -58,6 +58,10 @@ final class FeaturesTab {
             case "chunks": return "Draw chunk edges";
             case "tnt": return "Time every fuse";
             case "freelook": return "Look around";
+            case "hitcolour": return "Tint what gets hit";
+            case "sorter": return "Sort";
+            case "waypoints": return "Mark this spot";
+            case "worldmap": return "Open the map";
             default: return f.label;
         }
     }
@@ -172,9 +176,10 @@ final class FeaturesTab {
         float cursor = top - s.rulesScroll;
         for (Feature f : all) cursor = rule(s, ctx, f, colX, cursor, colW) + 12;
         float content = cursor + s.rulesScroll - top;
-        s.rulesScroll = Math.max(0, Math.min(s.rulesScroll, content - viewH));
+        final float rulesMax = Math.max(0, content - viewH);
+        s.rulesScroll = Math.max(0, Math.min(s.rulesScroll, rulesMax));
         s.unclip(ctx);
-        s.onWheel(colX, top, colW, viewH, by -> s.rulesScroll = Math.max(0, s.rulesScroll + by));
+        s.onWheel(colX, top, colW, viewH, by -> s.rulesScroll = Math.max(0, Math.min(rulesMax, s.rulesScroll + by)));
 
         keys(s, ctx, all, c[0] + c[2] - Glass.PAD - keysW, top, keysW);
     }
@@ -330,9 +335,10 @@ final class FeaturesTab {
             s.clipTo(ctx, x + 1, y + 1, w - 2, ah - 1);
             float top = y + Glass.PAD_TOP - s.inspScroll;
             float end = settings(s, ctx, f, all, x + Glass.PAD, top, w - 2 * Glass.PAD);
-            s.inspScroll = Math.max(0, Math.min(s.inspScroll, end - top + Glass.PAD_TOP * 2 - ah));
+            final float inspMax = Math.max(0, end - top + Glass.PAD_TOP * 2 - ah);
+            s.inspScroll = Math.max(0, Math.min(s.inspScroll, inspMax));
             s.unclip(ctx);
-            s.onWheel(x, y, w, ah, by -> s.inspScroll = Math.max(0, s.inspScroll + by));
+            s.onWheel(x, y, w, ah, by -> s.inspScroll = Math.max(0, Math.min(inspMax, s.inspScroll + by)));
         }
         summary(s, ctx, all, x, y + h - SUMMARY_H - Chrome.CHANGES_H, w);
         Chrome.changes(s, ctx, x, y + h - Chrome.CHANGES_H, w);
@@ -421,6 +427,8 @@ final class FeaturesTab {
                 y += Glass.ROW;
             }
         }
+        /* waypoints are places, not options: their list lives under the options */
+        if ("waypoints".equals(f.id)) y = WaypointsPanel.draw(s, ctx, x, y, w);
         return y;
     }
 

@@ -499,6 +499,9 @@ try {
     first.settings.features.hitbox && first.settings.features.hitbox.on === true
       && first.built.doc.features.hitbox.opts.colour === '#55FFFF',
     JSON.stringify(first.settings.features.hitbox));
+  ok('a launch carries the opacity migration into the settings it hands back to be saved',
+    first.migrated === true && first.settings.styleRev === hud.STYLE_REV,
+    'styleRev ' + first.settings.styleRev);
   ok('an element the launcher no longer declares is let go, not carried forever',
     first.settings.elements.tnt === undefined && first.built.dropped === 0,
     'dropped ' + first.built.dropped);
@@ -610,10 +613,391 @@ const awFile = path.join(ROOT, 'client-mod', 'src', 'main', 'resources', 'kestre
 const awLines = fs.existsSync(awFile)
   ? fs.readFileSync(awFile, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
   : [];
-ok('the access widener opens exactly one field, the renderer\'s zoom',
-  awLines.length === 2 && awLines[0] === 'accessWidener v2 named'
-    && awLines[1] === 'accessible field net/minecraft/client/render/GameRenderer zoom F',
+ok('the access widener opens exactly two fields: the renderer\'s zoom and the hurt-flash texture',
+  awLines.length === 3 && awLines[0] === 'accessWidener v2 named'
+    && awLines[1] === 'accessible field net/minecraft/client/render/GameRenderer zoom F'
+    && awLines[2] === 'accessible field net/minecraft/client/render/OverlayTexture texture Lnet/minecraft/client/texture/NativeImageBackedTexture;',
   awLines.join(' | ') || 'missing');
+
+/* ── HIT COLOUR ────────────────────────────────────────────────────────── */
+const hc = (opts, on) => hud.build({ features: { hitcolour: { on: on !== false, opts } } }).doc.features.hitcolour;
+ok('hit colour defaults to vanilla\'s own flash: red, at 30%',
+  hud.build({}).doc.features.hitcolour.opts.colour === '#FF0000' && hud.build({}).doc.features.hitcolour.opts.strength === 30
+    && hud.build({}).doc.features.hitcolour.on === false);
+ok('and a strength is kept in 0..100 on steps of 5',
+  hc({ strength: 42 }).opts.strength === 40 && hc({ strength: 250 }).opts.strength === 100);
+const hitJava = src('HitColour.java');
+if (hitJava) {
+  ok('the mod repaints only the hurt half of the overlay texture, and puts vanilla\'s back when off',
+    /static final int VANILLA = 0xB2FF0000;/.test(hitJava) && /for \(int y = 0; y < 8; y\+\+\)/.test(hitJava)
+      && /if \(f == null \|\| !f\.on\) return VANILLA;/.test(hitJava) && /if \(want == applied\) return;/.test(hitJava));
+  ok('where 30% is exactly vanilla\'s alpha, 0xB2',
+    Math.floor(255 * (1 - 30 / 100)) === 0xB2 && /\(int\) \(255\.0 \* \(1\.0 - strength \/ 100\.0\)\)/.test(hitJava));
+}
+
+/* ── INVENTORY SORTER ──────────────────────────────────────────────────── */
+ok('the sorter is a feature on R, off until switched on',
+  !!hud.FEATURES.sorter && hud.FEATURES.sorter.key === 'KEY_R' && hud.build({}).doc.features.sorter.on === false
+    && hud.build({}).doc.features.sorter.opts.order === 'type' && hud.build({}).doc.features.sorter.opts.hotbar === false);
+const sorterSrc = src('Sorter.java');
+if (sorterSrc) {
+  ok('it ignores a key typed into a search box, and never sorts the creative inventory',
+    sorterSrc.includes('if (typing(screen.getFocused())) return;')
+      && sorterSrc.includes('screen instanceof CreativeInventoryScreen) return;'));
+  ok('and it only clicks: left click, pick up, through the interaction manager',
+    sorterSrc.includes('clickSlot(h.syncId, slots.get(i).id, 0, SlotActionType.PICKUP, c.player)'));
+}
+
+/* ── WAYPOINTS ─────────────────────────────────────────────────────────── */
+ok('waypoints are a feature on B, off until switched on, with beams, distance and a death mark',
+  !!hud.FEATURES.waypoints && hud.FEATURES.waypoints.key === 'KEY_B' && hud.build({}).doc.features.waypoints.on === false
+    && ['beam', 'range', 'death'].every((k) => hud.build({}).doc.features.waypoints.opts[k] === true));
+const wpSrc = src('Waypoints.java');
+const overSrc2 = src('Overlays.java');
+if (wpSrc && overSrc2) {
+  ok('a waypoint belongs to a world: the save folder in singleplayer, the address on a server',
+    wpSrc.includes('return "sp:" +') && wpSrc.includes('return "mp:" +') && wpSrc.includes('p.dim = dimension(c);'));
+  ok('they live in the mod’s own file, written whole and moved into place',
+    wpSrc.includes('kestrel-waypoints.json') && wpSrc.includes('StandardCopyOption.ATOMIC_MOVE'));
+  ok('a death is marked once, on the moment of dying, and replaces the last one',
+    wpSrc.includes('if (dead && !wasDead && f.flag("death"))') && wpSrc.includes('list.removeIf(p -> "Death".equals(p.name));'));
+  ok('labels show at any distance, pulled inside the far plane and drawn through walls',
+    overSrc2.includes('double shown = Math.min(dist, LABEL_REACH);') && overSrc2.includes('TextLayerType.SEE_THROUGH, plate,'));
+}
+
+/* ── MINIMAP ───────────────────────────────────────────────────────────── */
+ok('the minimap is an element, switched by the launcher’s Minimap module',
+  hud.ELEMENTS.indexOf('minimap') >= 0 && hud.labelOf('minimap') === 'Minimap' && html.includes('data-el="minimap" data-mod="Minimap"')
+    && hud.build({}).doc.elements.minimap.opts.zoom === 'normal' && hud.build({}).doc.elements.minimap.opts.rotate === true);
+const mapSrc = src('Minimap.java');
+const terrainSrc = src('Terrain.java');
+if (mapSrc && terrainSrc) {
+  ok('it is drawn from the map colours of the top blocks, lit by the slope to the north and west, water darker with depth',
+    terrainSrc.includes('state.getMapColor(r.world, r.pos.set(wx, top, wz))') && terrainSrc.includes('heightAt(r.world, wx, wz - 1)')
+      && terrainSrc.includes('heightAt(r.world, wx - 1, wz)') && terrainSrc.includes('light = 0.98 - depth * 0.025;'));
+  ok('and a refresh reuses the heights it already has for the neighbours',
+    mapSrc.includes('int north = y > 0 ? heights[i - T] : Integer.MIN_VALUE;'));
+  ok('no outline and no fill of its own: the plate is the only box',
+    !mapSrc.includes('drawBorder(') && !mapSrc.includes('0x40000000'));
+  ok('waypoints and players on it move to the fraction of a pixel, so they do not step against the map',
+    mapSrc.includes('Shapes.dot(ctx, mx + sx, my + sy,') && mapSrc.includes('other.getLerpedPos(delta)'));
+  ok('the player is a small smooth triangle, not a block of pixels',
+    mapSrc.includes('Shapes.arrow(ctx, mx, my, arrowSize,') && mapSrc.includes('float arrowSize = 3.2f *'));
+  ok('moving shifts the image in place and reads only the new edge; the GPU copy is sent only when a pixel changed',
+    mapSrc.includes('System.arraycopy(a, row + dx, a, row, T - dx);') && !mapSrc.includes('int[] nextPixels')
+      && mapSrc.includes('if (dirty) upload();') && mapSrc.includes('if (pixels[i] != argb)'));
+  ok('under a roof over the whole world it reads down from the player, not the roof',
+    terrainSrc.includes('if (w.getDimension().hasCeiling()) return true;'));
+  ok('a teleport, a new view or a new height reads nothing at once: all of it goes through the clock, middle first',
+    mapSrc.includes('long deadline = System.nanoTime() + BUDGET_NS;') && mapSrc.includes('private static final long BUDGET_NS = 1_000_000L;')
+      && !mapSrc.includes('refreshRows(') && mapSrc.includes('Arrays.sort(squares, (a, b) -> Double.compare(far('));
+}
+
+/* ── PLATES: EVEN ON EVERY SIDE, AND FAINTER BY DEFAULT ────────────────── */
+ok('the box behind every element defaults to 42%',
+  hud.PLATE_ALPHA === 42 && hud.build({}).doc.elements.fps.plateAlpha === 42);
+const mig = hud.migrateStyle({ elements: { fps: { plateAlpha: 72 }, ping: { plateAlpha: 60 } } });
+ok('a stored 72 that was only the old default becomes 42, once; a value somebody chose is kept',
+  mig.changed === true && mig.hud.styleRev === hud.STYLE_REV && mig.hud.elements.fps.plateAlpha === 42 && mig.hud.elements.ping.plateAlpha === 60
+    && hud.migrateStyle({ styleRev: hud.STYLE_REV, elements: { fps: { plateAlpha: 72 } } }).hud.elements.fps.plateAlpha === 72);
+const rendSrc2 = src('HudRenderer.java');
+const cfgSrc2 = src('HudConfig.java');
+const paintSrc = src('Paint.java');
+if (rendSrc2 && cfgSrc2 && paintSrc) {
+  ok('and the mod draws the same 42% when a document says nothing',
+    cfgSrc2.includes('static final int DEF_PLATE_ALPHA = 42;') && paintSrc.includes('static final int PLATE = 0x6B0A0E13;'));
+  ok('Minecraft font text loses the spacing pixel after its last glyph, so a plate is not wider on the right',
+    rendSrc2.includes('return KestrelHudClient.FONT.equals(r.text.getStyle().getFont()) ? 0 : 1;') && rendSrc2.includes('if (last != null) inner -= trailing(last);'));
+  ok('a plate of icons — armour, totems, the minimap — has the same small padding on every side',
+    rendSrc2.includes('static final int COMPACT_PAD = 2;') && rendSrc2.includes('int y = padY(rows);'));
+}
+const editorSrc2 = src('EditorScreen.java');
+if (editorSrc2) {
+  ok('the menu opens where it was left: tab, selection, scroll',
+    editorSrc2.includes('this.onFeatures = lastOnFeatures;') && editorSrc2.includes('this.element = lastElement != null && names.contains(lastElement)')
+      && editorSrc2.slice(editorSrc2.indexOf('public void removed()'), editorSrc2.indexOf('public void removed()') + 300).includes('remember();'));
+}
+
+/* ── THE WORLD MAP ─────────────────────────────────────────────────────── */
+ok('M opens the map, on by default',
+  !!hud.FEATURES.worldmap && hud.FEATURES.worldmap.key === 'KEY_M' && hud.build({}).doc.features.worldmap.on === true);
+const worldMapSrc = src('WorldMap.java');
+const mapTabSrc = src('MapTab.java');
+const clientSrc2 = src('KestrelHudClient.java');
+if (worldMapSrc && mapTabSrc && clientSrc2) {
+  const terrainSrc2 = src('Terrain.java');
+  ok('it reads only chunks the game already holds, and asks for none',
+    worldMapSrc.includes('if (!c.world.getChunkManager().isChunkLoaded(cx, cz)) continue;')
+      && worldMapSrc.includes('if (c.world.getChunkManager().isChunkLoaded(cx, cz)) read(c, r, cx, cz, readSurface, readCaves, feet);')
+      && !['getChunk(', 'loadChunk', 'ChunkTicketType'].some((t) => worldMapSrc.includes(t))
+      /* the reader looks a chunk up in the form that never makes one */
+      && terrainSrc2.includes('chunk = world.getChunkManager().getWorldChunk(cx, cz);')
+      && !/getWorldChunk\([^)]*true\)|ChunkTicketType|getChunk\(/.test(terrainSrc2));
+  ok('M opens the menu on its Map tab, and the map puts waypoints where you right-click',
+    clientSrc2.includes('client.setScreen(new EditorScreen(config, runDir, true));')
+      && mapTabSrc.includes('Waypoints.addAt(c, null, wx, wy, wz)') && mapTabSrc.includes('static boolean rightClick('));
+  /* sent as they are drawn, which only happens while the map is open */
+  const drawAt = worldMapSrc.indexOf('static void draw(');
+  ok('its tiles go to the GPU only as the open map draws them, nearest the middle first, two milliseconds a frame',
+    drawAt > 0 && worldMapSrc.indexOf('upload(c, t, feet);') > drawAt
+      && (worldMapSrc.match(/upload\(c, t, feet\);/g) || []).length === 1
+      && worldMapSrc.includes('if (stale && System.nanoTime() < deadline) upload(c, t, feet);')
+      && worldMapSrc.includes('UPLOAD_NS = 2_000_000L'));
+  /* the black squares left behind a death: a chunk that loaded and unloaded
+     between two visits of a slow sweep was never read */
+  ok('every chunk is read: queued the moment it loads, and read on its way out if it never was',
+    worldMapSrc.includes('ClientChunkEvents.CHUNK_LOAD.register(') && worldMapSrc.includes('ClientChunkEvents.CHUNK_UNLOAD.register(')
+      && worldMapSrc.includes('boolean surface = readSurface && !place.seenSurface.contains(k);')
+      && worldMapSrc.includes('read(c, LAST_CHANCE.begin(world).use(chunk), cx, cz, surface, caves, c.player.getBlockY());')
+      && clientSrc2.includes('WorldMap.register();'),
+    'a chunk passed through between two sweeps stayed a hole in the map');
+  /* the nether trip that wiped the overworld's picture */
+  ok('each world and dimension keeps its own picture, in its own folder; leaving one writes it and gives back its textures',
+    worldMapSrc.includes('String here = Waypoints.worldKey(c) + "|" + Waypoints.dimension(c);')
+      && worldMapSrc.includes('place = new Place(key, MapFiles.folder(root, Waypoints.worldKey(c), Waypoints.dimension(c)));')
+      && worldMapSrc.includes('if (place != null) leave(c);')
+      && worldMapSrc.includes('c.getTextureManager().destroyTexture(t.id);\n        t.texture = null;\n        t.dirty = true;')
+      && !worldMapSrc.includes('tiles.clear()') && !worldMapSrc.includes('surface.clear()') && !worldMapSrc.includes('caves.clear()'),
+    'going to the nether and back started the overworld map from nothing');
+  ok('a tile given a texture again gets a fresh id, never one destroyed on the way out',
+    worldMapSrc.includes('t.id = Identifier.of(KestrelHudClient.MOD_ID, "worldmap/" + (textureSerial++));'));
+  /* every restart of the game started the map from nothing */
+  const mapFilesSrc = src('MapFiles.java');
+  ok('the map is kept between games: written half a minute after a change, on leaving a world or dimension, and as the game closes',
+    worldMapSrc.includes('private static final int SAVE_EVERY = 600;') && worldMapSrc.includes('if (++sinceSave >= SAVE_EVERY) {')
+      && worldMapSrc.includes('ClientLifecycleEvents.CLIENT_STOPPING.register(c -> {\n            if (place != null) saveAll();\n            MapFiles.flush();')
+      && /if \(!enabled \|\| c\.world == null\) \{[\s\S]{0,120}if \(place != null\) leave\(c\);/.test(worldMapSrc),
+    'every restart started the map from nothing');
+  ok('and read back as it is needed: a tile you read into, and a tile the open map is showing',
+    worldMapSrc.includes('!MapFiles.load(place.file(layer, tx, tz), layer, tx, tz, t.pixels, t.biomes)')
+      && worldMapSrc.includes('if (place.size(far) >= (far ? MAX_OVERVIEW : MAX_TILES) && !evictOldest(c, far, frame)) break;')
+      && worldMapSrc.includes('private static final int MAX_TILES = 96;'));
+  ok('a tile let go of is written first, and nothing on screen is let go to show something else',
+    /private static boolean evictOldest\(MinecraftClient c, boolean overview, long keep\) \{[\s\S]{0,520}if \(oldest == null \|\| oldest\.used >= keep\) return false;\s*save\(oldest\);/.test(worldMapSrc));
+  const biomePlaneSrc = src('BiomePlane.java');
+  const overviewSrc = src('Overview.java');
+  ok('written on a thread of its own from a copy, in the game folder, and never anywhere else',
+    mapFilesSrc.includes('Executors.newSingleThreadExecutor(') && worldMapSrc.includes('t.pixels.clone()')
+      && worldMapSrc.includes('t.biomes == null ? null : t.biomes.copy()')
+      && worldMapSrc.includes('Path root = c.runDirectory.toPath().resolve("kestrel-map");')
+      && !/java\.net|HttpClient|URLConnection|Socket/.test(mapFilesSrc + worldMapSrc + biomePlaneSrc + overviewSrc)
+      && hud.FEATURES.worldmap.desc.includes('kept between games'));
+  ok('the map\'s files, biomes and overview have no Minecraft in them, so they can be checked with no game running',
+    [mapFilesSrc, biomePlaneSrc, overviewSrc, src('CaveScan.java')].every((t) => t && !/import net\.minecraft|import net\.fabricmc|import com\.mojang/.test(t)));
+
+  /* ── THE OVERVIEW: ZOOMED ALL THE WAY OUT, EVERYTHING ────────────────
+     a window at the furthest zoom was more full tiles than memory is given,
+     and the edges of a large explored world stayed blank */
+  ok('at the furthest zoom — or sooner, when a window of full tiles would not fit in memory — the map draws overview tiles: four blocks to a pixel, sixteen full tiles in each',
+    overviewSrc.includes('static final int STEP = 4;')
+      && worldMapSrc.includes('boolean far = zoom < 0.5f || (long) across * down > MAX_TILES - 16;')
+      && worldMapSrc.includes('int layer = (caves ? MapFiles.CAVES : MapFiles.SURFACE) + (far ? 2 : 0);')
+      && worldMapSrc.includes('int span = TILE * step;') && worldMapSrc.includes('m.scale(zoom * step, zoom * step, 1f);'),
+    'the edges of a big map were blank at the furthest zoom');
+  ok('the overview only mirrors the full tiles: a chunk is folded in as it is read, a tile back from disk whole',
+    (worldMapSrc.match(/\n            fold\(c, t, cx, cz\);/g) || []).length === 2
+      && worldMapSrc.includes('if (Overview.fold(full.pixels, fx, fz, 16, over.pixels, ox, oz, full.caves)) {')
+      && worldMapSrc.includes('foldWhole(t.pixels, tx, tz, tile(c, layer + 2, Math.floorDiv(tx, Overview.STEP), Math.floorDiv(tz, Overview.STEP)));'));
+  ok('and a map kept before there were overviews gets them: looked for wherever a full tile has a file, folded in from disk while the map is open',
+    worldMapSrc.includes('all.add(key(Math.floorDiv((int) (full >> 32), Overview.STEP), Math.floorDiv((int) full, Overview.STEP)));')
+      && worldMapSrc.includes('} else if (place.known.get(layer).contains(k)) {')
+      && worldMapSrc.includes('else if (place.saved.get(layer - 2).contains(key(ftx, ftz))) mending.add(new int[] { layer - 2, ftx, ftz });')
+      && worldMapSrc.includes('if (far) mend(loadDeadline);')
+      && worldMapSrc.includes('else if (MapFiles.load(place.file(layer, ftx, ftz), layer, ftx, ftz, scratch, null)) foldWhole(scratch, ftx, ftz, over);'));
+  ok('overviews are counted apart from full tiles, so neither crowds the other out of memory',
+    worldMapSrc.includes('private static final int MAX_OVERVIEW = 96;')
+      && worldMapSrc.includes('if (place.size(overview) >= (overview ? MAX_OVERVIEW : MAX_TILES)) evictOldest(c, overview, Long.MAX_VALUE);'));
+
+  /* ── WHAT THE POINTER IS OVER ─────────────────────────────────────── */
+  const terrainSrc6 = src('Terrain.java');
+  ok('each chunk read leaves its biomes in the tile — at the surface, or just over the cave floor — and the file keeps them by name',
+    worldMapSrc.includes('if ((bx & 3) == 1 && (bz & 3) == 1) cellY[(bz >> 2) * 4 + (bx >> 2)] = Terrain.lastY;')
+      && worldMapSrc.includes(': CaveScan.kindOf(packed) == CaveScan.FLOOR ? CaveScan.heightOf(packed) + 1 : feet;')
+      && worldMapSrc.includes('if (changed | biomes(r, t, cx, cz)) t.unsaved = true;')
+      && terrainSrc6.includes('chunk.getBiomeForNoiseGen(wx >> 2, y >> 2, wz >> 2);')
+      && terrainSrc6.includes('entry.getKey().map(k -> k.getValue().toString()).orElse("")')
+      && mapFilesSrc.includes('private static final int VERSION = 2;') && mapFilesSrc.includes('if (version < 1 || version > VERSION) return false;'));
+  ok('the biome under the pointer comes from the tile, so it is known anywhere you have been; the block is asked of the world',
+    worldMapSrc.includes('static Spot probe(MinecraftClient c, boolean caves, int wx, int wz) {')
+      && worldMapSrc.includes('if (t == null && place.saved.get(layer).contains(k)) t = tile(c, layer, tx, tz);')
+      && worldMapSrc.includes('s.biome = t.biomes.get(Math.floorMod(wx, TILE) >> 2, Math.floorMod(wz, TILE) >> 2);')
+      && worldMapSrc.includes('if (s.y != Integer.MIN_VALUE) s.block = Terrain.blockName(r, wx, s.y, wz);'));
+  ok('the map names the biome beside the pointer — not while dragging — and the cursor, biome and block in the panel',
+    mapTabSrc.includes('spot = WorldMap.probe(c, caves, overX, overZ);')
+      && mapTabSrc.includes('if (biome != null && s.drag == null) {')
+      && mapTabSrc.includes('Chrome.label(s, ctx, "Biome", px, cy);') && mapTabSrc.includes('Chrome.label(s, ctx, "Block", px, cy);')
+      && mapTabSrc.includes('cursor = spot.y != Integer.MIN_VALUE ? overX + "  " + spot.y + "  " + overZ : overX + "  ·  " + overZ;'));
+  ok('a biome is named in the game\'s language, and one it has no name for from its id',
+    terrainSrc6.includes('String key = Util.createTranslationKey("biome", ident);')
+      && terrainSrc6.includes('if (I18n.hasTranslation(key)) return I18n.translate(key);')
+      && terrainSrc6.includes('BIOME_IDS.clear();'));
+}
+
+/* ── THIS ROUND: KEYS, SHAPES, CAVES, WAYPOINT EDITING, SCROLLING ──────── */
+const behSrc3 = src('Behaviours.java');
+const kestrelSrc3 = src('KestrelHudClient.java');
+const mapSrc3 = src('Minimap.java');
+const shapesSrc = src('Shapes.java');
+const chromeSrc3 = src('Chrome.java');
+const wpPanelSrc = src('WaypointsPanel.java');
+const overSrc3 = src('Overlays.java');
+if (behSrc3 && kestrelSrc3 && mapSrc3 && shapesSrc && chromeSrc3 && wpPanelSrc && overSrc3) {
+  ok('a feature key is read from the keyboard too, so a key vanilla also uses — zoom on C — still works',
+    behSrc3.includes('static int presses(MinecraftClient c, String id)') && behSrc3.includes('static boolean held(MinecraftClient c, String id)')
+      && behSrc3.includes('want = held(c, "zoom");') && !behSrc3.includes('while (k.wasPressed()) zoomLatched'));
+  ok('smooth shapes go to the GPU as triangles wound to face the screen, so culling cannot drop them',
+    shapesSrc.includes('float cross = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);') && shapesSrc.includes('RenderLayer.getGui()'));
+  /* underground used to mean the sky's light at zero, which most caves near
+     an opening never reach — so the minimap showed the surface in a cave */
+  ok('underground means rock over your head, held a second before it switches — not the sky light reaching zero',
+    src('Terrain.java').includes('isOpaqueFullCube() && ++solid >= 2') && src('Terrain.java').includes('++against >= 20')
+      && !mapSrc3.includes('LightType.SKY') && !src('Terrain.java').includes('LightType.SKY'));
+  ok('the shading is gentle and there is no edge shadow',
+    src('Terrain.java').includes('Math.max(-0.09, Math.min(0.06, slope))') && !mapSrc3.includes('(5 - i) * 11'));
+  ok('a waypoint past the edge sits on the edge of the minimap, smaller',
+    mapSrc3.includes('boolean off = Math.abs(sx) > limit || Math.abs(sy) > limit;') && mapSrc3.includes('off ? 1.3f : 1.9f'));
+  ok('the minimap zooms on = and -, through four levels',
+    kestrelSrc3.includes('GLFW.GLFW_KEY_EQUAL') && kestrelSrc3.includes('GLFW.GLFW_KEY_MINUS')
+      && JSON.stringify(hud.ELEMENT_OPTS.minimap.zoom.vals) === JSON.stringify(['far', 'normal', 'near', 'close']));
+  ok('waypoints can be added at typed coordinates, and every waypoint’s name and coordinates can be changed',
+    wpPanelSrc.includes('Waypoints.addAt(c, null,') && wpPanelSrc.includes('"wp:x:" + key') && wpPanelSrc.includes('"wp:name:"'));
+  ok('a waypoint’s colour is picked on a wheel with a brightness slider',
+    wpPanelSrc.includes('Chrome.wheel(s, ctx,') && chromeSrc3.includes('Shapes.wheel(ctx, cx, cy, r, value);'));
+  ok('in the world a waypoint label shrinks with distance and past 250 blocks is a small dot; its distance is in its own colour',
+    overSrc3.includes('DOT_BEYOND = 250.0') && overSrc3.includes('if (metres > DOT_BEYOND) {')
+      && overSrc3.includes('face.of("  " + Math.round(metres) + " m").copy().withColor(p.rgb())'));
+}
+const elementsTabSrc3 = src('ElementsTab.java');
+const featuresTabSrc3 = src('FeaturesTab.java');
+const mapTabSrc3 = src('MapTab.java');
+if (elementsTabSrc3 && featuresTabSrc3 && mapTabSrc3) {
+  ok('every scrolled panel stops at its end inside the wheel handler, so scrolling past it does not stutter',
+    elementsTabSrc3.includes('Math.min(listMax, s.listScroll + by)') && elementsTabSrc3.includes('Math.min(inspMax, s.inspScroll + by)')
+      && featuresTabSrc3.includes('Math.min(rulesMax, s.rulesScroll + by)') && featuresTabSrc3.includes('Math.min(inspMax, s.inspScroll + by)')
+      && mapTabSrc3.includes('Math.min(listMax, s.mapListScroll + by)'));
+}
+
+/* ── THIS ROUND: THE PLAYER'S SIZE, FOLDERS, TELEPORT ─────────────────── */
+const mapTabSrc4 = src('MapTab.java');
+const mapSrc4 = src('Minimap.java');
+const wpSrc4 = src('Waypoints.java');
+const wpPanelSrc4 = src('WaypointsPanel.java');
+const shapesSrc4 = src('Shapes.java');
+const editorSrc4 = src('EditorScreen.java');
+const clientSrc4 = src('KestrelHudClient.java');
+if (mapTabSrc4 && mapSrc4 && wpSrc4 && wpPanelSrc4 && shapesSrc4 && editorSrc4 && clientSrc4) {
+  ok('the player arrow is sized with the zoom, on the minimap and on the map',
+    mapSrc4.includes('float arrowSize = 3.2f * Math.max(0.6f, Math.min(1.35f, (float) Math.sqrt(zoom)));')
+      && mapSrc4.includes('Shapes.arrow(ctx, mx, my, arrowSize,')
+      && mapTabSrc4.includes('float size = 7f * Math.max(0.45f, Math.min(1.4f, zoom / 2f));')
+      && mapTabSrc4.includes('Shapes.arrow(ctx, px, pz, size,'));
+  ok('a waypoint is filed in a folder by name, and a file without folders still reads',
+    wpSrc4.includes('String folder = "";') && wpSrc4.includes('if (p.folder == null) p.folder = "";')
+      && wpSrc4.includes('if (p.folder.length() > MAX_NAME) p.folder = p.folder.substring(0, MAX_NAME);'));
+  ok('folders come first, alphabetical, each shut or open, with one square for all of it and a rename',
+    wpPanelSrc4.includes('new TreeMap<>(String.CASE_INSENSITIVE_ORDER)') && wpPanelSrc4.includes('private static float folder(')
+      && wpPanelSrc4.includes('Shapes.chevron(ctx, x + 5, cy, 3.5f, !shut,') && shapesSrc4.includes('static void chevron(')
+      && wpPanelSrc4.includes('for (Waypoints.Point p : in) p.on = !hide;')
+      && wpPanelSrc4.includes('private static void renameFolder(') && wpPanelSrc4.includes('"wp:in:" + key'));
+  ok('a folder holding the open waypoint cannot be shut out of sight',
+    wpPanelSrc4.includes('SHUT.contains(shutKey(c, e.getKey())) && !in.contains(s.mapSelected)'));
+  ok('teleport is offered only to a player the server lets use /tp, and runs in the waypoint’s own dimension',
+    wpPanelSrc4.includes('c.player.hasPermissionLevel(2)')
+      && wpPanelSrc4.includes('"execute in %s run tp @s %.1f %d %.1f"')
+      && wpPanelSrc4.includes('Identifier.tryParse(p.dim) == null') && wpPanelSrc4.includes("p.dim.indexOf(' ') >= 0")
+      && mapTabSrc4.includes('WaypointsPanel.teleportButton(s, ctx, c, p, px, cy);'));
+  /* the one command the mod sends: nowhere else says anything to the server */
+  const modFiles = fs.readdirSync(modDir).filter((n) => n.endsWith('.java'));
+  const senders = modFiles.filter((n) => /sendChatCommand|sendChatMessage|sendCommand\(/.test(src(n)));
+  ok('the only command the mod ever sends is that teleport, and the mod says so',
+    senders.length === 1 && senders[0] === 'WaypointsPanel.java'
+      && (wpPanelSrc4.match(/sendChatCommand\(/g) || []).length === 1
+      && clientSrc4.includes('{@link WaypointsPanel#teleport}') && clientSrc4.includes('{@link Sorter}')
+      && !clientSrc4.includes('makes no request'),
+    senders.join(', '));
+  ok('a click inside the box being typed into carries on typing instead of reverting it',
+    editorSrc4.includes('fieldText = id.equals(closedId) && closedText != null ? closedText : value == null ? "" : value;')
+      && editorSrc4.includes('closedId = fieldId;\n        closedText = fieldText;\n        commitField();'));
+}
+
+/* ── DEPTH: THE CAVES, BOTH MAPS, AND THE NETHER ───────────────────────── */
+const DEPTHS = JSON.stringify(['auto', 'surface', 'caves']);
+ok('the minimap has a Depth option: auto, surface or caves, auto unless changed',
+  !!hud.ELEMENT_OPTS.minimap.depth && JSON.stringify(hud.ELEMENT_OPTS.minimap.depth.vals) === DEPTHS
+    && hud.build({}).doc.elements.minimap.opts.depth === 'auto'
+    && hud.build({ elements: { minimap: { a: 'tr', x: 0, y: 0, s: 1, opts: { depth: 'caves' } } } }).doc.elements.minimap.opts.depth === 'caves'
+    && hud.build({ elements: { minimap: { a: 'tr', x: 0, y: 0, s: 1, opts: { depth: 'xray' } } } }).doc.elements.minimap.opts.depth === 'auto');
+ok('and the world map the same choice, as its own setting',
+  !!hud.FEATURES.worldmap.opts.layer && JSON.stringify(hud.FEATURES.worldmap.opts.layer.vals) === DEPTHS
+    && hud.build({}).doc.features.worldmap.opts.layer === 'auto'
+    && JSON.stringify(hud.build({}).doc.optSpec.layer.vals) === DEPTHS && JSON.stringify(hud.build({}).doc.optSpec.depth.vals) === DEPTHS);
+const terrainSrc5 = src('Terrain.java');
+const caveScanSrc = src('CaveScan.java');
+const mapSrc5 = src('Minimap.java');
+const worldMapSrc5 = src('WorldMap.java');
+const mapTabSrc5 = src('MapTab.java');
+const clientSrc5 = src('KestrelHudClient.java');
+if (terrainSrc5 && caveScanSrc && mapSrc5 && worldMapSrc5 && mapTabSrc5 && clientSrc5) {
+  ok('each map reads its own Depth; the nether, with no surface, is always caves',
+    mapSrc5.includes('boolean wantCave = Terrain.caves(w, el.choice("depth", Terrain.AUTO));')
+      && worldMapSrc5.includes('readCaves = Terrain.caves(c.world, f.choice("layer", Terrain.AUTO));')
+      && terrainSrc5.includes('if (w.getDimension().hasCeiling()) return true;\n        if (CAVES.equals(depth)) return true;\n        if (SURFACE.equals(depth)) return false;\n        return underground;'));
+  ok('the Map tab sets it from its header, and draws the picture it chose',
+    mapTabSrc5.includes('s.config.putFeature("worldmap", now.withOpt("layer", \'"\' + DEPTHS[i] + \'"\'));')
+      && mapTabSrc5.includes('if (inHeader) textRight = depthControl(s, ctx, depth, rx - 16, hcy) - 16;')
+      && mapTabSrc5.includes('WorldMap.draw(ctx, cx, cy, mw, mh, s.mapX, s.mapZ, zoom, caves);')
+      && mapTabSrc5.includes('WorldMap.empty(caves)'));
+  ok('underground is decided once a tick, for both maps',
+    clientSrc5.includes('Terrain.tick(client);\n        Minimap.tick(client, config);'));
+  /* the lag in the nether: a world lookup for every block, and a fixed count
+     of chunks a tick however long they took */
+  ok('columns are read from the chunk\'s own sections, an empty section passed in one step',
+    terrainSrc5.includes('sections = chunk == null ? null : chunk.getSectionArray();')
+      && terrainSrc5.includes('return s == null || s.isEmpty() ? null : s;')
+      && caveScanSrc.includes('y = Math.max(bottom, y & ~15) - 1;')
+      && !terrainSrc5.includes('w.getBlockState(pos);') && !mapSrc5.includes('getBlockState('));
+  ok('the world map reads on a clock — a millisecond a tick, four while open — not a count of chunks',
+    worldMapSrc5.includes('private static final long READ_NS = 1_000_000L, READ_NS_OPEN = 4_000_000L;')
+      && worldMapSrc5.includes('while (!queue.isEmpty() && System.nanoTime() - start < budget) {')
+      && worldMapSrc5.includes('if (n > 0 && System.nanoTime() - start >= budget) break;'));
+  /* the holes over the nether's lava sea */
+  ok('open space is followed four times as far, and past that drawn as depth — never a hole',
+    terrainSrc5.includes('private static final int OPEN_DEPTH = 96;') && terrainSrc5.includes('if (kind == CaveScan.OPEN) return DEEP;')
+      && caveScanSrc.includes('return pack(open ? OPEN : SOLID, bottom, 0);'));
+  /* the user's ask: caves are what the cave view is for, so rock is clear */
+  ok('in the cave view solid rock is clear, so only the caves are drawn',
+    terrainSrc5.includes('if (kind == CaveScan.SOLID) return NOTHING;') && !terrainSrc5.includes('ROCK = 0x')
+      && terrainSrc5.includes('return base == 0 ? NOTHING :'));
+  /* lava's map colour is pure red; shaded with depth it became netherrack */
+  ok('lava is its own orange in both views and keeps its glow however deep, apart from netherrack',
+    caveScanSrc.includes('static final int LAVA_ID = 250;')
+      && terrainSrc5.includes('return fluid.isIn(FluidTags.LAVA) ? CaveScan.LAVA_ID : MapColor.WATER_BLUE.id;')
+      && terrainSrc5.includes('if (id == CaveScan.LAVA_ID) return CaveScan.shade(LAVA, 0.8 + 0.2 * CaveScan.light(below));')
+      && terrainSrc5.includes('if (state.getFluidState().isIn(FluidTags.LAVA)) return LAVA;')
+      && terrainSrc5.includes('static final int LAVA = 0xFFFF7B1C;'));
+  ok('the map keeps its caves as readings and lights them for where you stand when it draws',
+    worldMapSrc5.includes('image.setColorArgb(x, y, t.caves ? Terrain.caveColour(v, feet) : v);')
+      && worldMapSrc5.includes('(t.caves && Math.abs(feet - t.litFor) >= 2)')
+      && worldMapSrc5.includes('int packed = Terrain.cave(r, wx, wz, feet);'));
+  ok('caves are read only while they are the picture being shown',
+    worldMapSrc5.includes('read(c, r, cx, cz, readSurface, readCaves, feet);')
+      && worldMapSrc5.includes('readSurface = !c.world.getDimension().hasCeiling();'));
+}
+
+/* ── SCOREBOARD ────────────────────────────────────────────────────────── */
+ok('the scoreboard is an element now, switched by the launcher\'s Scoreboard module',
+  hud.ELEMENTS.indexOf('scoreboard') >= 0 && hud.labelOf('scoreboard') === 'Scoreboard'
+    && /data-el="scoreboard" data-mod="Scoreboard"/.test(html));
+const scoreClientSrc = src('KestrelHudClient.java');
+const scoreElementsSrc = src('HudElements.java');
+if (scoreClientSrc && scoreElementsSrc) {
+  ok('and while it is on, vanilla\'s sidebar is not drawn — through the HUD layer API, not a mixin',
+    /replaceLayer\(net\.fabricmc\.fabric\.api\.client\.rendering\.v1\.IdentifiedLayer\.SCOREBOARD/.test(scoreClientSrc)
+      && /if \(!ownScoreboard\(\)\) vanilla\.render\(ctx, tickCounter\);/.test(scoreClientSrc));
+  ok('it picks the objective the way vanilla does, team slot first',
+    /ScoreboardDisplaySlot\.fromFormatting\(team\.getColor\(\)\)/.test(scoreElementsSrc)
+      && /\.filter\(e -> !e\.hidden\(\)\)\.sorted\(SIDEBAR_ORDER\)\.limit\(15\)/.test(scoreElementsSrc));
+}
 const modJson = path.join(ROOT, 'client-mod', 'src', 'main', 'resources', 'fabric.mod.json');
 const gradleFile = path.join(ROOT, 'client-mod', 'build.gradle');
 ok('and both the build and the loader are told about it',
@@ -680,9 +1064,9 @@ ok('an option shared by several features means the same thing on each',
   featCollide.length === 0, featCollide.join('; ') || Object.keys(featSig).length + ' feature option names');
 if (behJava) {
   ok('the mod honours the mode: sprint and sneak can be held, zoom and freelook toggled',
-    /if \(holds\(f, "toggle"\)\) \{/.test(behJava)
-      && /while \(k\.wasPressed\(\)\) zoomLatched = !zoomLatched;/.test(behJava)
-      && /while \(k\.wasPressed\(\)\) freelookLatched = !freelookLatched;/.test(behJava));
+    behJava.includes('if (holds(f, "toggle")) {')
+      && behJava.includes('if (presses(c, "zoom") % 2 == 1) zoomLatched = !zoomLatched;')
+      && behJava.includes('if (presses(c, "freelook") % 2 == 1) freelookLatched = !freelookLatched;'));
 }
 const defaultKeys = hud.FEATURE_NAMES.map((f) => hud.FEATURES[f].key).filter((k) => k);
 ok('no two features default to the same key',
@@ -962,7 +1346,9 @@ if (elementsJava) {
   ok('durability is a count like advanced tooltips, and the bar is gone',
     /el\.choice\("wear", "number"\)/.test(elementsJava)
       && /new Run\(face, Integer\.toString\(left\), role\)/.test(elementsJava)
-      && !/Run\.bar\(|\bfill\b/.test(elementsJava.replace(/\/\*[\s\S]*?\*\//g, '')));
+      && !/Run\.bar\(|\bfill\b/.test(elementsJava.replace(/\/\*[\s\S]*?\*\//g, '')
+        /* the scoreboard's right-alignment run is a different fill */
+        .replace(/Run\.fill\(\)|static Run fill\(\)/g, '')));
   ok('potion effects can show the effect\'s icon instead of its name',
     /boolean icons = el\.flag\("icons"\)/.test(elementsJava) && /Run\.effect\(type\)/.test(elementsJava)
       && !!(hud.ELEMENT_OPTS.potion && hud.ELEMENT_OPTS.potion.icons && hud.ELEMENT_OPTS.potion.icons.type === 'bool'),
@@ -1156,6 +1542,60 @@ if (!fs.existsSync(classes)) {
     ok('and a thickness dragged in game comes home as a number on the step',
       fromGame.hud.features.hitbox.opts.thickness === 4.5,
       JSON.stringify(fromGame.hud.features.hitbox.opts));
+
+    /* ── THE SORTER'S CLICKS, AGAINST A MODEL OF A CHEST ─────────────────
+       SortPlan is the compiled mod's own class; SortCheck clicks through a
+       thousand random chests with vanilla's left-click rules and checks what a
+       player would see. The broken control run has to fail, or the checks
+       are not looking at anything. */
+    const sortHarness = path.join(ROOT, 'tools', 'hudroundtrip', 'dev', 'kestrel', 'hud', 'SortCheck.java');
+    if (fs.existsSync(sortHarness)) {
+      run(jdk.javac, ['-encoding', 'UTF-8', '-cp', classes, '-d', out, sortHarness]);
+      const sortReport = path.join(dir, 'sort.txt');
+      run(jdk.java, ['-cp', classes + path.delimiter + out, 'dev.kestrel.hud.SortCheck', sortReport]);
+      const sr = Object.fromEntries(fs.readFileSync(sortReport, 'utf8').split(/\r?\n/)
+        .filter((l) => l.includes(' ')).map((l) => [l.slice(0, l.indexOf(' ')), l.slice(l.indexOf(' ') + 1)]));
+      ok('the sorter sorts a thousand random chests: nothing lost, nothing on the cursor, in order, one part-stack each',
+        sr.failures === '0', sr.first || (sr.trials + ' trials'));
+      ok('in a bounded number of clicks', Number(sr.maxclicks) > 0 && Number(sr.maxclicks) <= 200,
+        sr.maxclicks + ' clicks at most for 27 slots');
+      ok('and the same checks fail a sorter that cannot merge, so they can see a bad sort',
+        Number(sr.brokenfailures) > 0, sr.brokenfailures + ' of 1000 caught');
+    }
+
+    /* ── THE CAVE VIEW, AGAINST MADE-UP COLUMNS ──────────────────────────
+       CaveScan is the compiled mod's own class, with no Minecraft in it;
+       CaveCheck gives it the columns that went wrong in game — the nether's
+       lava sea, a pit, rock — and a hundred thousand random ones read both
+       stepped and block by block. */
+    const caveHarness = path.join(ROOT, 'tools', 'hudroundtrip', 'dev', 'kestrel', 'hud', 'CaveCheck.java');
+    if (fs.existsSync(caveHarness)) {
+      run(jdk.javac, ['-encoding', 'UTF-8', '-cp', classes, '-d', out, caveHarness]);
+      const caveReport = path.join(dir, 'cave.txt');
+      run(jdk.java, ['-cp', classes + path.delimiter + out, 'dev.kestrel.hud.CaveCheck', caveReport]);
+      const cr = Object.fromEntries(fs.readFileSync(caveReport, 'utf8').split(/\r?\n/)
+        .filter((l) => l.includes(' ')).map((l) => [l.slice(0, l.indexOf(' ')), l.slice(l.indexOf(' ') + 1)]));
+      ok('the cave view reads every made-up column right: lava forty blocks down, a pit, rock, a lake, glass, the world\'s ends',
+        cr.failures === '0' && Number(cr.cases) >= 18, cr.first || (cr.cases + ' columns and rules'));
+      ok('and a hundred thousand random columns read the same stepping over empty sections as block by block',
+        cr.disagree === '0' && cr.random === '100000', cr.disagree + ' disagreements');
+    }
+
+    /* ── THE MAP'S FILES, BIOMES AND OVERVIEW ─────────────────────────────
+       MapFiles, BiomePlane and Overview are the compiled mod's own classes,
+       with no Minecraft in them; MapCheck writes tiles into a folder of its
+       own, reads them back, damages some, writes one as the last version
+       did, folds tiles into overviews, and deletes the folder after. */
+    const mapHarness = path.join(ROOT, 'tools', 'hudroundtrip', 'dev', 'kestrel', 'hud', 'MapCheck.java');
+    if (fs.existsSync(mapHarness)) {
+      run(jdk.javac, ['-encoding', 'UTF-8', '-cp', classes, '-d', out, mapHarness]);
+      const mapReport = path.join(dir, 'mapfiles.txt');
+      run(jdk.java, ['-cp', classes + path.delimiter + out, 'dev.kestrel.hud.MapCheck', mapReport]);
+      const mr = Object.fromEntries(fs.readFileSync(mapReport, 'utf8').split(/\r?\n/)
+        .filter((l) => l.includes(' ')).map((l) => [l.slice(0, l.indexOf(' ')), l.slice(l.indexOf(' ') + 1)]));
+      ok('the map\'s files read back exactly — mid-write, the newer of two saves, the last version\'s, never a damaged file or the wrong tile — with its biomes by name, and an overview that keeps a one-block cave',
+        mr.failures === '0' && Number(mr.cases) >= 50, mr.first || (mr.cases + ' checks'));
+    }
   } catch (e) {
     ok('the round trip runs', false, e.message.split('\n')[0]);
   } finally {

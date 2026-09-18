@@ -80,6 +80,116 @@ installed in `1-21-4-fabric`; none of it has been seen in game yet:**
   zoom and freelook, each defaulting to what it did before: sprint and sneak toggle, zoom and freelook
   hold. Snap look has none. The Features tab rule reads "While U held" or "When U pressed" from it.
   If Minecraft's own Sprint/Sneak "Toggle" setting is on, the Kestrel key just flips vanilla's latch.
+- **Hit colour** (`HitColour.java`, feature `hitcolour`) — repaints the top half of Minecraft's 16×16
+  overlay texture (the hurt flash, vanilla `0xB2FF0000`) and uploads it on the tick, only on change;
+  `colour` + `strength` (0–100%, 30 = vanilla's alpha exactly). A second access-widener field, no mixin.
+- **Scoreboard element** — the objective vanilla would show, same order and team decoration, as a
+  plate; `title` / `numbers` / `colours`. A `FILL` run right-aligns the numbers. Vanilla's sidebar is
+  hidden while it is on by wrapping `IdentifiedLayer.SCOREBOARD` (Fabric HUD layer API), no mixin.
+  The user's stored modules have Scoreboard off, so it does nothing until switched on.
+- **Inventory sorter** (`Sorter.java`, feature `sorter`, key **R**, off by default) — in a chest,
+  shulker, barrel, hopper or dispenser it sorts the container; anywhere else your inventory (hotbar
+  optional). Left clicks only, planned by `SortPlan` (no Minecraft classes), which `SortCheck` runs
+  against 1000 random chests with vanilla click rules — plus a broken control that must fail. Key in
+  screens arrives through Fabric's `ScreenKeyboardEvents`; a focused search box is skipped.
+- **Waypoints** (`Waypoints.java` + `WaypointsPanel.java`, feature `waypoints`, key **B**, off by default)
+  — per world (`sp:<save folder>` / `mp:<address>`) and per dimension, in the mod-only
+  `config/kestrel-waypoints.json` (Gson, written to a temp file and moved into place). Death marked
+  once on the transition. Beam = two crossed see-through planes in the walls layer; label pulled to at
+  most 48 blocks along the line and scaled with distance, see-through. Menu: colour, rename (Enter keeps,
+  Esc cancels, a click elsewhere keeps), hide, remove, add here.
+- **Minimap element** (`Minimap.java`, module Minimap — stored off for the user) — top-block map colours
+  shaded against the column to the north, a 256×256 texture one pixel a block, shifted in memory as the
+  player moves with only the new edge read, 24 rows refreshed a tick, uploaded only when a pixel changed.
+  Ceiling dimensions read down from the player. `rotate` (north marker when on), `zoom` near/normal/far,
+  `others`, `waypoints`, `depth` (see the depth round). Drawn as a `MAP` run inside the plate with a scissor.
+- **World map** (`WorldMap.java` + `MapTab.java`, feature `worldmap`, key **M**, ON by default) — a third
+  editor tab. `WorldMap` reads chunks the client already holds into 256-block tiles kept for the
+  session, uploaded only while the map is open (see the latest round for how chunks are found now). Drag pans,
+  scroll zooms about the cursor (¼×–8×), click pins, right-click adds a waypoint; waypoints listed on the
+  left (press a distance to centre on it). M again, Esc or Done closes.
+- **Polish round:** plate default 42% (was 72%; `migrateStyle`/`styleRev` moves stored 72s once, persisted
+  by `mc/index.js`); Minecraft-font text drops its trailing spacing pixel from plate widths; plates of
+  icon rows (armour, totems, minimap) pad 2px on every side; minimap: hillshade lit from the north-west,
+  water darker with depth, soft edge instead of outline, smaller arrow, dots placed to sub-pixel; the
+  editor remembers tab, selection, scroll and map zoom.
+- **ZOOM NEVER WORKED BECAUSE OF A KEY CONFLICT.** 1.21.4's `KeyBinding.KEY_TO_BINDINGS` is key → ONE
+  binding; C is vanilla's Save Toolbar Activator, so zoom's binding never got a press. Every feature key
+  now goes through `Behaviours.presses()`/`held()`, which also read the physical key (no screen open) and
+  count a press once. The access-widener zoom itself was fine.
+- **Round after the world map:** smooth triangles/dots/colour wheel via `Shapes` (GUI-layer triangles,
+  self-wound against culling); minimap cave view underground (sky light 0 for a second), gentle shading,
+  no edge shadow, off-map waypoints on the edge, zoom on = / - through far/normal/near/close; waypoints
+  added at typed coordinates, rows show coordinates and distance in their colour, a row opens a name +
+  X/Y/Z + colour-wheel editor (`Chrome.field`, `Chrome.wheel`, one active `EditorScreen.fieldId`);
+  in-world labels shrink to 55% by 250 blocks, then a see-through dot; scroll panels clamp in the wheel
+  handler (no overscroll stutter).
+- **Overview + what the pointer is over (built, checked, not yet seen in game)** — the user asked for
+  both. `Overview.java` (no Minecraft): 1 px = 4 blocks, an overview tile = 16 full tiles; drawn when
+  `zoom < 0.5` or when the window would need more than `MAX_TILES - 16` full tiles (large screens at
+  ½×). It only mirrors the full tiles: each chunk read is folded in, a full tile back from disk is
+  folded whole, and an overview region that shows nothing of a full tile that has a file is mended from
+  disk while the map is open (`Place.known` = overview files ∪ wherever a full file exists — so maps
+  saved before overviews get them). Surface cells are averages; cave cells are the highest FLOOR, then
+  OPEN, then SOLID — never averaged. Layers are now 4 (`MapFiles.SURFACE/CAVES/..._OVERVIEW`), own LRU
+  pool of 96. **Biomes:** `BiomePlane.java` (no Minecraft) — per full tile, 64×64 cells of 4 blocks, ids
+  by name; filled per chunk read from `chunk.getBiomeForNoiseGen` (surface height, or cave floor + 1);
+  saved in the tile file, **format version 2** (v1 still reads). `WorldMap.probe()` → `Spot{biome,
+  block, y}`: biome from the tile (brought from disk if need be) so it works anywhere explored; block
+  and surface height from the live world, so only where loaded. `MapTab`: the biome's name beside the
+  pointer (hidden while dragging) and Cursor (x y z when known) / Biome / Block rows in the panel.
+  `tools/hudroundtrip/MapCheck` now covers files v1/v2, biomes and the overview (50 checks).
+- **The world map is kept between games (built, checked, not yet seen in game)** — the user found
+  every restart lost it. `MapFiles.java` (no Minecraft in it; `tools/hudroundtrip/MapCheck` tests it)
+  writes one gzipped file per 256-block tile, `<instance>/minecraft/kestrel-map/<safe world>/<safe
+  dimension>/surface|caves/<x>_<z>.kmap`, on one background thread from a copy, temp file then atomic
+  move; a tile asked for while its write waits is read from the copy. `WorldMap` saves what changed
+  every 30 s, on leaving a world or dimension, and on `CLIENT_STOPPING` (then waits up to 5 s). Only
+  the current place is in memory now (96 tiles, LRU; the open map reads tiles in view from disk, 3 ms
+  a frame, never evicting one on screen). Names: letters/digits/dots/dashes + CRC32. Local only.
+- **Depth round (built, checked, not yet seen in game)** — the user found the cave view not working
+  and the nether map buggy and laggy:
+  - **`Terrain.java` reads for both maps**, from the chunk's own sections (`Reader`: one chunk lookup
+    per column run, an empty section passed 16 blocks at a time) instead of a world lookup per block.
+    The cave decision is `CaveScan.java`, with no Minecraft in it, so `tools/hudroundtrip/CaveCheck`
+    runs it against known columns (lava sea 40 down, pit, rock, lake, glass, world ends) and 100,000
+    random columns read stepped vs block by block.
+  - **Holes:** open space is now followed 96 blocks (was 24) and past that drawn `DEEP`; only an
+    unloaded chunk is nothing. The nether's lava sea was the worst of it.
+  - **After the user saw it:** "looks better in nether", but lava and netherrack blended (lava's map
+    colour is pure red; shaded with depth it became netherrack's dark red) — lava now has its own id
+    (`CaveScan.LAVA_ID` 250) and colour (`Terrain.LAVA`, orange, dimmed at most 20% by depth, also on
+    the surface view). And rock in the cave view is now CLEAR (was a flat dark shade), at the user's
+    ask, so only the caves are drawn.
+  - **Underground** = two opaque full cubes over the head within 24, held 20 ticks (reset at once on a
+    new world/dimension) — it was sky light 0, which most caves near an opening never reach.
+  - **Depth option on both maps:** minimap element `depth`, world map feature `layer` (two names, one
+    spec table): `auto` (caves while underground) / `surface` / `caves`; the nether is always caves.
+    The Map tab header has the control (over the map's corner when the window is narrow).
+  - **World map keeps two pictures per place** (surface; caves as `CaveScan` packed readings with the
+    floor height) and lights the caves at upload for the player's current feet, so areas read at other
+    heights do not show seams. Caves are read only while shown.
+  - **Clocks, not counts:** world map reads 1 ms a tick (4 ms open), uploads as tiles are drawn (2 ms a
+    frame, nearest the middle first); the minimap re-reads in 16×16 squares middle-first for 1 ms a
+    tick, shifts in place (no per-step arrays), and a view/height change re-reads rather than blanks.
+- **Round before (folders, teleport, map fixes; built, checked, not yet seen in game):**
+  - **Black squares on the map after a death** were chunks never read: the old sweep visited the
+    chunks around the player 3 a tick, so a chunk that loaded and unloaded between visits stayed a
+    hole. `WorldMap.register()` now queues every chunk on `ClientChunkEvents.CHUNK_LOAD` and reads an
+    unread chunk on `CHUNK_UNLOAD` before it goes; a slow sweep stays for blocks that change.
+  - **The nether wiped the overworld map.** One picture per world+dimension now (`Place`, up to 4,
+    least recently visited dropped); leaving one destroys its GPU textures but keeps its colours, and
+    a re-uploaded tile gets a fresh texture id. 48 tiles per place (about 1,770 blocks square, 12 MB).
+  - The player arrow scales with zoom on both maps (minimap `3.2 × clamp(√zoom, 0.6, 1.35)`, map
+    `7 × clamp(zoom/2, 0.45, 1.4)`).
+  - **Waypoint folders** — `Point.folder` ("" = none, old files read fine). Folders first, alphabetical,
+    shut/open per world for the session, a square that hides/shows all, rename (to nothing = unfile);
+    a waypoint's editor has a Folder box plus one-press chips for existing folders and `take out`.
+  - **Teleport** — in the waypoint editor and the map inspector; offered only when
+    `player.hasPermissionLevel(2)` (cheats/operator), sends `execute in <dim> run tp @s x y z` with
+    `sendChatCommand`, then closes the menu. The ONLY command the mod sends; `KestrelHudClient`'s
+    header now says honestly that the sorter's clicks and this teleport reach the server, on a press.
+  - A click inside the text box being typed into no longer reverts it (`EditorScreen.closedId`).
 - **Keystrokes have room between rows** — a `SPACER` run, 3 unscaled pixels, between W, A S D, the
   mouse and the spacebar. The plate grows to fit; it is measured, not drawn over.
 - **Features now survive a launch.** `hud.sync()` merged a game-written document back as elements,
@@ -99,7 +209,8 @@ menu), `kestrel-hud-0.1.0.editor-v1.jar` (the new editor before icons, mouse and
 (before the feature fixes: toggle sprint stuck on, zoom through the FOV option, TNT as a HUD plate),
 `kestrel-hud-0.1.0.editor-v5.jar` (before line thickness and keystrokes spacing), `kestrel-hud-0.1.0.editor-v6.jar`
 (before freelook — the last jar with no mixins; put it back if the game will not start),
-`kestrel-hud-0.1.0.editor-v7.jar` (freelook on Z, before hold/toggle modes).
+`kestrel-hud-0.1.0.editor-v7.jar` (freelook on Z, before hold/toggle modes), `editor-v8.jar` (before hit
+colour and the scoreboard), `editor-v9.jar` (before the inventory sorter), `editor-v10.jar` (before waypoints), `editor-v11.jar` (before the minimap), `editor-v12.jar` (before the world map and the polish round), `editor-v13.jar` (before the zoom key fix, shapes, cave view and waypoint editing), `editor-v14.jar` (before waypoint folders, teleport and the per-dimension map), `editor-v15.jar` (before the depth round: Terrain, CaveScan, the Depth options), `editor-v16.jar` (the depth round with dark rock and red lava, before clear rock and orange lava), `editor-v17.jar` (before the map was kept between games), `editor-v18.jar` (before the overview and the biome/block readout).
 
 ### The loop, end to end
 
@@ -109,7 +220,7 @@ menu), `kestrel-hud-0.1.0.editor-v1.jar` (the new editor before icons, mouse and
     & $g -p client-mod build
 
     # 2. verify
-    node tools/hudcheck.mjs        # 254 assertions; the last twenty-eight run the COMPILED mod
+    node tools/hudcheck.mjs        # 302 assertions; the last thirty-one run the COMPILED mod
 
     # 3. hand over  client-mod/build/libs/kestrel-hud-0.1.0.jar
     #    ONLY that file. Not -sources.jar: it has an unexpanded ${version} and Fabric warns.
@@ -323,6 +434,16 @@ mods list, removable like anything else.
 `clean()`, which also runs on `update()` and `seed()` and would have marked all thirty-nine existing
 instances. Retro-fitting mods into somebody's tuned setup is the failure that loses trust in a
 launcher's mods folder for good. Modpack imports pass `'off'`: a pack states its own list.
+
+**The user's own `1-21-4-fabric` instance predates the flag** (`perf: ""`), so it had none of the set.
+On 18 September 2026 they asked for Sodium "as default", were told it already is for new instances, and
+chose to have the whole set put into that instance: done by calling `perf.fill()` from a script (the
+launcher's own plan + sha1-checked install; Store and ContentStore read from disk on every call, so a
+second process is safe while the launcher is open). It now has Sodium 0.6.13, Lithium 0.15.3,
+FerriteCore 7.1.3 and Entity Culling 1.10.5 beside Caxton, Fabric API and the HUD mod — 7 mods; the
+flag was left as it was. **The HUD mod has not been seen running with Sodium yet**: the world overlays
+(hitboxes, chunk borders, waypoint beams, TNT timer) and the panel blur are what to look at first.
+There is still no button that adds the set to an existing instance; Browse installs them by name.
 
 Degrades rather than failing — `NO_BUILD` is caught per mod. Verified live: Fabric 1.21.4 gives 5 of 5,
 Fabric 1.16.5 gives 4, NeoForge 1.21.1 gives 4, Forge 1.20.1 gives 2, 1.8.9 gives 0.

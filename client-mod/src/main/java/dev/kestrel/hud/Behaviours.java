@@ -24,8 +24,8 @@ import java.util.Map;
  * <p>Freelook is the one that cannot be. The camera takes its rotation off
  * the player and the mouse writes straight into the player, with no way in
  * between — so it has the mod's only two mixins, and they do nothing unless
- * {@link Freelook} says it is on. Hit colours would need the same, and are
- * still named in {@code docs/hud-backlog.md} rather than quietly missing.
+ * {@link Freelook} says it is on. Hit colour turned out not to need one — see
+ * {@link HitColour} — and the inventory sorter is only clicks ({@link Sorter}).
  *
  * <p><b>EVERY EFFECT IS UNDONE WHEN THE FEATURE IS SWITCHED OFF.</b> Zoom
  * slows the mouse, which is a setting the player also owns, and a mod that
@@ -56,7 +56,43 @@ final class Behaviours {
     private static long lastFrame = 0L;
 
     /** the features something in this file reads a key for */
-    static final java.util.Set<String> KEYED = java.util.Set.of("sprint", "sneak", "zoom", "snaplook", "freelook");
+    static final java.util.Set<String> KEYED = java.util.Set.of("sprint", "sneak", "zoom", "snaplook", "freelook", "sorter", "waypoints", "worldmap");
+
+    /* ── READING A KEY ANOTHER BINDING MAY ALSO HAVE ─────────────────────
+       THIS IS WHY ZOOM NEVER WORKED. Minecraft 1.21.4 hands each key to
+       exactly ONE binding: its key map is key -> binding, not key -> list.
+       Zoom's default is C, and C is vanilla's "Save Toolbar Activator" — so
+       vanilla's binding got every press of C and zoom's binding never saw
+       one. Freelook worked only because nothing else uses U.
+
+       So a feature key is read from the keyboard itself as well: held while
+       the physical key is down, pressed on the tick it goes down. Only with
+       no screen open — a C typed into chat is a letter. Presses the binding
+       did receive are counted as they always were; the key is only read from
+       the keyboard when the binding got nothing, so a press is never counted
+       twice. A tap shorter than a tick on a shared key can be missed, which
+       is the price of not being told about it. */
+    private static final Map<String, Boolean> WAS_DOWN = new java.util.HashMap<>();
+
+    /** whether a feature's key is held right now */
+    static boolean held(MinecraftClient c, String id) {
+        KeyBinding k = KEYS.get(id);
+        if (k == null) return false;
+        if (k.isPressed()) return true;
+        return c.currentScreen == null && physicallyDown(c, k);
+    }
+
+    /** how many times a feature's key was pressed since the last tick — call once a tick per feature */
+    static int presses(MinecraftClient c, String id) {
+        KeyBinding k = KEYS.get(id);
+        if (k == null) return 0;
+        int queued = 0;
+        while (k.wasPressed()) queued++;
+        boolean now = c.currentScreen == null && physicallyDown(c, k);
+        Boolean before = WAS_DOWN.put(id, now);
+        boolean edge = now && !Boolean.TRUE.equals(before);
+        return queued > 0 ? queued : edge ? 1 : 0;
+    }
 
     /** freelook's and zoom's own latches, for when they are set to toggle rather than hold */
     private static boolean freelookLatched = false;
@@ -151,6 +187,10 @@ final class Behaviours {
     static void tick(MinecraftClient c, HudConfig config) {
         if (c == null || c.options == null) return;
 
+        /* before the world check: the overlay texture is the game's, not the
+           world's, and a colour switched off on the way out should go back */
+        HitColour.tick(c, config);
+
         if (c.player == null) {
             /* no world: undo anything still applied, so a setting cannot
                survive into the title screen */
@@ -171,6 +211,13 @@ final class Behaviours {
         zoom(c, config);
         snapLook(c, config);
         freelook(c, config);
+        Sorter.tick(c, config);
+        Waypoints.tick(c, config);
+    }
+
+    /** a feature's binding, for the screens that read keys themselves; null if it has none */
+    static KeyBinding key(String id) {
+        return KEYS.get(id);
     }
 
     /* ── freelook ─────────────────────────────────────────────────────────
@@ -191,11 +238,11 @@ final class Behaviours {
         }
         boolean want;
         if (holds(f, "hold")) {
-            while (k.wasPressed()) { /* presses mean nothing to a hold */ }
+            presses(c, "freelook");   /* drained: presses mean nothing to a hold */
             freelookLatched = false;
-            want = k.isPressed();
+            want = held(c, "freelook");
         } else {
-            while (k.wasPressed()) freelookLatched = !freelookLatched;
+            if (presses(c, "freelook") % 2 == 1) freelookLatched = !freelookLatched;
             want = freelookLatched;
         }
         if (want) Freelook.start(c);
@@ -228,8 +275,7 @@ final class Behaviours {
             return;
         }
 
-        int presses = 0;
-        while (k.wasPressed()) presses++;
+        int presses = presses(c, id);
 
         /* MINECRAFT'S OWN "TOGGLE" MODE IS ALREADY A LATCH. Its binding flips
            on every setPressed(true), so layering a second latch on top would
@@ -246,7 +292,7 @@ final class Behaviours {
            release is the same careful release a toggle gets — and switching
            the mode in the menu while it is on lets go cleanly too. */
         if (holds(f, "toggle")) {
-            boolean down = k.isPressed();
+            boolean down = held(c, id);
             if (down) {
                 setLatch(sprint, true);
                 if (!target.isPressed()) target.setPressed(true);
@@ -327,11 +373,11 @@ final class Behaviours {
         } else if (holds(f, "hold")) {
             /* presses are drained even here, or a hold would bank them for
                the moment somebody switches the mode to toggle */
-            while (k.wasPressed()) { }
+            presses(c, "zoom");
             zoomLatched = false;
-            want = k.isPressed();
+            want = held(c, "zoom");
         } else {
-            while (k.wasPressed()) zoomLatched = !zoomLatched;
+            if (presses(c, "zoom") % 2 == 1) zoomLatched = !zoomLatched;
             want = zoomLatched;
         }
         if (want == zoomed) return;
@@ -415,7 +461,7 @@ final class Behaviours {
         KeyBinding k = KEYS.get("snaplook");
         if (f == null || !f.on || k == null) return;
         float turn = Float.parseFloat(f.choice("turn", "180"));
-        while (k.wasPressed()) {
+        for (int i = presses(c, "snaplook"); i > 0; i--) {
             c.player.setYaw(net.minecraft.util.math.MathHelper.wrapDegrees(c.player.getYaw() + turn));
         }
     }

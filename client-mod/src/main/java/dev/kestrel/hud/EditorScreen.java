@@ -46,6 +46,15 @@ public class EditorScreen extends Screen {
 
     /* ── what the player is looking at ────────────────────────────────── */
     boolean onFeatures;
+    /* the map tab, and where it is looking */
+    boolean onMap;
+    double mapX, mapZ;
+    float mapZoom = 2f;
+    boolean mapFollow = true;
+    Integer pinX, pinZ;
+    Waypoints.Point mapSelected;
+    float mapListScroll;
+    float[] mapArea;
     String element;
     String feature;
     String filter = "";
@@ -54,6 +63,40 @@ public class EditorScreen extends Screen {
     boolean magnet = true;
     boolean rebinding;
     boolean rebindingBeforeClick;
+    /* ── THE ONE TEXT FIELD BEING TYPED INTO ─────────────────────────────
+       A name, or a coordinate. Its id says which, the text is what has been
+       typed so far, and the commit is what happens to it: on Enter, or when a
+       click lands anywhere else. Esc drops it. One at a time, like a cursor. */
+    String fieldId;
+    String fieldText = "";
+    boolean fieldNumeric;
+    Consumer<String> fieldCommit;
+    /* what the add-by-coordinates boxes hold while the menu is open */
+    String newX = "", newY = "", newZ = "";
+
+    /* THE FIELD A CLICK HAS JUST CLOSED, AND WHAT IT HELD. A click commits
+       the field being typed into before it does anything else — so a click
+       inside that same field used to start it again from the value it was
+       drawn with, and Enter then put the old text back. A field reopened by
+       the click that closed it carries on with what was typed. */
+    private String closedId, closedText;
+
+    void editField(String id, String value, boolean numeric, Consumer<String> commit) {
+        commitField();
+        fieldId = id;
+        fieldText = id.equals(closedId) && closedText != null ? closedText : value == null ? "" : value;
+        fieldNumeric = numeric;
+        fieldCommit = commit;
+    }
+
+    void commitField() {
+        if (fieldId == null) return;
+        Consumer<String> commit = fieldCommit;
+        String text = fieldText;
+        fieldId = null;
+        fieldCommit = null;
+        if (commit != null) commit.accept(text);
+    }
     float listScroll;
     float inspScroll;
     float rulesScroll;
@@ -88,15 +131,55 @@ public class EditorScreen extends Screen {
         default void end() { }
     }
 
+    /* ── WHERE IT WAS LEFT ────────────────────────────────────────────────
+       Closing the menu and opening it again used to land on the first
+       element of the Elements tab every time, whatever you had been doing.
+       The tab, the selection, the scroll positions and the canvas mode are
+       kept for as long as the game runs, and put back — where the element or
+       feature still exists — when the menu opens. */
+    private static boolean lastOnFeatures, lastOnMap;
+    private static float lastMapZoom = 2f;
+    private static String lastElement, lastFeature;
+    private static float lastListScroll, lastInspScroll, lastRulesScroll;
+    private static Boolean lastFit, lastMagnet;
+
     public EditorScreen(HudConfig config, Path runDir) {
+        this(config, runDir, false);
+    }
+
+    /** M opens it on the map, whatever tab it was left on */
+    public EditorScreen(HudConfig config, Path runDir, boolean openMap) {
         super(Text.literal("Kestrel HUD"));
         this.config = config;
         this.runDir = runDir;
         List<String> names = config.names();
-        this.element = names.isEmpty() ? "" : names.get(0);
+        this.element = lastElement != null && names.contains(lastElement) ? lastElement
+            : names.isEmpty() ? "" : names.get(0);
         List<String> ids = config.featureNames();
-        this.feature = ids.isEmpty() ? "" : ids.get(0);
+        this.feature = lastFeature != null && ids.contains(lastFeature) ? lastFeature
+            : ids.isEmpty() ? "" : ids.get(0);
+        this.onFeatures = lastOnFeatures;
+        this.onMap = openMap || lastOnMap;
+        this.mapZoom = lastMapZoom;
+        this.listScroll = lastListScroll;
+        this.inspScroll = lastInspScroll;
+        this.rulesScroll = lastRulesScroll;
+        if (lastFit != null) this.fit = lastFit;
+        if (lastMagnet != null) this.magnet = lastMagnet;
         change("opened kestrel-hud.json · rev " + config.revision());
+    }
+
+    private void remember() {
+        lastOnFeatures = onFeatures;
+        lastOnMap = onMap;
+        lastMapZoom = mapZoom;
+        lastElement = element;
+        lastFeature = feature;
+        lastListScroll = listScroll;
+        lastInspScroll = inspScroll;
+        lastRulesScroll = rulesScroll;
+        lastFit = fit;
+        lastMagnet = magnet;
     }
 
     TextRenderer tr() {
@@ -154,7 +237,7 @@ public class EditorScreen extends Screen {
         clip = null;
         miniSource = null;
         miniTarget = null;
-        if (!onFeatures) ElementsTab.prepare(this);
+        if (!onFeatures && !onMap) ElementsTab.prepare(this);
 
         PanelBlur.apply(this.client, panelPixels(), miniSource, miniTarget);
 
@@ -162,7 +245,8 @@ public class EditorScreen extends Screen {
         ctx.getMatrices().push();
         ctx.getMatrices().scale(scale, scale, 1f);
         Chrome.top(this, ctx);
-        if (onFeatures) FeaturesTab.draw(this, ctx);
+        if (onMap) MapTab.draw(this, ctx);
+        else if (onFeatures) FeaturesTab.draw(this, ctx);
         else ElementsTab.draw(this, ctx);
         Chrome.bottom(this, ctx);
         ctx.getMatrices().pop();
@@ -211,22 +295,37 @@ public class EditorScreen extends Screen {
     /* ── input ────────────────────────────────────────────────────────── */
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        /* a right-click on the map puts a waypoint where it lands */
+        if (button == 1 && onMap) {
+            commitField();
+            if (MapTab.rightClick(this, (float) (mouseX / scale), (float) (mouseY / scale))) return true;
+        }
         if (button != 0) return super.mouseClicked(mouseX, mouseY, button);
         float x = (float) (mouseX / scale), y = (float) (mouseY / scale);
         rebindingBeforeClick = rebinding;
         rebinding = false;
         filterFocus = false;
-        for (int i = hits.size() - 1; i >= 0; i--) {
-            Hit hit = hits.get(i);
-            if (x < hit.x0() || y < hit.y0() || x >= hit.x1() || y >= hit.y1()) continue;
-            if (hit.drag() != null) {
-                drag = hit.drag().get();
-                if (drag != null) drag.move(x, y, hasAltDown());
+        /* a click anywhere keeps what was typed so far; a click on another
+           field then starts that one */
+        closedId = fieldId;
+        closedText = fieldText;
+        commitField();
+        try {
+            for (int i = hits.size() - 1; i >= 0; i--) {
+                Hit hit = hits.get(i);
+                if (x < hit.x0() || y < hit.y0() || x >= hit.x1() || y >= hit.y1()) continue;
+                if (hit.drag() != null) {
+                    drag = hit.drag().get();
+                    if (drag != null) drag.move(x, y, hasAltDown());
+                }
+                if (hit.click() != null) hit.click().run();
+                return true;
             }
-            if (hit.click() != null) hit.click().run();
             return true;
+        } finally {
+            closedId = null;
+            closedText = null;
         }
-        return true;
     }
 
     @Override
@@ -271,6 +370,17 @@ public class EditorScreen extends Screen {
             rebinding = false;
             return true;
         }
+        if (fieldId != null) {
+            if (keyCode == GLFW.GLFW_KEY_BACKSPACE) {
+                if (!fieldText.isEmpty()) fieldText = fieldText.substring(0, fieldText.length() - 1);
+            } else if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER || keyCode == GLFW.GLFW_KEY_TAB) {
+                commitField();
+            } else if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                fieldId = null;
+                fieldCommit = null;
+            }
+            return true;
+        }
         if (filterFocus) {
             if (keyCode == GLFW.GLFW_KEY_BACKSPACE) {
                 if (!filter.isEmpty()) filter = filter.substring(0, filter.length() - 1);
@@ -284,11 +394,26 @@ public class EditorScreen extends Screen {
             close();
             return true;
         }
+        /* M closes the map it opened */
+        net.minecraft.client.option.KeyBinding mapKey = Behaviours.key("worldmap");
+        if (onMap && mapKey != null && mapKey.matchesKey(keyCode, scanCode)) {
+            close();
+            return true;
+        }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override
     public boolean charTyped(char chr, int modifiers) {
+        if (fieldId != null) {
+            if (fieldNumeric) {
+                boolean digit = chr >= '0' && chr <= '9', minus = chr == '-' && fieldText.isEmpty();
+                if ((digit || minus) && fieldText.length() < 9) fieldText += chr;
+            } else if (chr >= ' ' && chr != 127 && fieldText.length() < Waypoints.MAX_NAME) {
+                fieldText += chr;
+            }
+            return true;
+        }
         if (!filterFocus) return super.charTyped(chr, modifiers);
         if (chr >= ' ' && chr != 127 && filter.length() < 24) {
             filter += chr;
@@ -324,6 +449,10 @@ public class EditorScreen extends Screen {
 
     @Override
     public void removed() {
+        /* removed, not close: Esc, the menu key, Done and a screen opened over
+           this one all come through here */
+        commitField();
+        remember();
         PanelBlur.release();
     }
 
