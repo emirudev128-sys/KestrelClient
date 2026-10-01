@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "kestrel-hud",
+  "version": "${version}",
+  "name": "Kestrel HUD",
+  "description": "The in-game half of Kestrel. Draws the HUD the launcher's HUD screen configures, and reads that configuration out of the instance rather than carrying a settings screen of its own.",
+  "authors": ["emirudev128-sys"],
+  "contact": {
+    "repo": "https://github.com/emirudev128-sys/KestrelClient"
+  },
+  "license": "All rights reserved",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["dev.kestrel.hud.KestrelHudClient"]
+  },
+  "accessWidener": "kestrel-hud.accesswidener",
+  "mixins": ["kestrel-hud.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "fabric-api": "*",
+    "minecraft": "~26.3",
+    "java": ">=25"
+  }
+}

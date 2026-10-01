@@ -1,0 +1,23 @@
+accessWidener v2 official
+
+# WHAT THE 26.3 BUILD OPENS, UNDER MOJANG'S NAMES. From 26.1 the game ships
+# unobfuscated, so the only namespace there is is "official" — the names below
+# are the ones in the jar, and the classes are where Mojang keeps them. Read
+# and set only; nothing here injects code into a Minecraft method.
+
+# NO ZOOM FIELD ANY MORE. 1.21.4 opened GameRenderer.zoom, a projection
+# scale for huge screenshots; 26.3 has no such field, so zoom narrows the
+# camera's field of view in CameraMixin instead.
+
+# THE FRAME'S RENDER STATE AND ITS CLIP, so a smooth shape can be added to
+# the frame beside the rectangles and text the GUI draws. 26.3 extracts every
+# GUI frame into a list of elements before drawing it; the class that does
+# that keeps the list and the scissor stack to itself. See Shapes.Mesh.
+accessible field net/minecraft/client/gui/GuiGraphicsExtractor guiRenderState Lnet/minecraft/client/renderer/state/gui/GuiRenderState;
+accessible field net/minecraft/client/gui/GuiGraphicsExtractor scissorStack Lnet/minecraft/client/gui/GuiGraphicsExtractor$ScissorStack;
+accessible class net/minecraft/client/gui/GuiGraphicsExtractor$ScissorStack
+
+# AND THE HURT FLASH'S TEXTURE. OverlayTexture keeps the 16x16 image every
+# entity is drawn with; its top half is the red a hit flashes. Hit colour
+# repaints those pixels and uploads them again. See HitColour.
+accessible field net/minecraft/client/renderer/texture/OverlayTexture texture Lnet/minecraft/client/renderer/texture/DynamicTexture;

@@ -1,0 +1,432 @@
+package dev.kestrel.hud;
+
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+
+import java.util.List;
+
+/**
+ * WHERE AN ELEMENT GOES, AND WHAT IT LOOKS LIKE WHEN IT GETS THERE.
+ *
+ * <p>The geometry lived inside the render callback until a layout editor
+ * needed the same answers. Both now ask this: the live HUD to draw, the
+ * editor to draw AND to work backwards from a dragged pixel to the anchor and
+ * percentage that would put it there. Keeping the forward and inverse maps in
+ * one file is the point — they are the same formula read in two directions,
+ * and an editor that computes a position by a different route from the
+ * renderer is an editor whose preview drifts from the result.
+ */
+final class HudRenderer {
+
+    private HudRenderer() { }
+
+    /** a placed element, kept so the next one can avoid sitting on it */
+    static final class Box {
+        final double x, y, w, h;
+        Box(double x, double y, double w, double h) { this.x = x; this.y = y; this.w = w; this.h = h; }
+        boolean hits(Box o) {
+            return x < o.x + o.w && x + w > o.x && y < o.y + o.h && y + h > o.y;
+        }
+        boolean holds(double px, double py) {
+            return px >= x && px < x + w && py >= y && py < y + h;
+        }
+        double cx() { return x + w / 2.0; }
+        double cy() { return y + h / 2.0; }
+    }
+
+    /** the unscaled width of one run — text, or whatever is drawn */
+    private static int runWidth(Font tr, HudElements.Run r) {
+        return r.kind == HudElements.TEXT ? tr.width(r.text) : r.width;
+    }
+
+    /** A ROW IS AS TALL AS ITS TALLEST RUN: a line of text, an item icon, an
+     *  effect icon or the mouse. Everything shorter is centred in it. */
+    static int rowHeight(List<HudElements.Run> runs) {
+        /* a spacer row is exactly as tall as it says, not a line at least */
+        if (runs.size() == 1 && runs.get(0).kind == HudElements.SPACER) return runs.get(0).width;
+        int h = Paint.LINE;
+        for (HudElements.Run r : runs) {
+            if (r.kind == HudElements.ITEM_ICON) h = Math.max(h, HudElements.ITEM);
+            else if (r.kind == HudElements.EFFECT_ICON) h = Math.max(h, HudElements.EFFECT);
+            else if (r.kind == HudElements.MOUSE) h = Math.max(h, HudElements.MOUSE_H);
+            else if (r.kind == HudElements.MAP) h = Math.max(h, Minimap.SIZE);
+        }
+        return h;
+    }
+
+    private static boolean centred(List<HudElements.Run> runs) {
+        return !runs.isEmpty() && runs.get(0).kind == HudElements.CENTRE;
+    }
+
+    /* ── WHERE THE CAPITALS ARE, PER FACE ─────────────────────────────────
+       Text is centred in its row on its capital letters, not on the line box.
+       Minecraft's font draws capitals in the seven pixels from where it is
+       drawn, so their middle is 3.5 down. The Kestrel face is Archivo Medium —
+       the face the launcher draws its own HUD preview in — a TrueType font
+       whose baseline sits 7 font pixels down with capitals 0.686 of its
+       10-pixel size above that: middle 3.57 down, within a tenth of a pixel of
+       Minecraft's, which is why 10 is its size. Centring the line box instead
+       is what left every plate's text high, with three pixels over it and five
+       under. */
+    private static final float VANILLA_CAP_MIDDLE = 3.5f;
+    private static final float KESTREL_CAP_MIDDLE = 7f - 0.686f * 10f / 2f;
+
+    private static float capMiddle(net.minecraft.network.chat.Component t) {
+        net.minecraft.network.chat.FontDescription font = t.getStyle().getFont();
+        return font instanceof net.minecraft.network.chat.FontDescription.Resource res && KestrelHudClient.FONT.equals(res.id()) ? KESTREL_CAP_MIDDLE : VANILLA_CAP_MIDDLE;
+    }
+
+    /* ── THE ROOM AROUND THE CONTENTS, EVEN ON EVERY SIDE ─────────────────
+       A PLATE OF ICONS IS PADDED TIGHTER. A text row carries its own pixel
+       above and below the capitals, so three pixels of padding over it reads
+       as four — the same as the four at each side. An item, an effect icon or
+       the map fills its row to the edge, so the same padding left them
+       sitting in a box a size too big, and the map visibly off centre: four
+       each side, three above and below. Rows that are all icon rows get two
+       on every side instead. */
+    static final int COMPACT_PAD = 2;
+
+    private static boolean compact(List<List<HudElements.Run>> rows) {
+        if (rows.isEmpty()) return false;
+        for (List<HudElements.Run> row : rows) {
+            boolean icon = false;
+            for (HudElements.Run r : row) {
+                if (r.kind == HudElements.ITEM_ICON || r.kind == HudElements.EFFECT_ICON || r.kind == HudElements.MAP) {
+                    icon = true;
+                    break;
+                }
+            }
+            if (!icon) return false;
+        }
+        return true;
+    }
+
+    static int padX(List<List<HudElements.Run>> rows) { return compact(rows) ? COMPACT_PAD : Paint.PAD_X; }
+
+    static int padY(List<List<HudElements.Run>> rows) { return compact(rows) ? COMPACT_PAD : Paint.PAD_Y; }
+
+    /* THE LAST PIXEL OF MINECRAFT'S FONT IS NOT INK. Every glyph's advance is
+       its width plus one pixel of spacing, and the spacing after the last
+       glyph is counted in the text's width — so a plate measured by it had
+       four pixels of padding on the left and five on the right. The Kestrel
+       face is a TrueType font whose side bearings are already roughly even,
+       so nothing comes off it. */
+    private static int trailing(HudElements.Run r) {
+        if (r.kind != HudElements.TEXT || r.text == null) return 0;
+        return KestrelHudClient.FONT.equals(r.text.getStyle().getFont()) ? 0 : 1;
+    }
+
+    /** the unscaled width of one row, padding included; the CENTRE mark takes no room */
+    private static int rowWidth(Font tr, List<HudElements.Run> runs, int padX) {
+        int inner = 0, n = 0;
+        HudElements.Run last = null;
+        for (HudElements.Run r : runs) {
+            if (r.kind == HudElements.CENTRE || r.kind == HudElements.SPACER) continue;
+            if (n++ > 0) inner += Paint.GAP;
+            inner += runWidth(tr, r);
+            last = r;
+        }
+        if (last != null) inner -= trailing(last);
+        return inner + padX * 2;
+    }
+
+    /** THE WIDEST ROW IS THE ELEMENT'S WIDTH. A plate sized to its first row
+     *  would have its second row hanging out of it, which is the failure this
+     *  is here to prevent — and the layout editor measures with the same call,
+     *  so a dragged box is the size the drawn one will be. */
+    static int width(Font tr, List<List<HudElements.Run>> rows) {
+        int w = 0, padX = padX(rows);
+        for (List<HudElements.Run> r : rows) w = Math.max(w, rowWidth(tr, r, padX));
+        return w;
+    }
+
+    /** the unscaled height of an element: each row's own height, and the padding */
+    static int height(List<List<HudElements.Run>> rows) {
+        if (rows.isEmpty()) return Paint.LINE + Paint.PAD_Y * 2;
+        int h = 0;
+        for (List<HudElements.Run> r : rows) h += rowHeight(r);
+        return h + padY(rows) * 2;
+    }
+
+    /* ── forward: anchor + percentage -> pixels ────────────────────────────
+       The anchor decides what x and y MEAN. The offset runs inward from the
+       edge it names, and the element's own size comes off a right or bottom
+       anchor so the box stays on screen. Against a centre or middle anchor
+       the offset runs both ways from the middle, which is why a negative
+       percentage is a real value here and not a mistake to clamp away. */
+    static Box box(HudConfig.Element el, int w, int h, int sw, int sh) {
+        double bw = w * el.scale;
+        double bh = h * el.scale;
+        double ox = sw * el.x / 100.0;
+        double oy = sh * el.y / 100.0;
+        char vert = el.anchor.charAt(0);
+        char horiz = el.anchor.charAt(1);
+
+        double px = horiz == 'l' ? ox : horiz == 'r' ? sw - ox - bw : (sw - bw) / 2.0 + ox;
+        double py = vert == 't' ? oy : vert == 'b' ? sh - oy - bh : (sh - bh) / 2.0 + oy;
+        return new Box(px, py, bw, bh);
+    }
+
+    /* ── inverse: pixels -> anchor + percentage ────────────────────────────
+       Used only by the editor. Two steps, because they answer different
+       questions: which anchor should this element BELONG to, and what offset
+       from that anchor lands it exactly where the cursor left it. */
+
+    /** WHICH THIRD OF THE SCREEN THE ELEMENT'S CENTRE IS IN. An element in
+     *  the top-left corner should be anchored top-left, so that a player on a
+     *  wider monitor finds it in the corner rather than a fixed number of
+     *  pixels from an edge that has moved. Chosen from the CENTRE rather than
+     *  a corner so the answer does not flip while an element straddles a
+     *  boundary with one edge either side of it. */
+    static String anchorAt(double cx, double cy, int sw, int sh) {
+        char h = cx < sw / 3.0 ? 'l' : cx > sw * 2.0 / 3.0 ? 'r' : 'c';
+        char v = cy < sh / 3.0 ? 't' : cy > sh * 2.0 / 3.0 ? 'b' : 'm';
+        return new String(new char[] { v, h });
+    }
+
+    /** The offset, as a percentage, that puts a box of this size at exactly
+     *  this pixel against this anchor. Read the three cases beside the three
+     *  in {@link #box}: each one is that line solved for {@code ox}. */
+    static double[] offsetOf(String anchor, double px, double py, double bw, double bh, int sw, int sh) {
+        char vert = anchor.charAt(0);
+        char horiz = anchor.charAt(1);
+        double ox = horiz == 'l' ? px : horiz == 'r' ? sw - px - bw : px - (sw - bw) / 2.0;
+        double oy = vert == 't' ? py : vert == 'b' ? sh - py - bh : py - (sh - bh) / 2.0;
+        return new double[] { sw == 0 ? 0 : ox / sw * 100.0, sh == 0 ? 0 : oy / sh * 100.0 };
+    }
+
+    /* ── NOTHING SITS ON TOP OF ANYTHING ──────────────────────────────────
+       Two elements sent to the same corner used to overlap into an unreadable
+       smear. The second one now moves clear of the first — downward, because
+       a HUD reads as a column and pushing sideways would walk it off a
+       right-hand anchor.
+
+       A BOTTOM ANCHOR PUSHES UPWARD instead: at the bottom of the screen
+       "underneath the last one" means further from the edge, not off it. The
+       guard bounds the search so a pathological config cannot spin.
+
+       THE EDITOR DOES NOT CALL THIS, and that is deliberate. Stacking is what
+       rescues a layout nobody is looking at; while you are dragging, an
+       element that jumps out from under the cursor to avoid a neighbour is
+       fighting you. The editor shows the overlap, you move it. */
+    static Box avoid(Box box, List<Box> placed, boolean upward) {
+        Box at = box;
+        for (int guard = 0; guard < 16; guard++) {
+            Box clash = null;
+            for (Box o : placed) { if (at.hits(o)) { clash = o; break; } }
+            if (clash == null) break;
+            double ny = upward ? clash.y - at.h - Paint.STACK_GAP : clash.y + clash.h + Paint.STACK_GAP;
+            at = new Box(at.x, ny, at.w, at.h);
+        }
+        return at;
+    }
+
+    /** keeps a box on screen whatever the config or the drag asked for */
+    static Box onScreen(Box b, int sw, int sh) {
+        double x = Math.max(0, Math.min(b.x, sw - b.w));
+        double y = Math.max(0, Math.min(b.y, sh - b.h));
+        return new Box(x, y, b.w, b.h);
+    }
+
+    /* ── drawing one element ──────────────────────────────────────────────
+       Takes the element's Style rather than a pile of colours, because the
+       plate, its transparency and the text tone are one decision made in one
+       place and passing them separately is how three of the four end up
+       agreeing and the fourth does not. */
+    static void draw(GuiGraphicsExtractor ctx, Font tr, List<List<HudElements.Run>> rows,
+                     double px, double py, int w, int h, double scale,
+                     boolean rounded, HudConfig.Style st) {
+        ctx.pose().pushMatrix();
+        ctx.pose().translate((float) px, (float) py);
+        if (scale != 1.0) ctx.pose().scale((float) scale, (float) scale);
+
+        /* NO PLATE IS A REAL CHOICE, not a plate at zero alpha. Turning it
+           off skips the outline too — an element with an invisible box and a
+           visible 1px frame around it is the worst of both, and it is what
+           "remove the background" would have produced if the flag had only
+           been wired to the fill. */
+        if (st.plate) plate(ctx, w, h, rounded, st);
+
+        int padX = padX(rows);
+        int y = padY(rows);
+        for (List<HudElements.Run> runs : rows) {
+        int rh = rowHeight(runs);
+        /* a centred row starts wherever leaves equal room either side of it */
+        int x = centred(runs) ? (w - rowWidth(tr, runs, padX)) / 2 + padX : padX;
+        for (int ri = 0; ri < runs.size(); ri++) {
+            HudElements.Run r = runs.get(ri);
+            if (r.kind == HudElements.CENTRE || r.kind == HudElements.SPACER) continue;
+            if (r.kind == HudElements.FILL) {
+                /* what follows ends at the right padding: measure it, jump to
+                   where it has to start, and never backwards onto what is
+                   already drawn */
+                int rest = 0, m = 0;
+                HudElements.Run tail = null;
+                for (int j = ri + 1; j < runs.size(); j++) {
+                    HudElements.Run q = runs.get(j);
+                    if (q.kind == HudElements.CENTRE || q.kind == HudElements.SPACER || q.kind == HudElements.FILL) continue;
+                    if (m++ > 0) rest += Paint.GAP;
+                    rest += runWidth(tr, q);
+                    tail = q;
+                }
+                if (tail != null) rest -= trailing(tail);
+                x = Math.max(x + r.width, w - padX - rest);
+                continue;
+            }
+            if (r.kind == HudElements.ITEM_ICON) {
+                /* the game's item renderer: the player's resource packs, their
+                   enchantment glint, their custom models — nothing of ours */
+                ctx.item(r.item, x, y + (rh - HudElements.ITEM) / 2);
+                x += r.width + Paint.GAP;
+                continue;
+            }
+            if (r.kind == HudElements.EFFECT_ICON) {
+                /* the effect's sprite from the game's own atlas, the one the
+                   inventory shows, at the element's text transparency */
+                net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+                if (mc != null && r.effect != null) {
+                    int alpha = (st.textArgb() >>> 24) & 0xFF;
+                    ctx.blitSprite(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED,
+                        net.minecraft.client.gui.Hud.getMobEffectSprite(r.effect),
+                        x, y + (rh - HudElements.EFFECT) / 2, HudElements.EFFECT, HudElements.EFFECT,
+                        (alpha << 24) | 0xFFFFFF);
+                }
+                x += r.width + Paint.GAP;
+                continue;
+            }
+            if (r.kind == HudElements.MAP) {
+                Minimap.draw(ctx, x, y + (rh - Minimap.SIZE) / 2, r.element, st);
+                x += r.width + Paint.GAP;
+                continue;
+            }
+            if (r.kind == HudElements.MOUSE) {
+                mouse(ctx, x, y + (rh - HudElements.MOUSE_H) / 2, r.buttons, st);
+                x += r.width + Paint.GAP;
+                continue;
+            }
+            if (r.kind == HudElements.SPACE) {
+                space(ctx, padX, w - padX, y + (rh - 4) / 2, HudElements.colourOf(r.role, st));
+                continue;
+            }
+            /* ── NO SHADOW. NOT OVER A PLATE, AND NOT WITHOUT ONE EITHER ───
+               Over a plate a shadow is a smeared second copy of every glyph —
+               blur pretending to be depth — and the plate is already what
+               holds the text apart from the world.
+
+               An earlier version here turned the shadow back ON when the
+               plate was switched off, reasoning that it was then the only
+               thing keeping white text off snow. That was vanilla's answer to
+               vanilla's problem, and it is the look this HUD exists to not
+               have: a hard black offset copy of every character is precisely
+               what makes the debug screen ugly.
+
+               THE HONEST TOOLS FOR THAT CASE ARE ALREADY ON THE OPTIONS
+               SCREEN. Somebody who turns the box off and finds the text hard
+               to read over snow can pick a darker ink, or leave the plate on
+               at fifteen percent, which costs nothing and works everywhere. A
+               shadow nobody asked for is not a third option, it is this
+               deciding for them. */
+            int ty = y + Math.round(rh / 2f - capMiddle(r.text));
+            ctx.text(tr, r.text, x, ty,
+                HudElements.colourOf(r.role, st), false);
+            x += tr.width(r.text) + Paint.GAP;
+        }
+        y += rh;
+        }
+        ctx.pose().popMatrix();
+    }
+
+    /* ── the spacebar: a line with its two ends turned up ──────────────────
+       Four pixels tall, one wide at each wall and along the bottom — the
+       weight of the font's own strokes — spanning the plate between its
+       padding, the way the key spans the keyboard. */
+    private static void space(GuiGraphicsExtractor ctx, int x0, int x1, int y, int colour) {
+        if (x1 - x0 < 3) return;
+        ctx.fill(x0, y, x0 + 1, y + 3, colour);
+        ctx.fill(x1 - 1, y, x1, y + 3, colour);
+        ctx.fill(x0, y + 3, x1, y + 4, colour);
+    }
+
+    /* ── the mouse, drawn from pixels ──────────────────────────────────────
+       Two buttons over a body, eleven by fourteen. A held button takes the
+       element's value ink, the way a held key does; an idle one the label
+       ink; the body sits under both at half the label's alpha, there to make
+       the shape read as a mouse rather than as two squares. */
+    private static final String[] MOUSE = {
+        "..LLL.RRR..",
+        ".LLLL.RRRR.",
+        "LLLLL.RRRRR",
+        "LLLLL.RRRRR",
+        "LLLLL.RRRRR",
+        "LLLLL.RRRRR",
+        "...........",
+        "BBBBBBBBBBB",
+        "BBBBBBBBBBB",
+        "BBBBBBBBBBB",
+        "BBBBBBBBBBB",
+        "BBBBBBBBBBB",
+        ".BBBBBBBBB.",
+        "..BBBBBBB.."
+    };
+
+    private static void mouse(GuiGraphicsExtractor ctx, int x, int y, int buttons, HudConfig.Style st) {
+        int left = (buttons & 1) != 0 ? st.textArgb() : st.labelArgb();
+        int right = (buttons & 2) != 0 ? st.textArgb() : st.labelArgb();
+        int label = st.labelArgb();
+        int body = (label & 0x00FFFFFF) | ((((label >>> 24) & 0xFF) / 2) << 24);
+        for (int j = 0; j < MOUSE.length; j++) {
+            String row = MOUSE[j];
+            int i = 0;
+            while (i < row.length()) {
+                char k = row.charAt(i);
+                if (k == '.') { i++; continue; }
+                int s = i;
+                while (i < row.length() && row.charAt(i) == k) i++;
+                int colour = k == 'L' ? left : k == 'R' ? right : body;
+                ctx.fill(x + s, y + j, x + i, y + j + 1, colour);
+            }
+        }
+    }
+
+    /* ── the plate ─────────────────────────────────────────────────────────
+       SHARP IS THE DEFAULT, because Minecraft's own interface is square:
+       every vanilla panel, tooltip and inventory slot has a hard corner, so a
+       square plate is the one that looks like it belongs on that screen.
+
+       ROUNDED is the same rectangle with its four corner pixels omitted,
+       drawn as three fills instead of one. Minecraft has no rounded-rectangle
+       primitive, and faking one with a texture would mean shipping an asset
+       for a single pixel. */
+    static void plate(GuiGraphicsExtractor ctx, int w, int h, boolean rounded, HudConfig.Style st) {
+        int fill = st.plateArgb();
+        int edge = st.edgeArgb();
+        if (!rounded) {
+            ctx.fill(0, 0, w, h, fill);
+            ctx.fill(0, 0, w, 1, edge);
+            ctx.fill(0, h - 1, w, h, edge);
+            ctx.fill(0, 1, 1, h - 1, edge);
+            ctx.fill(w - 1, 1, w, h - 1, edge);
+            return;
+        }
+        ctx.fill(1, 0, w - 1, 1, fill);
+        ctx.fill(0, 1, w, h - 1, fill);
+        ctx.fill(1, h - 1, w - 1, h, fill);
+
+        ctx.fill(1, 0, w - 1, 1, edge);
+        ctx.fill(1, h - 1, w - 1, h, edge);
+        ctx.fill(0, 1, 1, h - 1, edge);
+        ctx.fill(w - 1, 1, w, h - 1, edge);
+    }
+
+    /** a 1px outline around an already-placed box, in screen pixels rather
+     *  than the element's own scaled space — an outline that scaled with the
+     *  element would be four pixels thick on a 4x element */
+    static void outline(GuiGraphicsExtractor ctx, Box b, int colour) {
+        int x0 = (int) Math.round(b.x), y0 = (int) Math.round(b.y);
+        int x1 = (int) Math.round(b.x + b.w), y1 = (int) Math.round(b.y + b.h);
+        ctx.fill(x0 - 1, y0 - 1, x1 + 1, y0, colour);
+        ctx.fill(x0 - 1, y1, x1 + 1, y1 + 1, colour);
+        ctx.fill(x0 - 1, y0, x0, y1, colour);
+        ctx.fill(x1, y0, x1 + 1, y1, colour);
+    }
+}

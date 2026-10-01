@@ -1,0 +1,18 @@
+pluginManagement {
+    repositories {
+        maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+/* THE COMPILER COMES FROM THE BUILD, not from the machine. 26.3's classes are
+   Java 25 class files and nothing older can read them; this resolver lets
+   Gradle fetch a Temurin JDK 25 into its own cache (~/.gradle/jdks) the first
+   time, used only for compiling, installed nowhere. The launcher's own fetched
+   Java 25 is a runtime and has no javac. */
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'kestrel-hud'

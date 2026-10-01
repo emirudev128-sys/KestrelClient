@@ -1,0 +1,84 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+    id 'java'
+}
+
+version = project.mod_version
+group = project.maven_group
+base { archivesName = project.archives_base_name }
+
+/* the few private fields made reachable — the file says which and why */
+loom {
+    accessWidenerPath = file('src/main/resources/kestrel-hud.accesswidener')
+}
+
+repositories {
+    maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    /* NO MAPPINGS LINE, AND NONE IS MISSING: from 26.1 the game ships
+       unobfuscated under Mojang's own names, which is why Yarn stops at
+       1.21.11 and why Loom refuses a mappings dependency here. The class
+       names in this project are the ones in the jar. */
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+java {
+    /* the compiler comes from the build: see settings.gradle */
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 25
+    it.options.encoding = 'UTF-8'
+    it.options.compilerArgs += ['-Xmaxerrs', '2000']
+}
+
+/* ── WHAT IS SHARED WITH THE 1.21.4 BUILD, AND HOW ─────────────────────────
+   Ten source files have no Minecraft in them — the config contract, the cave
+   scan, the map files, the sort planner, and so on — and the fonts, the
+   language file and the licences are the same in both games. They live in
+   ../client-mod and are copied here before each compile, so there is one copy
+   of each to edit. A file on this list that grows a Minecraft import breaks
+   this build loudly, which is the right way to find out. */
+def sharedJava = [
+    'BiomePlane.java', 'CaveScan.java', 'Clicks.java', 'Feature.java', 'HudConfig.java',
+    'MapFiles.java', 'Overview.java', 'Paint.java', 'Session.java', 'SortPlan.java'
+]
+def sharedSrc = file('../client-mod/src/main/java/dev/kestrel/hud')
+def sharedRes = file('../client-mod/src/main/resources')
+
+def copySharedJava = tasks.register('copySharedJava', Sync) {
+    from(sharedSrc) { include sharedJava }
+    into layout.buildDirectory.dir('shared/java/dev/kestrel/hud')
+}
+def copySharedResources = tasks.register('copySharedResources', Sync) {
+    from(sharedRes) { include 'assets/**', 'licenses/**' }
+    into layout.buildDirectory.dir('shared/resources')
+}
+
+sourceSets {
+    main {
+        java.srcDir layout.buildDirectory.dir('shared/java')
+        resources.srcDir layout.buildDirectory.dir('shared/resources')
+    }
+}
+tasks.named('compileJava') { dependsOn copySharedJava }
+tasks.named('processResources') { dependsOn copySharedResources }
+tasks.named('sourcesJar') { dependsOn copySharedJava, copySharedResources }
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') {
+        expand 'version': project.version
+    }
+}

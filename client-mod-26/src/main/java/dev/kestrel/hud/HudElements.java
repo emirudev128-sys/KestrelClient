@@ -1,0 +1,749 @@
+package dev.kestrel.hud;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * WHAT EACH ELEMENT SAYS.
+ *
+ * <p>The live HUD draws these, and so do the menu cards, the options preview
+ * and the layout editor. An editor arranging boxes of a different width from
+ * the ones the game will draw is an editor that lies.
+ *
+ * <p><b>AN ELEMENT IS ROWS, NOT A ROW.</b> This returned a single list of runs
+ * until nine more elements needed drawing and three of them did not fit:
+ * potion effects is one line per effect, a keystroke display is a grid, and
+ * armour is a label beside a wear bar. Rather than special-case those in the
+ * renderer, an element is now a LIST OF ROWS and a row is a list of runs. An
+ * element with one row is the ordinary case and costs one extra list.
+ *
+ * <p><b>A RUN IS TEXT, OR SOMETHING DRAWN.</b> An item's icon, a status
+ * effect's icon, the mouse, the spacebar. Icons come from the game's own item
+ * renderer and sprite atlas, so a resource pack that repaints them repaints the
+ * HUD. Every drawn kind has a fixed width, so the renderer measures a row
+ * without knowing what is in it until it draws.
+ *
+ * <p><b>TWO MODES, AND EVERY MENU USES THE SECOND.</b> {@link #LIVE} reads the
+ * game; {@link #SAMPLE} is fixed text that never changes. A card previewing
+ * the fps counter with a live value flickers the whole time the menu is open
+ * and changes width as the number crosses 100 — motion at the edge of your eye
+ * while you are trying to read a menu. In the layout editor it is worse: an
+ * element that changes width under the cursor is one you cannot line up.
+ *
+ * <p><b>THE OPTIONS ARE THE LAUNCHER'S, READ NOT INVENTED.</b> Which buttons
+ * the CPS counter counts, whether coordinates carry a compass, whether armour
+ * shows a bar or a number — all of it comes off {@code el.opts}, declared in
+ * {@code mc/hud.js} and carried in the document. Nothing here has an opinion
+ * about what an option means beyond how to draw it.
+ */
+final class HudElements {
+
+    private HudElements() { }
+
+    /** real values, read from the game — the world HUD only */
+    static final int LIVE = 0;
+    /** fixed text that never changes — every menu */
+    static final int SAMPLE = 1;
+
+    /** turns a string into text in whichever face the config asked for */
+    @FunctionalInterface
+    interface Face {
+        Component of(String s);
+    }
+
+    /* ── WHAT A RUN IS FOR, NOT WHAT COLOUR IT IS ─────────────────────────
+       A run used to carry a resolved colour, which was fine while the colours
+       were two constants. They are per element now, so a run that had already
+       decided it was #F1F4F7 could not be repainted when somebody picked red. */
+    static final int VALUE = 0;   /* the thing you glance at */
+    static final int LABEL = 1;   /* the word that says what it is */
+    static final int ACCENT = 2;  /* worth noticing; see below */
+
+    /** the sizes of the drawn runs, in unscaled pixels */
+    static final int ITEM = 16;
+    static final int EFFECT = 18;
+    static final int MOUSE_W = 11;
+    static final int MOUSE_H = 14;
+    static final int SPACE_MIN = 17;
+
+    /* ── WHAT KIND OF THING A RUN IS ──────────────────────────────────────
+       Text, an item's icon, a status effect's icon, the mouse, the spacebar —
+       or CENTRE, which draws nothing and marks its row to be centred in the
+       plate rather than started at its left edge. */
+    static final int TEXT = 0;
+    static final int ITEM_ICON = 1;
+    static final int EFFECT_ICON = 2;
+    static final int MOUSE = 3;
+    static final int SPACE = 4;
+    static final int CENTRE = 5;
+    /* A ROW OF NOTHING, a given number of pixels tall — the room between
+       rows that a stack of text rows does not have on its own */
+    static final int SPACER = 6;
+    /* EVERYTHING AFTER THIS GOES TO THE RIGHT EDGE — the scoreboard's numbers,
+       lined up down the plate's edge however long each name is. It takes a
+       small minimum width, so a long name never runs into its number. */
+    static final int FILL = 7;
+    /* THE MINIMAP, drawn by Minimap, a fixed square */
+    static final int MAP = 8;
+
+    /* THE KEYS BREATHE. Rows stacked flush put two pixels between W and the
+       A S D under it and one between those and the mouse, which reads as one
+       block of glyphs rather than as keys. Three more pixels between rows,
+       unscaled — the plate's own padding, so the gaps inside it match the
+       margin around it. */
+    static final int KEY_ROW_GAP = 3;
+
+    static final class Run {
+        final int kind;
+        final Component text;        /* TEXT only */
+        final int role;         /* the ink: text, the spacebar */
+        final int width;        /* everything but text, in unscaled pixels */
+        final ItemStack item;   /* ITEM_ICON only */
+        final net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect;
+        final int buttons;      /* MOUSE only: bit 0 left held, bit 1 right held */
+        HudConfig.Element element;   /* MAP only: the options it is drawn with */
+
+        Run(Face face, String text, int role) {
+            this(TEXT, face.of(text), role, 0, null, null, 0);
+        }
+
+        private Run(int kind, Component text, int role, int width, ItemStack item,
+                    net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, int buttons) {
+            this.kind = kind;
+            this.text = text;
+            this.role = role;
+            this.width = width;
+            this.item = item;
+            this.effect = effect;
+            this.buttons = buttons;
+        }
+
+        /* AN ITEM OR AN EFFECT IS DRAWN FROM THE GAME'S OWN ATLASES, so it is
+           whatever the player's resource packs make it. Nothing here ships a
+           texture. */
+        static Run item(ItemStack stack) { return new Run(ITEM_ICON, null, VALUE, ITEM, stack, null, 0); }
+
+        static Run effect(net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> type) {
+            return new Run(EFFECT_ICON, null, VALUE, EFFECT, null, type, 0);
+        }
+
+        static Run mouse(boolean left, boolean right) {
+            return new Run(MOUSE, null, VALUE, MOUSE_W, null, null, (left ? 1 : 0) | (right ? 2 : 0));
+        }
+
+        /** the spacebar: a line with its two ends turned up, as wide as the plate */
+        static Run space(boolean held) { return new Run(SPACE, null, held ? VALUE : LABEL, SPACE_MIN, null, null, 0); }
+
+        static Run centre() { return new Run(CENTRE, null, VALUE, 0, null, null, 0); }
+
+        /** empty room, this many pixels tall, as a row of its own; the height rides in `width` */
+        static Run spacer(int height) { return new Run(SPACER, null, VALUE, height, null, null, 0); }
+
+        /** push what follows to the right edge */
+        static Run fill() { return new Run(FILL, null, VALUE, 8, null, null, 0); }
+
+        /** the minimap, with the element whose options it reads */
+        static Run map(HudConfig.Element el) {
+            Run r = new Run(MAP, null, VALUE, Minimap.SIZE, null, null, 0);
+            r.element = el;
+            return r;
+        }
+
+        /** text somebody else styled — a server's scoreboard line, colours and all */
+        static Run styled(Component text, int role) { return new Run(TEXT, text, role, 0, null, null, 0); }
+    }
+
+    private static List<Run> row(Run... runs) {
+        List<Run> r = new ArrayList<>(runs.length);
+        for (Run x : runs) r.add(x);
+        return r;
+    }
+
+    private static List<List<Run>> one(List<Run> r) {
+        List<List<Run>> out = new ArrayList<>(1);
+        out.add(r);
+        return out;
+    }
+
+    /* THE ACCENT STAYS THE ACCENT and does not follow the element's colour.
+       It marks the cases worth noticing — fps low enough to feel, a compass
+       letter, armour nearly broken — and a "worth noticing" that is the same
+       colour as everything around it has stopped noticing anything. */
+    static int colourOf(int role, HudConfig.Style st) {
+        if (role == ACCENT) return Paint.ACCENT;
+        return role == LABEL ? st.labelArgb() : st.textArgb();
+    }
+
+    /** THE ONES THIS MOD CAN PRODUCE A LIVE VALUE FOR. Everything the launcher
+     *  arranges that is not here is still carried, listed, styled and
+     *  positioned — it just does not appear in the world. */
+    private static final List<String> DRAWN = List.of(
+        "fps", "cps", "ping", "keys", "coords", "potion",
+        "helmet", "chest", "legs", "boots", "held",
+        "day", "clock", "playtime", "memory", "combo", "totems", "reach", "pvp", "scoreboard", "minimap");
+
+    static boolean drawn(String name) {
+        return DRAWN.contains(name);
+    }
+
+    /** the armour slots, by the index slotOf gives — boots first, as the inventory counted them */
+    private static final net.minecraft.world.entity.EquipmentSlot[] ARMOUR = {
+        net.minecraft.world.entity.EquipmentSlot.FEET, net.minecraft.world.entity.EquipmentSlot.LEGS,
+        net.minecraft.world.entity.EquipmentSlot.CHEST, net.minecraft.world.entity.EquipmentSlot.HEAD
+    };
+
+    /** which armour slot each armour element reads, -1 for the held item */
+    private static int slotOf(String name) {
+        switch (name) {
+            case "boots": return 0;
+            case "legs": return 1;
+            case "chest": return 2;
+            case "helmet": return 3;
+            default: return -1;
+        }
+    }
+
+    /**
+     * The rows of one element, or null when there is nothing to draw.
+     *
+     * @param mode {@link #LIVE} for the world HUD, {@link #SAMPLE} for a menu.
+     */
+    static List<List<Run>> of(String name, HudConfig.Element el, Minecraft client, Face face, int mode) {
+        if (el == null) return null;
+        if (mode == SAMPLE) return sample(name, el, face);
+        if (!drawn(name)) return null;
+        if (client == null) return null;
+
+        switch (name) {
+            case "fps": {
+                int fps = client.getFps();
+                return one(row(new Run(face, Integer.toString(fps), fpsRole(fps)),
+                    new Run(face, "FPS", LABEL)));
+            }
+            case "cps": {
+                int n = Clicks.count(el.choice("buttons", "left"));
+                return one(row(new Run(face, Integer.toString(n), VALUE),
+                    new Run(face, "CPS", LABEL)));
+            }
+            case "ping": {
+                /* SINGLEPLAYER HAS NO PING, and inventing 0 would be a reading
+                   that looks like a very good connection. An em dash says the
+                   question does not apply here. */
+                int ms = latency(client);
+                List<Run> r = ms < 0
+                    ? row(new Run(face, "—", LABEL))
+                    : row(new Run(face, Integer.toString(ms), pingRole(ms)));
+                if (ms >= 0 && el.flag("unit")) r.add(new Run(face, "ms", LABEL));
+                return one(r);
+            }
+            case "keys": return keys(el, client, face, false);
+            case "coords": {
+                if (client.player == null) return null;
+                boolean p = el.flag("precise");
+                List<Run> r = row(
+                    new Run(face, "X", LABEL), new Run(face, fixed(client.player.getX(), p), VALUE),
+                    new Run(face, "Y", LABEL), new Run(face, fixed(client.player.getY(), p), VALUE),
+                    new Run(face, "Z", LABEL), new Run(face, fixed(client.player.getZ(), p), VALUE));
+                /* THE COMPASS, when asked for. Vanilla puts the facing in F3
+                   and nowhere else, so a coordinate readout without it means
+                   opening the debug screen to answer "which way is north" —
+                   usually the question the coordinates were read to settle. */
+                if (el.flag("compass")) r.add(new Run(face, cardinal(client.player.getYRot()), ACCENT));
+                List<List<Run>> out = one(r);
+                if (el.flag("biome")) out.add(row(new Run(face, biome(client), LABEL)));
+                return out;
+            }
+            case "potion": return potions(el, client, face, false);
+
+            case "day": {
+                if (client.level == null) return null;
+                long d = client.level.getOverworldClockTime() / 24000L;
+                List<Run> r = new ArrayList<>(2);
+                if (el.flag("label")) r.add(new Run(face, "Day", LABEL));
+                r.add(new Run(face, Long.toString(d), VALUE));
+                return one(r);
+            }
+            case "clock": {
+                java.time.LocalTime t = java.time.LocalTime.now();
+                return one(row(new Run(face, wallClock(t.getHour(), t.getMinute(), t.getSecond(),
+                    el.flag("seconds"), el.flag("ampm")), VALUE)));
+            }
+            case "playtime":
+                return one(row(new Run(face, span(Session.millis(), el.flag("seconds")), VALUE)));
+            case "memory":
+                return one(memory(el, face));
+            case "combo": {
+                int n = Combat.combo();
+                if (n <= 0 && el.flag("hide")) return null;
+                return one(row(new Run(face, Integer.toString(n), n > 0 ? VALUE : LABEL),
+                    new Run(face, n == 1 ? "hit" : "hits", LABEL)));
+            }
+            case "totems": {
+                /* the totem itself, then how many: an icon says "totem" faster
+                   than the word, in any language */
+                int n = totems(client, el.flag("offhand"));
+                return one(row(Run.item(new ItemStack(net.minecraft.world.item.Items.TOTEM_OF_UNDYING)),
+                    new Run(face, Integer.toString(n), n == 0 ? ACCENT : VALUE)));
+            }
+            case "reach": {
+                double d = Combat.reach();
+                if (d < 0) return null;
+                List<Run> r = row(new Run(face, String.format(java.util.Locale.ROOT, "%.2f", d), VALUE));
+                if (el.flag("unit")) r.add(new Run(face, "blocks", LABEL));
+                return one(r);
+            }
+            case "pvp": {
+                Combat.refresh(client);
+                String who = Combat.target();
+                if (who.isEmpty()) return null;
+                List<Run> r = row(new Run(face, who, VALUE));
+                if (el.flag("health") && Combat.targetHealth() >= 0) {
+                    float hp = Combat.targetHealth();
+                    r.add(new Run(face, trim(hp), hp <= 6 ? ACCENT : LABEL));
+                }
+                if (el.flag("distance") && Combat.targetDistance() >= 0) {
+                    r.add(new Run(face,
+                        String.format(java.util.Locale.ROOT, "%.1fm", Combat.targetDistance()), LABEL));
+                }
+                return one(r);
+            }
+            case "scoreboard":
+                return scoreboard(el, client, face, false);
+            case "minimap":
+                return one(row(Run.map(el)));
+            default: return armour(name, el, client, face, false);
+        }
+    }
+
+    /* ── keystrokes ───────────────────────────────────────────────────────
+       A grid of key caps, expressed as rows: W over A S D, then the mouse and
+       the spacebar if they were asked for. A pressed key is the VALUE ink and
+       an idle one is the LABEL ink, which is the same two-tone split the rest
+       of the HUD uses rather than a third idea about highlighting. */
+    private static List<List<Run>> keys(HudConfig.Element el, Minecraft c, Face face, boolean fake) {
+        List<List<Run>> out = new ArrayList<>(4);
+        boolean w = fake, a = fake, s = false, d = fake, sp = false, lmb = fake, rmb = false;
+        if (!fake && c != null && c.options != null) {
+            w = c.options.keyUp.isDown();
+            a = c.options.keyLeft.isDown();
+            s = c.options.keyDown.isDown();
+            d = c.options.keyRight.isDown();
+            sp = c.options.keyJump.isDown();
+            lmb = c.options.keyAttack.isDown();
+            rmb = c.options.keyUse.isDown();
+        }
+        /* EVERY ROW IS CENTRED, so W sits over S and the mouse under it, the
+           way the keys sit on a keyboard, rather than all four rows starting
+           at the plate's left edge. */
+        out.add(row(Run.centre(), new Run(face, "W", w ? VALUE : LABEL)));
+        out.add(row(Run.spacer(KEY_ROW_GAP)));
+        out.add(row(Run.centre(), new Run(face, "A", a ? VALUE : LABEL),
+            new Run(face, "S", s ? VALUE : LABEL),
+            new Run(face, "D", d ? VALUE : LABEL)));
+        if (el.flag("mouse")) {
+            out.add(row(Run.spacer(KEY_ROW_GAP)));
+            /* A MOUSE, NOT "LMB RMB". The buttons light up the way the keys
+               above them do. With CPS on, each button's count sits on its own
+               side of the mouse — two digits do not fit inside a button — which
+               is why a keystroke display and a CPS counter are two elements
+               that can say the same thing. */
+            if (el.flag("cps")) {
+                out.add(row(Run.centre(),
+                    new Run(face, Integer.toString(fake ? 7 : Clicks.count("left")), lmb ? VALUE : LABEL),
+                    Run.mouse(lmb, rmb),
+                    new Run(face, Integer.toString(fake ? 2 : Clicks.count("right")), rmb ? VALUE : LABEL)));
+            } else {
+                out.add(row(Run.centre(), Run.mouse(lmb, rmb)));
+            }
+        }
+        /* the spacebar as the key looks, not the word: a line with its ends
+           turned up, stretched across the plate */
+        if (el.flag("space")) {
+            out.add(row(Run.spacer(KEY_ROW_GAP)));
+            out.add(row(Run.space(sp)));
+        }
+        return out;
+    }
+
+    /* ── potion effects ───────────────────────────────────────────────────
+       One row per effect, and NOTHING AT ALL when there are none: an empty
+       plate sitting in the corner saying nothing is worse than no plate. */
+    private static List<List<Run>> potions(HudConfig.Element el, Minecraft c, Face face, boolean fake) {
+        List<List<Run>> out = new ArrayList<>(4);
+        /* "Show the icon, not the name" puts the effect's own sprite where its
+           name was — the icon vanilla's inventory uses, from the player's
+           resource packs. The time left is still its own choice. */
+        boolean icons = el.flag("icons");
+        boolean times = el.flag("duration");
+        if (fake) {
+            /* the sample honours both switches like the live rows do, or
+               flipping one would change nothing you can see */
+            out.add(effectRow(face, icons, net.minecraft.world.effect.MobEffects.SPEED, "Speed IV", times ? "1:00" : null));
+            out.add(effectRow(face, icons, net.minecraft.world.effect.MobEffects.STRENGTH, "Strength II", times ? "0:41" : null));
+            return out;
+        }
+        if (c == null || c.player == null) return null;
+        for (MobEffectInstance e : c.player.getActiveEffects()) {
+            if (e == null) continue;
+            if (e.isAmbient() && !el.flag("ambient")) continue;
+            String nm = e.getEffect().value().getDisplayName().getString();
+            int amp = e.getAmplifier();
+            if (amp > 0) nm = nm + " " + roman(amp + 1);
+            out.add(effectRow(face, icons, e.getEffect(), nm, times && !e.isInfiniteDuration() ? clock(e.getDuration()) : null));
+        }
+        return out.isEmpty() ? null : out;
+    }
+
+    private static List<Run> effectRow(Face face, boolean icon,
+                                       net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> type,
+                                       String name, String time) {
+        List<Run> r = row(icon ? Run.effect(type) : new Run(face, name, VALUE));
+        if (time != null) r.add(new Run(face, time, LABEL));
+        return r;
+    }
+
+    /* ── armour and the held item ─────────────────────────────────────────
+       The item's icon, then the wear. `number` is the default and reads the
+       way advanced tooltips do — 225 / 363 — because the player asked for the
+       count rather than a bar. `percent` is the short form, and `none` is for
+       somebody who wants the icon and nothing else.
+
+       AN EMPTY SLOT DRAWS NOTHING. A row for a helmet you are not wearing is a
+       row telling you about equipment you do not have. */
+    private static List<List<Run>> armour(String name, HudConfig.Element el, Minecraft c, Face face, boolean fake) {
+        /* THE ITEM'S OWN ICON, not its name. A sample shows diamond gear —
+           something a player recognises at a glance — and the world shows
+           exactly what they are wearing, through their resource packs. */
+        if (fake) {
+            ItemStack gear = sampleGear(name);
+            List<Run> r = row(Run.item(gear));
+            int max = gear.getMaxDamage();
+            addWear(r, el, (int) Math.round(max * 0.62), max, face);
+            return one(r);
+        }
+        if (c == null || c.player == null) return null;
+        int slot = slotOf(name);
+        ItemStack st = slot < 0 ? c.player.getMainHandItem() : c.player.getItemBySlot(ARMOUR[slot]);
+        if (st == null || st.isEmpty()) return null;
+
+        List<Run> r = row(Run.item(st));
+        if (st.isDamageableItem()) addWear(r, el, st.getMaxDamage() - st.getDamageValue(), st.getMaxDamage(), face);
+        return one(r);
+    }
+
+    /** the wear, as a count like advanced tooltips, a percentage, or nothing */
+    private static void addWear(List<Run> r, HudConfig.Element el, int left, int max, Face face) {
+        if (max <= 0) return;
+        String how = el.choice("wear", "number");
+        if ("none".equals(how)) return;
+        double fraction = (double) left / max;
+        /* nearly broken is the one case worth noticing */
+        int role = fraction < 0.15 ? ACCENT : VALUE;
+        if ("percent".equals(how)) {
+            r.add(new Run(face, Math.round(fraction * 100) + "%", role));
+            return;
+        }
+        r.add(new Run(face, Integer.toString(left), role));
+        r.add(new Run(face, "/", LABEL));
+        r.add(new Run(face, Integer.toString(max), LABEL));
+    }
+
+    /* ── THE SAMPLES ──────────────────────────────────────────────────────
+       Fixed, and chosen to be about the WIDEST the element realistically gets
+       rather than the narrowest: a preview that fits neatly and then overflows
+       the first time you stand at Z -1403 has told you the wrong thing about
+       your layout. The role split is kept, so a sample shows the real
+       typography and therefore what a colour change will look like.
+
+       THE WORDS ARE STILL THE LAUNCHER'S wherever there are any — an armour
+       row names itself from its own label. Only the numbers are invented, and
+       a number is not vocabulary. */
+    private static List<List<Run>> sample(String name, HudConfig.Element el, Face face) {
+        switch (name) {
+            case "fps":
+                return one(row(new Run(face, "240", VALUE), new Run(face, "FPS", LABEL)));
+            case "cps":
+                return one(row(new Run(face, "14", VALUE), new Run(face, "CPS", LABEL)));
+            case "ping": {
+                List<Run> r = row(new Run(face, "21", VALUE));
+                if (el.flag("unit")) r.add(new Run(face, "ms", LABEL));
+                return one(r);
+            }
+            case "keys": return keys(el, null, face, true);
+            case "coords": {
+                boolean p = el.flag("precise");
+                List<Run> r = row(
+                    new Run(face, "X", LABEL), new Run(face, p ? "118.0" : "118", VALUE),
+                    new Run(face, "Y", LABEL), new Run(face, p ? "71.0" : "71", VALUE),
+                    new Run(face, "Z", LABEL), new Run(face, p ? "-403.0" : "-403", VALUE));
+                if (el.flag("compass")) r.add(new Run(face, "N", ACCENT));
+                List<List<Run>> out = one(r);
+                if (el.flag("biome")) out.add(row(new Run(face, "Snowy taiga", LABEL)));
+                return out;
+            }
+            case "potion": return potions(el, null, face, true);
+            case "day": {
+                List<Run> r = new ArrayList<>(2);
+                if (el.flag("label")) r.add(new Run(face, "Day", LABEL));
+                r.add(new Run(face, "214", VALUE));
+                return one(r);
+            }
+            case "clock":
+                return one(row(new Run(face,
+                    wallClock(23, 41, 8, el.flag("seconds"), el.flag("ampm")), VALUE)));
+            case "playtime":
+                return one(row(new Run(face, span(6127000L, el.flag("seconds")), VALUE)));
+            case "memory":
+                /* FIXED NUMBERS, not the heap. This read the live runtime and
+                   so moved every frame the menu was open — the one sample that
+                   broke the rule the samples exist for. */
+                return one(memorySample(el, face));
+            case "combo":
+                return one(row(new Run(face, "5", VALUE), new Run(face, "hits", LABEL)));
+            case "totems":
+                return one(row(Run.item(new ItemStack(net.minecraft.world.item.Items.TOTEM_OF_UNDYING)), new Run(face, "3", VALUE)));
+            case "reach": {
+                List<Run> r = row(new Run(face, "3.42", VALUE));
+                if (el.flag("unit")) r.add(new Run(face, "blocks", LABEL));
+                return one(r);
+            }
+            case "pvp": {
+                List<Run> r = row(new Run(face, "Cobblestone_", VALUE));
+                if (el.flag("health")) r.add(new Run(face, "14.5", LABEL));
+                if (el.flag("distance")) r.add(new Run(face, "3.1m", LABEL));
+                return one(r);
+            }
+            case "scoreboard":
+                return scoreboard(el, null, face, true);
+            case "minimap":
+                return one(row(Run.map(el)));
+            default: return armour(name, el, null, face, true);
+        }
+    }
+
+    /* ── the scoreboard ───────────────────────────────────────────────────
+       THE SAME OBJECTIVE VANILLA WOULD SHOW, chosen the way it chooses: the
+       sidebar slot for your team's colour if a server set one, the ordinary
+       sidebar otherwise. The same lines in the same order — highest score
+       first, then by name — hidden ones left out, at most fifteen, each name
+       decorated with its team's prefix and suffix the way vanilla does.
+
+       Nothing on screen when there is no objective, as vanilla. */
+    private static final java.util.Comparator<net.minecraft.world.scores.PlayerScoreEntry> SIDEBAR_ORDER =
+        java.util.Comparator.comparing(net.minecraft.world.scores.PlayerScoreEntry::value, java.util.Comparator.reverseOrder())
+            .thenComparing(net.minecraft.world.scores.PlayerScoreEntry::owner, String.CASE_INSENSITIVE_ORDER);
+
+    private static List<List<Run>> scoreboard(HudConfig.Element el, Minecraft c, Face face, boolean fake) {
+        boolean title = el.flag("title"), numbers = el.flag("numbers"), colours = el.flag("colours");
+        List<List<Run>> out = new ArrayList<>();
+        if (fake) {
+            if (title) out.add(row(Run.centre(), new Run(face, "Bed Wars", VALUE)));
+            String[][] lines = { { "Beds left", "3" }, { "Kills", "7" }, { "Final kills", "2" } };
+            for (String[] l : lines) {
+                out.add(numbers ? row(new Run(face, l[0], VALUE), Run.fill(), new Run(face, l[1], ACCENT))
+                                : row(new Run(face, l[0], VALUE)));
+            }
+            return out;
+        }
+        if (c == null || c.level == null || c.player == null) return null;
+
+        net.minecraft.world.scores.Scoreboard board = c.level.getScoreboard();
+        net.minecraft.world.scores.Objective objective = null;
+        net.minecraft.world.scores.PlayerTeam team = board.getPlayersTeam(c.player.getScoreboardName());
+        if (team != null) {
+            net.minecraft.world.scores.DisplaySlot slot =
+                team.getColor().map(net.minecraft.world.scores.TeamColor::displaySlot).orElse(null);
+            if (slot != null) objective = board.getDisplayObjective(slot);
+        }
+        if (objective == null) objective = board.getDisplayObjective(net.minecraft.world.scores.DisplaySlot.SIDEBAR);
+        if (objective == null) return null;
+
+        net.minecraft.network.chat.numbers.NumberFormat format =
+            objective.numberFormatOrDefault(net.minecraft.network.chat.numbers.StyledFormat.SIDEBAR_DEFAULT);
+        if (title) out.add(row(Run.centre(), serverText(face, objective.getDisplayName(), colours, VALUE)));
+        List<net.minecraft.world.scores.PlayerScoreEntry> entries = board.listPlayerScores(objective).stream()
+            .filter(e -> !e.isHidden()).sorted(SIDEBAR_ORDER).limit(15).toList();
+        for (net.minecraft.world.scores.PlayerScoreEntry e : entries) {
+            Component name = net.minecraft.world.scores.PlayerTeam.formatNameForTeam(board.getPlayersTeam(e.owner()), e.ownerName());
+            Run nameRun = serverText(face, name, colours, VALUE);
+            out.add(numbers ? row(nameRun, Run.fill(), serverText(face, e.formatValue(format), colours, ACCENT))
+                            : row(nameRun));
+        }
+        return out;
+    }
+
+    /* A SERVER'S TEXT, IN THE HUD'S FACE. With colours kept, the styled text
+       goes through whole — team colours, ticks and crosses — with only the
+       font swapped for the one the HUD is set to. Without them, the words
+       alone, formatting codes stripped, in the plate's own ink. */
+    private static Run serverText(Face face, Component t, boolean colours, int role) {
+        if (!colours) return new Run(face, net.minecraft.ChatFormatting.stripFormatting(t.getString()), role);
+        net.minecraft.network.chat.FontDescription font = face.of("").getStyle().getFont();
+        return Run.styled(t.copy().withStyle(s -> s.withFont(font)), role);
+    }
+
+    /* ── the second wave's arithmetic ─────────────────────────────────────
+       Each of these is small enough to inline and is not, because the LIVE and
+       SAMPLE branches both need it — and two copies of a format string is two
+       chances for the preview to disagree with the thing it previews. */
+
+    private static String wallClock(int h, int m, int sec, boolean seconds, boolean ampm) {
+        String suffix = "";
+        if (ampm) {
+            suffix = h < 12 ? " AM" : " PM";
+            h = h % 12;
+            if (h == 0) h = 12;
+        }
+        StringBuilder b = new StringBuilder();
+        b.append(ampm ? Integer.toString(h) : two(h)).append(':').append(two(m));
+        if (seconds) b.append(':').append(two(sec));
+        return b.append(suffix).toString();
+    }
+
+    /** an elapsed span: h:mm:ss, or h:mm when seconds are not wanted */
+    private static String span(long ms, boolean seconds) {
+        long s = Math.max(0, ms) / 1000L;
+        long h = s / 3600, m = (s / 60) % 60;
+        return seconds ? h + ":" + two((int) m) + ":" + two((int) (s % 60)) : h + ":" + two((int) m);
+    }
+
+    private static String two(int n) { return (n < 10 ? "0" : "") + n; }
+
+    private static List<Run> memorySample(HudConfig.Element el, Face face) {
+        String how = el.choice("format", "gb");
+        if ("percent".equals(how)) return row(new Run(face, "52%", VALUE));
+        if ("mb".equals(how)) return row(new Run(face, "2150", VALUE), new Run(face, "/", LABEL), new Run(face, "4096 MB", LABEL));
+        return row(new Run(face, "2.1", VALUE), new Run(face, "/", LABEL), new Run(face, "4.0 GB", LABEL));
+    }
+
+    /* THE HEAP IN USE IS TOTAL MINUS FREE, not `total`. `total` is what the
+       JVM has taken from the OS; it only ever goes up and says nothing about
+       whether you are about to stutter. */
+    private static List<Run> memory(HudConfig.Element el, Face face) {
+        Runtime rt = Runtime.getRuntime();
+        long max = rt.maxMemory();
+        long used = rt.totalMemory() - rt.freeMemory();
+        String how = el.choice("format", "gb");
+        if ("percent".equals(how)) {
+            int pc = max <= 0 ? 0 : (int) Math.round(used * 100.0 / max);
+            return row(new Run(face, pc + "%", pc >= 90 ? ACCENT : VALUE));
+        }
+        boolean gb = "gb".equals(how);
+        double div = gb ? 1073741824.0 : 1048576.0;
+        String unit = gb ? "GB" : "MB";
+        String fmt = gb ? "%.1f" : "%.0f";
+        boolean tight = max > 0 && used * 100.0 / max >= 90;
+        return row(
+            new Run(face, String.format(java.util.Locale.ROOT, fmt, used / div), tight ? ACCENT : VALUE),
+            new Run(face, "/", LABEL),
+            new Run(face, String.format(java.util.Locale.ROOT, fmt, max / div) + " " + unit, LABEL));
+    }
+
+    private static int totems(Minecraft c, boolean offhand) {
+        if (c == null || c.player == null) return 0;
+        int n = 0;
+        net.minecraft.world.entity.player.Inventory inv = c.player.getInventory();
+        for (int i = 0; i < inv.getContainerSize(); i++) {
+            ItemStack st = inv.getItem(i);
+            if (st != null && st.getItem() == net.minecraft.world.item.Items.TOTEM_OF_UNDYING) n += st.getCount();
+        }
+        if (!offhand) {
+            ItemStack off = c.player.getOffhandItem();
+            if (off != null && off.getItem() == net.minecraft.world.item.Items.TOTEM_OF_UNDYING) n -= off.getCount();
+        }
+        return Math.max(0, n);
+    }
+
+    /** 14.0 -> "14", 14.5 -> "14.5" — half a heart is worth a decimal and a
+     *  whole one is not */
+    private static String trim(float v) {
+        return v == Math.rint(v) ? Integer.toString((int) v)
+            : String.format(java.util.Locale.ROOT, "%.1f", v);
+    }
+
+    /** "Armor status · helmet" -> "helmet" */
+    /** the piece of diamond gear a sample of this slot shows */
+    private static ItemStack sampleGear(String name) {
+        switch (name) {
+            case "helmet": return new ItemStack(net.minecraft.world.item.Items.DIAMOND_HELMET);
+            case "chest": return new ItemStack(net.minecraft.world.item.Items.DIAMOND_CHESTPLATE);
+            case "legs": return new ItemStack(net.minecraft.world.item.Items.DIAMOND_LEGGINGS);
+            case "boots": return new ItemStack(net.minecraft.world.item.Items.DIAMOND_BOOTS);
+            default: return new ItemStack(net.minecraft.world.item.Items.DIAMOND_SWORD);
+        }
+    }
+
+    /* GREEN IS NOT A COLOUR THIS PALETTE HAS, and inventing one for "good fps"
+       would put a hue on screen that appears nowhere in the launcher. The
+       accent marks the case worth noticing and everything healthy stays in the
+       ordinary ink — a HUD that lights up when nothing is wrong is a HUD you
+       stop reading. */
+    private static int fpsRole(int fps) {
+        return fps > 0 && fps < 30 ? ACCENT : VALUE;
+    }
+
+    /* same rule, and 150ms is where a hit stops registering when you expect it */
+    private static int pingRole(int ms) {
+        return ms >= 150 ? ACCENT : VALUE;
+    }
+
+    private static int latency(Minecraft c) {
+        try {
+            if (c.getConnection() == null || c.player == null) return -1;
+            var e = c.getConnection().getPlayerInfo(c.player.getUUID());
+            if (e == null) return -1;
+            /* a single-player integrated server reports 0, which is not a ping */
+            if (c.hasSingleplayerServer()) return -1;
+            return Math.max(0, e.getLatency());
+        } catch (Exception ex) {
+            return -1;
+        }
+    }
+
+    private static String biome(Minecraft c) {
+        try {
+            if (c.level == null || c.player == null) return "";
+            return c.level.getBiome(c.player.blockPosition())
+                .unwrapKey().map(k -> pretty(k.identifier().getPath())).orElse("");
+        } catch (Exception ex) {
+            return "";
+        }
+    }
+
+    /** snowy_taiga -> Snowy taiga */
+    private static String pretty(String s) {
+        String t = s.replace('_', ' ');
+        return t.isEmpty() ? t : Character.toUpperCase(t.charAt(0)) + t.substring(1);
+    }
+
+    private static String fixed(double v, boolean precise) {
+        return precise ? String.format(java.util.Locale.ROOT, "%.1f", v)
+            : Integer.toString(Mth.floor(v));
+    }
+
+    /** ticks -> m:ss, the way the inventory screen writes an effect */
+    private static String clock(int ticks) {
+        int s = Math.max(0, ticks) / 20;
+        return (s / 60) + ":" + (s % 60 < 10 ? "0" : "") + (s % 60);
+    }
+
+    private static final String[] ROMAN = { "", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X" };
+
+    private static String roman(int n) {
+        return n > 0 && n < ROMAN.length ? ROMAN[n] : Integer.toString(n);
+    }
+
+    /* Minecraft's yaw is 0 at SOUTH and grows clockwise, which is why mapping
+       it naively onto compass points puts north where south is. Wrapped to
+       -180..180 first, then shifted and rounded into eight 45-degree sectors. */
+    private static String cardinal(float yaw) {
+        int i = Mth.floor((Mth.wrapDegrees(yaw) + 180.0f) / 45.0f + 0.5f) & 7;
+        return new String[] { "N", "NE", "E", "SE", "S", "SW", "W", "NW" }[i];
+    }
+}

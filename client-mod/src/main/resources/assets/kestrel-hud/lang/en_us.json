@@ -1,5 +1,6 @@
 {
   "category.kestrel-hud": "Kestrel",
+  "key.category.kestrel-hud.kestrel": "Kestrel",
   "key.kestrel-hud.menu": "Open the HUD menu",
   "key.kestrel-hud.sprint": "Toggle sprint",
   "key.kestrel-hud.sneak": "Toggle sneak",
