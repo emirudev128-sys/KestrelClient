@@ -345,6 +345,10 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
   };
 
   var JAVA_REST = '<span class="mono">Temurin 21.0.5</span> <span class="kv-sub">automatic</span>';
+  /* what the main process says it will really run, or fetch, for the current
+     instance — paintJava() fills it in; the fixture above is for the pages
+     with no bridge behind them */
+  var liveJava = '';
   (function () {
     var dds = document.querySelectorAll('.play-aside .kv dd');
     if (dds.length) el.kvJava = dds[0];
@@ -395,7 +399,7 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     if (s.fix) { el.goFix.hidden = false; el.goFix.textContent = s.fix; }
     else el.goFix.hidden = true;
 
-    if (el.kvJava) el.kvJava.innerHTML = s.java ? s.java : JAVA_REST;
+    if (el.kvJava) el.kvJava.innerHTML = s.java ? s.java : (liveJava || JAVA_REST);
 
     if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
     if (s.launch === 'playing') {
@@ -517,8 +521,8 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
 
   /* ── the settings pane ────────────────────────────────────────────────────
      THE SPINE IS ONE COMPONENT.  These recur on nearly every module
-     that draws on screen, verbatim from Apollo's own option keys, so they are
-     declared once here and rendered once below — and then set apart from the
+     that draws on screen, under the option names players already know, so
+     they are declared once here and rendered once below — and then set apart from the
      module's own options by ground, pitch and heading.  If they were not set
      apart, every module's pane would be the same grey field, which is a
      failure this project has already been caught making.
@@ -542,9 +546,10 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     'brackets', 'bracket colour', 'border', 'border thickness', 'border colour',
     'show while typing', 'reverse order', 'fixed box'];
   /* Searchable but not rows of their own: the names the game uses, and the two
-     channels that live INSIDE a colour rather than beside it.  Someone off
-     Lunar types "opacity", and the honest answer is not "no results" — it is
-     that there is no opacity control because the alpha is in the value. */
+     channels that live INSIDE a colour rather than beside it.  Someone used
+     to another client types "opacity", and the honest answer is not "no
+     results" — it is that there is no opacity control because the alpha is in
+     the value. */
   var SPINE_ALIAS = [
     ['static background', 'Static background width and height are the <b>Fixed box</b> row on every HUD element.'],
     ['alpha', 'Alpha is a channel inside every colour here, which is why a colour is eight digits and not six.'],
@@ -774,9 +779,9 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
   }
 
   /* ── search across names AND option names ─────────────────────────────────
-     Lunar has this and it is the best mitigation there is for a long flat
-     list: the thing people fail at is not remembering a module's name, it is
-     working out which module owns the setting they want.                    */
+     The best mitigation there is for a long flat list: the thing people fail
+     at is not remembering a module's name, it is working out which module
+     owns the setting they want.                                             */
 
   var modQ = document.getElementById('modQ');
   var modRows = document.getElementById('modRows');
@@ -1474,8 +1479,8 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     return { l: r.left - f.left, t: r.top - f.top, w: r.width, h: r.height, r: r.right - f.left, b: r.bottom - f.top };
   }
 
-  /* Overlap is stated, not stacked.  Lunar lets two elements sit on top of
-     each other in silence and you find out in a game. */
+  /* Overlap is stated, not stacked.  Two elements left sitting on top of
+     each other in silence is something you find out about in a game. */
   function checkClash() {
     if (!frame) return;
     HELS.forEach(function (e) { e.removeAttribute('data-clash'); });
@@ -2416,6 +2421,7 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
     /* after the screen is showing, because everything the editor measures is
        zero-sized while its pane is display:none */
     if (name === 'hud') hudEnter();
+    if (name === 'play') paintJava();
     runValues();
 
     /* A floating panel is anchored to a button on the screen you just left,
@@ -2593,7 +2599,49 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
       SCENARIOS.running.sub = esc(inst.name) + ' · running ' + esc(r.version)
         + (r.offline ? ' <span class="kv-sub">offline</span>' : '');
       apply('running');
+      /* a runtime may have been fetched on the way: the row says so now */
+      paintJava();
     }).catch(function (err) { launchFailed(err && err.message || 'the launch failed'); });
+  }
+
+  /* THE JAVA ROW TELLS THE TRUTH. It was a fixture — "Temurin 21.0.5 ·
+     automatic" whatever this machine had, 26.3 included. With a bridge it is
+     what the main process will run for the current instance, or fetch when
+     Play is pressed: Game.javaFor, and mc/runtime.js behind it. */
+  function vendorWord(v) {
+    v = String(v || '');
+    if (/adoptium|temurin/i.test(v)) return 'Temurin';
+    if (/microsoft/i.test(v)) return 'Microsoft';
+    if (/oracle/i.test(v)) return 'Oracle';
+    if (/azul|zulu/i.test(v)) return 'Zulu';
+    if (/amazon|corretto/i.test(v)) return 'Corretto';
+    return v.split(' ')[0] || 'Java';
+  }
+  function paintJava() {
+    if (!host || !host.game || typeof host.game.status !== 'function') return;
+    var inst = run.instance ? { id: run.instance } : currentInstance();
+    if (!inst || !inst.id) return;
+    var asked = inst.id;
+    host.game.status(asked, '').then(function (st) {
+      /* the answer for the instance that is still current, not one left behind */
+      var now = run.instance ? { id: run.instance } : currentInstance();
+      if (!now || now.id !== asked) return;
+      var j = st && st.java;
+      if (!j) return;
+      var html;
+      if (j.runtime) {
+        html = '<span class="mono">' + esc(vendorWord(j.runtime.vendor) + ' ' + j.runtime.version) + '</span> <span class="kv-sub">'
+          + (j.runtime.managed ? 'fetched by Kestrel' : 'on this PC') + '</span>';
+      } else if (j.pending) {
+        html = '<span class="mono">Java ' + esc(j.pending.version) + '</span> <span class="kv-sub">will be fetched</span>';
+      } else {
+        html = '<span class="mono">Java ' + esc(String(j.want || '')) + '</span> <span class="kv-sub">missing</span>';
+      }
+      liveJava = html;
+      /* a fixture scenario that states its own Java keeps it; the rest show the truth */
+      var sc = SCENARIOS[root.dataset.scenario] || SCENARIOS.normal;
+      if (root.dataset.screen === 'play' && el.kvJava && !sc.java) el.kvJava.innerHTML = html;
+    }).catch(function () { /* the fixture stays until the bridge answers */ });
   }
 
   function stopReal() {
@@ -5955,10 +6003,14 @@ import { BRAND, HOME, applyBrand, instancePath, t } from './brand.js';
   var VTYPE_WORD = { release: 'release', snapshot: 'snapshot', beta: 'old beta', alpha: 'old alpha' };
 
   /* 1.14 is where Fabric starts, and the string compare that would put 1.8.9
-     above 1.14.4 is the same one verKey() already exists to stop */
+     above 1.14.4 is the same one verKey() already exists to stop. After 1.21
+     the numbering became the year — 26.1, 26.2, 26.3 — and every one of those
+     is later than 1.14; a test that only knew "1." called them all old. */
   function mcAtLeast114(id) {
-    var m = String(id).match(/^1\.(\d+)/);
-    return !!m && parseInt(m[1], 10) >= 14;
+    var m = String(id).match(/^(\d+)\.(\d+)/);
+    if (!m) return false;
+    if (parseInt(m[1], 10) > 1) return true;
+    return parseInt(m[2], 10) >= 14;
   }
 
   /* ── the real builds, and the fixture underneath them ─────────────────────

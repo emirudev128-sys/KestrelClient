@@ -10,6 +10,69 @@ client mod that draws a fully configurable HUD.**
 
 ## THE SESSION THAT STARTS HERE
 
+**1 October 2026 — a 26.3 instance, and the launcher fetches Java now.** The user asked for "a
+profile 26.3 with the mod and all other mods, with Sodium". Facts checked first: 26.3 is the current
+release (15 Sep 2026, Mojang's year-based numbering — the UI's `mcAtLeast114` only knew "1." and
+called every 26.x old; fixed), Fabric Loader 0.19.5 supports it, every mod in the user's 1.21.4
+instance has a 26.3 build, **26.3 needs Java 25**, and **Yarn mappings stop at 1.21.11** (no Yarn for
+26.x at all).
+
+- **`26-3-fabric` exists** ("26.3 Fabric"): made from a script through `store.create` →
+  `installLoader` → `install` → `perf.fill` — 175 MB fetched in 21 s (most assets were shared with
+  1.21.4). Mods: Sodium 0.9.2 (the release; `pickVersion` skipped the 0.9.3 alpha), Lithium 0.26.2,
+  FerriteCore 9.0.0, Entity Culling 1.11.2, Fabric API 0.161.0, Caxton 1.2.0-alpha.2. `perf: done`.
+  **No Kestrel HUD mod in it** — the jar declares `minecraft ~1.21.4` and Fabric would refuse it.
+- **`mc/runtime.js` is new: when nothing installed is the Java a version needs, the launcher fetches
+  Mojang's own** (the catalogue at launchermeta → the component the version json names,
+  `java-runtime-epsilon` for 26.3 → 411 files, each sha1-checked, into `<root>/runtimes/<component>/`,
+  then probed; a `kestrel-runtime.json` marker makes the next launch a stat and a probe). Wired
+  through `Game._ensureJava` into launch, the Forge processors, and `javaFor` (which never
+  downloads; it reports `pending` so the Play screen can say "will be fetched"). Installed Java of
+  the right major still wins. Order of preference and the rules are in the file header. Done on
+  this machine: Java 25.0.1 (Microsoft build, Mojang's) fetched in 15 s; 1.21.4 still picks Temurin 21.
+  `node tools/runtimecheck.mjs [live]` is its check (platform map, choice, path safety, the real
+  catalogue).
+- **The Play screen's Java row showed a fixture** ("Temurin 21.0.5 · automatic") whatever was
+  installed; it now reads `game.status().java` — see `paintJava` in ui/scripts/app.js.
+- **A launch bug only Java 25 shows: Fabric loaded its own classes twice** ("SodiumPreLaunch cannot
+  be cast to PreLaunchEntrypoint"). Java 25 resolves classpath entries to their final path; a
+  library reached through a redirected folder then has two names and two class loaders. `mc/launch.js`
+  now puts `fs.realpathSync.native` paths on the classpath (`finalPath`).
+- **The user plays `26-3-fabric`; leave it, and the launcher, running.** Killing the launcher kills
+  the game (`before-quit → game.killAll()`).
+- **`26-3-kestrel-hud` exists** ("26.3 Kestrel HUD"): a copy of `26-3-fabric`'s record, mods and
+  options, for the ported HUD mod.
+- **The HUD mod is ported to 26.3: `client-mod-26/`.** A second Gradle project, not a branch — Loom
+  1.18.2, Gradle 9.7.1 run on the fetched Java 25 (`JAVA_HOME=<root>/runtimes/java-runtime-epsilon`),
+  the compiler a JDK 25 from foojay. No mappings line: 26.x ships unobfuscated, Loom refuses one, and
+  the access widener's namespace is `official`. Ten Minecraft-free files (HudConfig, CaveScan,
+  MapFiles, SortPlan…) are **copied from `client-mod/` at build time** — edit them there; the fonts,
+  language file and licences too. Everything else is a 26.3 copy under Mojang's names. What moved,
+  file by file:
+  - keys are SDL scancodes now; the document keeps its `KEY_*` names, which map through the same
+    `key.keyboard.*` names as before. 26.3 lets several mappings share a key, so the 1.21.4 build's
+    "read the keyboard too" workaround is gone (`Behaviours.held/presses`).
+  - **zoom is a field-of-view change** (`CameraMixin` on `Camera.calculateFov`, the exact
+    `2·atan(tan(fov/2)/m)`), since `GameRenderer.zoom` no longer exists; the hand keeps its own
+    angle and is no longer hidden. Freelook's mixins moved to `alignWithEntity` and `Entity.turn`.
+  - the GUI is extracted into a render state, then drawn: `Shapes.Mesh` is a `GuiElementRenderState`;
+    the HUD is a `HudElementRegistry` element; the sidebar wrap is `replaceElement(SCOREBOARD)`.
+  - **the menu's glass (`PanelBlur`) is a picture-in-picture renderer**: when the GUI prepares —
+    the world finished in the frame — it copies the frame into its own texture, vanilla's blur runs
+    under the menu's layer (`blurBeforeThisStratum`), and the sharp copy is laid back into the gaps
+    between panels and, scaled, into the canvas. The editor lays out in `extractBackground`.
+  - world overlays go to the frame's submit list (`LevelRenderEvents.COLLECT_SUBMITS`): lines with
+    per-vertex width, see-through debug quads for walls and beams, name-tag text for labels and TNT,
+    and the far waypoint dots as always-on-top gizmo triangle fans.
+  - mouse buttons count from one (left 1, middle 2, right 3); screens get event records.
+  It compiles and builds (`kestrel-hud-0.1.0+mc26.3.jar`, 674 KB); **not yet run in a game** at the
+  time of writing. Build: `gradle -p client-mod-26 build` with that JAVA_HOME. The 1.21.4 build and
+  `hudcheck` are unchanged and pass (340).
+
+---
+
+## THE SESSION BEFORE
+
 **The in-game menu has just been rebuilt, and the user has not seen it in game yet.** It was
 redesigned in a browser mockup (link below), signed off there, ported to the mod, built, checked and
 installed into their `1-21-4-fabric` instance. Their next message is most likely a screenshot of it.
@@ -454,6 +517,7 @@ Fabric 1.16.5 gives 4, NeoForge 1.21.1 gives 4, Forge 1.20.1 gives 2, 1.8.9 give
 
     node tools/hudcheck.mjs          the HUD contract across three languages (201)
     node tools/perfcheck.mjs         the default set: ids, gates, the flag (33)
+    node tools/runtimecheck.mjs      fetching Java: platform, choice, path safety (+ live)
     node tools/perfcheck.mjs live    ... and ask Modrinth whether any of it exists
     node tools/clicktest.mjs         every control, does it respond (337)
     node tools/audit.mjs ui          the design standard

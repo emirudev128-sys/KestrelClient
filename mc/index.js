@@ -38,6 +38,7 @@ const modpack = require('./modpack');
 const deps = require('./deps');
 const hud = require('./hud');
 const perf = require('./perf');
+const runtime = require('./runtime');
 
 /* the offline UUID every launcher agrees on: a version-3 (MD5) UUID over
    "OfflinePlayer:<name>", which is what the vanilla server computes too, so
@@ -125,15 +126,76 @@ class Game {
   /* ── java ───────────────────────────────────────────────────────────── */
   javaList(force) { return java.detect(!!force); }
   async javaFor(versionId) {
-    let major = 0;
-    try { major = V.javaMajorFor(await this.installer.resolve(versionId, 0)); } catch (e) { major = 0; }
+    let vjson = null;
+    try { vjson = await this.installer.resolve(versionId, 0); } catch (e) { vjson = null; }
+    const major = vjson ? V.javaMajorFor(vjson) : 0;
     const r = await java.pick(versionId, major);
-    return {
+    const out = {
       want: r.want,
       runtime: r.runtime ? { path: r.runtime.path, version: r.runtime.version, major: r.runtime.major, vendor: r.runtime.vendor, arch: r.runtime.arch } : null,
       have: (r.have || []).map(function (j) { return { path: j.path, version: j.version, major: j.major, vendor: j.vendor, arch: j.arch }; }),
       message: r.message || ''
     };
+    if (out.runtime) return out;
+    /* NOTHING INSTALLED WILL DO. One this launcher fetched before, or a
+       promise to fetch one — the Play screen asks this before anything is
+       clicked, so nothing is downloaded here, only looked up. */
+    const component = vjson ? V.javaComponentFor(vjson) : '';
+    const managed = await runtime.installedFor(this.L, component, r.want).catch(function () { return null; });
+    if (managed) {
+      out.runtime = { path: managed.path, version: managed.version, major: managed.major, vendor: managed.vendor, arch: managed.arch, managed: true };
+      out.message = '';
+      return out;
+    }
+    try {
+      const all = await runtime.catalogue(this.L, this.log);
+      const choice = runtime.choose(all, runtime.platformKey(), component, r.want);
+      if (choice) {
+        out.pending = { component: choice.component, version: choice.version };
+        out.message = 'Java ' + r.want + ' is not installed. Kestrel will fetch Java ' + choice.version + " from Mojang when you press Play.";
+        return out;
+      }
+    } catch (e) {
+      /* no catalogue right now: the message below still tells the truth */
+    }
+    out.message = out.message + ' Install a Java ' + r.want + ' runtime (Adoptium Temurin ' + r.want + ') and it will be picked up automatically.';
+    return out;
+  }
+
+  /* THE RUNTIME A VERSION RUNS ON, FOUND OR FETCHED. An installed Java of
+     the right major first — the user chose it — then one this launcher
+     fetched before, then Mojang's own for this platform, fetched now with
+     progress on the same reporter the game's files use. Throws NO_JAVA only
+     when none of the three is possible. */
+  async _ensureJava(mcVersion, vjson, report) {
+    const want = V.javaMajorFor(vjson);
+    const jr = await java.pick(mcVersion, want);
+    if (jr.runtime) return jr.runtime;
+    const component = V.javaComponentFor(vjson);
+    const managed = await runtime.installedFor(this.L, component, want).catch(function () { return null; });
+    if (managed) return managed;
+
+    let choice = null, why = '';
+    try {
+      const all = await runtime.catalogue(this.L, this.log);
+      choice = runtime.choose(all, runtime.platformKey(), component, want);
+      if (!choice) why = "Mojang publishes no Java " + want + ' runtime for ' + (runtime.platformKey() || process.platform + '-' + process.arch) + '.';
+    } catch (e) {
+      why = "Mojang's runtime catalogue could not be read (" + e.message + ').';
+    }
+    if (!choice) {
+      const e = new Error(jr.message + ' ' + why + ' Install a Java ' + want + ' runtime (Adoptium Temurin ' + want + ') and it will be picked up automatically.');
+      e.code = 'NO_JAVA';
+      throw e;
+    }
+    this.log('java: nothing installed is Java ' + want + ' — fetching Mojang\'s ' + choice.component + ' (' + choice.version + ')');
+    try {
+      return await runtime.ensure(this.L, choice, { report: report, log: this.log });
+    } catch (e) {
+      const err = new Error('Java ' + want + ' could not be fetched: ' + e.message + ' Install a Java ' + want + ' runtime (Adoptium Temurin ' + want + ') and it will be picked up automatically.');
+      err.code = 'NO_JAVA';
+      throw err;
+    }
   }
 
   /* ── progress, coalesced ────────────────────────────────────────────── */
@@ -282,22 +344,24 @@ class Game {
 
     const vjson = await this.installer.resolve(versionId, 0);
     const mcJar = this.L.versionJar(String(vjson.jar || inst.ver || versionId));
-    const jr = await java.pick(String(inst.ver || ''), V.javaMajorFor(vjson));
-    if (!jr.runtime) {
-      /* THE PROCESSORS NEED A JVM, and it is the same one the game needs.
-         Saying which is missing beats "install failed": this is the one step
-         where a launcher can be asked to run Java before it runs Minecraft. */
-      const e = new Error('Java ' + jr.want + ' is needed to run ' + inst.loader
-        + "'s installer processors, and no runtime that new was found. The profile is installed; it cannot be patched without one.");
-      e.code = 'NO_JAVA_FOR_PROCESSORS';
-      throw e;
+    /* THE PROCESSORS NEED A JVM, and it is the same one the game needs —
+       found, or fetched, the same way. This is the one step where a launcher
+       can be asked to run Java before it runs Minecraft. */
+    let rt;
+    try {
+      rt = await this._ensureJava(String(inst.ver || ''), vjson, report);
+    } catch (e) {
+      const err = new Error('Java is needed to run ' + inst.loader
+        + "'s installer processors. " + e.message + ' The profile is installed; it cannot be patched without one.');
+      err.code = 'NO_JAVA_FOR_PROCESSORS';
+      throw err;
     }
 
     const r = await loaders.completeModern({
       layout: this.L,
       installerName: jar,
       mcJar: mcJar,
-      javaExe: jr.runtime.path,
+      javaExe: rt.path,
       log: this.log,
       onStep: function (st) {
         report({
@@ -410,14 +474,16 @@ class Game {
        "fabric-loader-0.16.14-1.16.5", which it could not parse. */
     report({ phase: 'installing', done: summary.total, total: summary.total, bytes: summary.bytes, totalBytes: summary.totalBytes, file: 'looking for a Java runtime' });
     const vjson = await this.installer.resolve(versionId, 0);
-    const jr = await java.pick(mcVersion, V.javaMajorFor(vjson));
-    if (!jr.runtime) {
+    /* found on the machine, fetched before, or fetched now — Mojang's own,
+       with its progress on this same reporter; see mc/runtime.js */
+    const jr = { runtime: null };
+    try {
+      jr.runtime = await this._ensureJava(mcVersion, vjson, report);
+    } catch (e) {
       report({ phase: 'error', done: 0, total: 0, bytes: 0, totalBytes: 0, file: '' });
-      const e = new Error(jr.message);
-      e.code = 'NO_JAVA';
       throw e;
     }
-    this.log('launch ' + instanceId + ': ' + versionId + ' on ' + jr.runtime.vendor + ' ' + jr.runtime.version + ' (' + jr.runtime.path + ')');
+    this.log('launch ' + instanceId + ': ' + versionId + ' on ' + jr.runtime.vendor + ' ' + jr.runtime.version + ' (' + jr.runtime.path + ')' + (jr.runtime.managed ? ' — fetched by Kestrel' : ''));
 
     /* 3. the session: the signed-in account's, or offline */
     const session = await this._session(o);

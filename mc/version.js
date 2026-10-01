@@ -321,8 +321,16 @@ function javaMajorFor(vjson) {
   return 8;
 }
 
+/* the runtime component the version names in Mojang's own catalogue —
+   "java-runtime-epsilon" for 26.3 — or '' when it names none */
+function javaComponentFor(vjson) {
+  const jv = vjson && vjson.javaVersion;
+  const c = jv && typeof jv.component === 'string' ? jv.component : '';
+  return /^[a-z0-9][a-z0-9-]{0,63}$/.test(c) ? c : '';
+}
+
 module.exports = {
   osName, osArch, archBits, allowed, matchesOs,
-  nativeClassifier, librariesFor, inheritsFrom, javaMajorFor,
+  nativeClassifier, librariesFor, inheritsFrom, javaMajorFor, javaComponentFor,
   merge, parseCoord, libKey, MOJANG_LIBS
 };

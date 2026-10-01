@@ -16,8 +16,9 @@ source, plus Modrinth App and Prism. Labels below are verbatim from those produc
 | Logs | `Minecraft Log` page + console | `Launcher Log` / `Game Output` tabs | Running-instance route |
 
 **Our call:** icon rail, because it is the only one that survives a resizable desktop window
-without dead space, and it is what Lunar users already have in their fingers. But the rail must
-carry labels, not icon-only-with-tooltips — FTB's own docs concede an expandable version is wanted.
+without dead space, and it is what players coming from a HUD client already have in their
+fingers. But the rail must carry labels, not icon-only-with-tooltips — FTB's own docs concede an
+expandable version is wanted.
 
 ## Settings scope model
 

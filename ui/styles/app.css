@@ -2670,7 +2670,7 @@ html[data-drop="on"] .drop { display: block; }
   white-space: nowrap;
 }
 
-/* a colour, with its alpha in the value where Lunar puts it */
+/* a colour, with its alpha in the value rather than on a slider beside it */
 .chit {
   position: relative;
   width: 20px; height: 18px;
@@ -2848,7 +2848,7 @@ html[data-drop="on"] .drop { display: block; }
 .els-offrow .sw-sm { justify-self: start; }
 
 /* the shortcuts sit under the canvas, where the well would otherwise be dead
-   space, and where Lunar puts the panel this is a nod to */
+   space */
 .keys {
   flex: none;
   display: grid;

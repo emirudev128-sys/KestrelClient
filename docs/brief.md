@@ -4,8 +4,8 @@
 
 ## What this is
 
-A desktop launcher for Minecraft, for players who left Lunar Client over its privacy policy and
-want what it did well: open it, pick a version, play. Shell only — no mods wired up yet, but the
+A desktop launcher for Minecraft, for players who left an all-in-one client over its privacy
+policy and want what it did well: open it, pick a version, play. Shell only — no mods wired up yet, but the
 shell must have a place for everything in docs/launcher-ia.md so nothing gets bolted on later.
 
 The audience is PvP and performance players. They are on Windows, on a mouse, often on a second
@@ -28,7 +28,7 @@ We are beating it, not cloning it. Copying Linear's indigo `#5e6ad2` or its exac
 not a win — the critic is told to treat a clone as a failure.
 
 **Structural references only** (what a launcher contains, never how it should look):
-ref/modrinth-app.png, ref/lunar-home.png, ref/prism.png, and docs/launcher-ia.md.
+ref/modrinth-app.png, ref/client-home.png, ref/prism.png, and docs/launcher-ia.md.
 
 ## Read before building
 
@@ -110,17 +110,17 @@ softer, or more rounded than the bar, it is not done.
 
 ---
 
-## Product thesis (added after the Lunar research — read docs/lunar.md)
+## Product thesis (added after the research — read docs/thesis.md)
 
-**Lunar removed decisions rather than organising them.** That is why it felt effortless, and it is
-the standard every screen here is held to. Before adding a control, ask whether the app could
+**The clients people loved removed decisions rather than organising them.** That is why they felt
+effortless, and it is the standard every screen here is held to. Before adding a control, ask whether the app could
 decide instead.
 
 Concretely, for every round after the first:
 
 - **Auto-detect is the default path; the manual control lives behind Advanced.** Java runtime
-  especially — Lunar ships no Java path picker at all in the normal flow, and that single omission
-  is most of its reputation. We keep the control (power users need it) but nobody else meets it.
+  especially — the client players praise most ships no Java path picker at all in the normal
+  flow, and that single omission is most of its reputation. We keep the control (power users need it) but nobody else meets it.
 - **One `Advanced` toggle** gates expert rows inside the normal settings list, each marked with a
   badge. Not a separate expert UI, not a second settings tree.
 - **The primary action states the full current selection.** The launch control says what will
@@ -134,11 +134,11 @@ Concretely, for every round after the first:
 
 **What we do not build, ever:** an ad slot, a store tab, promoted servers, a subscription tier,
 cosmetics, or a second identity system layered on the Minecraft account. Every one of those is a
-documented Lunar complaint, and their absence is the product.
+documented complaint about the clients that added them, and their absence is the product.
 
 **Privacy page claims, and no more:** no ad slot, no data-broker sharing, no behavioural
 profiling, analytics off by default, source you can read. We win on what we verifiably do not do.
-Do not write copy calling Lunar spyware — it is not supportable and it is not needed.
+Do not write copy calling any other client spyware — it is not supportable and it is not needed.
 
 ---
 
@@ -199,7 +199,8 @@ what both GDLauncher and CurseForge use — then loader version, then group. Lat
 version preselected. Nothing else on the first screen; everything else is editable afterwards.
 
 Per the product thesis: **no Java choice in this flow.** The launcher picks the runtime for the
-version. That decision is exactly the kind Lunar removed and it is most of why it felt effortless.
+version. That decision is exactly the kind worth removing, and removing it is most of why a client
+feels effortless.
 
 ### 2. Import mods into a profile — has to be genuinely easy
 
@@ -212,8 +213,8 @@ This is the flow that has to feel better than every competitor, so it gets real 
   available, and the ability to select several and act on them at once. Open mods folder.
 - **Add from disk** and **add from a URL** as explicit buttons, not hidden in a menu.
 - **Import a whole profile**: `.mrpack`, CurseForge `.zip`, and from another launcher on the
-  machine (Lunar itself supports importing from Modrinth, CurseForge, Prism, MultiMC, GDLauncher,
-  ATLauncher — matching that list is a real switching argument for us).
+  machine (the big clients support importing from Modrinth, CurseForge, Prism, MultiMC,
+  GDLauncher, ATLauncher — matching that list is a real switching argument for us).
 - **Duplicate an instance** so people can fork a working setup before breaking it.
 
 Mod *browsing* from Modrinth/CurseForge is a later phase — but the shell must already have the
@@ -231,14 +232,14 @@ Do not build this until it is confirmed.
 
 ## Modules — the in-game mods, and where they live
 
-This is the Lunar feature the user actually misses: the built-in client modules. Minimap, compass,
-FPS, CPS, keystrokes, armor status, coordinates, potion effects, zoom, toggle-sprint. Lunar
-advertises "60+ modifications" and this is most of what people mean when they say Lunar had
-everything. It needs a real home in the shell, not a stub.
+This is the feature the user actually misses from an all-in-one client: the built-in client
+modules. Minimap, compass, FPS, CPS, keystrokes, armor status, coordinates, potion effects, zoom,
+toggle-sprint. Such clients advertise sixty-odd modifications, and this is most of what people
+mean when they say one had everything. It needs a real home in the shell, not a stub.
 
 ### Naming — keep the two unambiguous
 
-Two different things would both be called "mods" by someone arriving from Lunar:
+Two different things would both be called "mods" by someone arriving from such a client:
 
 - **Mods** = `.jar` files you install into an instance. Fabric, Forge, NeoForge, Quilt.
   Already built at `#mods`.
@@ -246,7 +247,7 @@ Two different things would both be called "mods" by someone arriving from Lunar:
   New, at `#modules`.
 
 The Modules screen should say so in one line rather than making people infer it. Someone coming
-from Lunar will look for "Mods" and find both — the distinction has to be legible on arrival.
+from one will look for "Mods" and find both — the distinction has to be legible on arrival.
 
 ### Scope model
 
@@ -321,12 +322,12 @@ work this way; it is the norm, not the exception. Kestrel does the same.
   maintain a list of approved mods, does not check names against one, and does not refuse to run
   something because of what it is called or what it contains.
 - **Nothing about your mods is sent anywhere.** No server-facing mod-disclosure API. This is a
-  concrete difference from Lunar: their Apollo plugin includes an InstalledMods API that lets a
-  server query which Lunar mods a player has. We have no equivalent because we have no
+  concrete difference from clients that ship a server plugin API through which a server can ask
+  which of the client's mods a player has. We have no equivalent because we have no
   server-facing surface at all.
 - **No client-side anticheat**, no process enumeration, no scanning of anything outside the
-  instance folder. This is the same category of clause that caused Lunar's privacy problem in the
-  first place — see docs/lunar.md.
+  instance folder. This is the same category of clause that starts a client's privacy problem in
+  the first place — see docs/thesis.md.
 - **The wrong-loader warning is advice, not enforcement.** When a jar does not match the instance's
   loader or version, say so and offer the fix — and always leave "load it anyway" available. The
   existing copy on `#mods` already does this correctly; keep it that way. Never silently refuse.
@@ -438,12 +439,11 @@ cheap, not a user-facing option.
 
 ---
 
-## Modules — corrections and detail from the Lunar research
+## Modules — corrections and detail from the research
 
-Source of truth: `lunarclient.dev/apollo/developers/mods/<modid>` — Lunar's own server-API docs,
-101 mod pages, each with real option keys, types, defaults and slider ranges. Build against those,
-not against paraphrase. (Their marketing says "65+" on one page and "75+" on another; Apollo lists
-101 ids.)
+Source of truth: the published per-module option reference of an established HUD client — a
+hundred or so module pages, each with real option keys, types, defaults and slider ranges. Build
+against documented options, not against paraphrase.
 
 ### Two corrections to the spec above
 
@@ -467,32 +467,32 @@ Then per module only its own options. Armor Status adds a six-stop durability co
 adds zoom, rotate-with-player, marker sizes, waypoint distance; Ping adds spike thresholds and a
 four-stop colour ramp; Keystrokes adds pressed/unpressed colour pairs and a fade delay.
 
-### What Lunar does NOT have — our openings
+### What established HUD clients do NOT have — our openings
 
 All verified absent, and all cheap:
 
-- **No categories at all.** Lunar's mod list is flat. Every article describing "HUD / PvP /
+- **No categories at all.** The usual mod list is flat. Every article describing "HUD / PvP /
   Performance" tabs is fabricating. Our category sidebar is a genuine improvement, not a copy.
 - **No alignment guides, no grid, no numeric position inspector, no reset-all.** Reset is
   per-element only.
-- **No preset export and no share codes.** Sharing a Lunar layout means zipping
-  `%appdata%/.minecraft/config/lunar/` and hand-editing `profile_manager.json`. A cottage industry
-  of "share your profile" threads exists purely because of this. **Exportable presets with a share
+- **No preset export and no share codes.** Sharing a layout means zipping a config folder and
+  hand-editing a profile file. A cottage industry of "share your profile" threads exists purely
+  because of this. **Exportable presets with a share
   code is the single clearest opening in the whole feature.**
 - **The menu inherits Minecraft's GUI scale and gets cut off.** This is the top recurring complaint,
-  across years: "only 2 and a half rows of mods", settings unreachable. The fix is a hidden toggle
-  called "Use Minecraft GUI Scale". Ours is a launcher window — it must scale independently and be
+  across years: only a couple of rows of mods visible, settings unreachable. The fix there is a
+  hidden toggle. Ours is a launcher window — it must scale independently and be
   resizable, and that alone answers the loudest complaint about the feature.
 - **Overlapping HUD elements with no resolution.** Our overlap warning is a real fix.
 
-### The HUD editor — how Lunar actually does it
+### The HUD editor — how the familiar one actually works
 
 **It is not a separate mode.** The HUD is live and directly manipulable while the mods menu is
 open; you drag the menu panel aside and move elements underneath. Only enabled modules appear as
 drag targets. Confirmed interactions: mod snapping, CTRL+click multi-select, a corner scaling box,
 CTRL+Z / CTRL+Y undo-redo, arrow keys for precise movement, right-click to reset an element's
-relative position, hold right-click ~1s to drag it out of the snap bounding box. A **Movement
-Helper** panel in the bottom-left lists the shortcuts. It saves automatically — no apply button.
+relative position, hold right-click ~1s to drag it out of the snap bounding box. A shortcuts panel
+in the bottom-left lists them. It saves automatically — no apply button.
 
 **Positions are relative and anchored, not absolute pixels**, so a layout survives a resolution
 change. Keep that.

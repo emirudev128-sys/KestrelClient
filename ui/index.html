@@ -1562,7 +1562,7 @@
 
       <!-- ══ MODULES ═════════════════════════════════════════════════════
            The built-in client mods.  Two things here are corrections to the
-           earlier spec, taken from Lunar's own Apollo docs:
+           earlier spec, taken from how HUD clients document their options:
 
            · THERE IS NO OPACITY CONTROL.  Alpha lives in the colour picker,
              which is why the background reads as an eight-digit value and
@@ -1598,7 +1598,7 @@
         <div class="mod3">
 
           <!-- ── categories ───────────────────────────────────────────────
-               Lunar's list is flat, so this column is ours to justify.  It
+               The usual list is flat, so this column is ours to justify.  It
                is not a filing cabinet: every row carries how many of its
                tweaks are ON, and a dot when something inside it is off its
                default, so the column doubles as the index of what you have
@@ -1627,9 +1627,9 @@
                which module owns a setting. -->
           <div class="modlist">
             <div class="modlist-head"><span>HUD</span><span class="modlist-n mono">10</span></div>
-            <!-- Said once, at the head of the column it is about: someone off
-                 Lunar looks for "Mods" and finds two things wearing that
-                 name.  It used to be a full-width strip across the whole
+            <!-- Said once, at the head of the column it is about: someone used
+                 to another client looks for "Mods" and finds two things wearing
+                 that name.  It used to be a full-width strip across the whole
                  pane, which is a web page's shape, not a window's. -->
             <p class="modlist-note">Tweaks are built in — nothing to download, nothing to match to a loader. The <span class="mono">.jar</span> files you add to an instance are <a class="link-in" href="#mods">Mods</a>.</p>
             <p class="modlist-say" id="modSay" hidden></p>
@@ -1862,12 +1862,13 @@
            layout survives the resolution selector above it.  Nothing here
            stores a pixel.
 
-           WHERE WE LEAVE LUNAR.  Lunar overloads right-click: tap it to
-           reset an element, hold it about a second to drag out of the snap
-           box.  Two unrelated jobs on one button, discovered by accident.
-           Split: right-click opens a menu with Reset position in it, and
-           Alt held during a drag ignores snapping.  Both are printed in the
-           shortcuts panel, which is the other thing Lunar gets right. -->
+           WHERE WE LEAVE THE USUAL EDITOR.  The familiar one overloads
+           right-click: tap it to reset an element, hold it about a second to
+           drag out of the snap box.  Two unrelated jobs on one button,
+           discovered by accident.  Split: right-click opens a menu with Reset
+           position in it, and Alt held during a drag ignores snapping.  Both
+           are printed in the shortcuts panel, which is the part of that
+           editor worth keeping. -->
       <section class="screen" id="screen-hud" aria-label="HUD layout">
         <header class="pane-head">
           <a class="back" href="#modules" aria-label="Back to tweaks"><svg width="14" height="14" aria-hidden="true"><use href="#r-chev"/></svg></a>
@@ -1958,9 +1959,9 @@
               </div>
             </div>
 
-            <!-- Lunar's Movement Helper, which is the one part of its editor
-                 nobody complains about.  Two of these lines are the split of
-                 its overloaded right-click. -->
+            <!-- A shortcuts panel, which is the one part of the familiar HUD
+                 editor nobody complains about.  Two of these lines are the
+                 split of its overloaded right-click. -->
             <div class="keys">
               <span class="keys-head">Shortcuts</span>
               <div class="keys-list">
@@ -1975,8 +1976,8 @@
             </div>
           </div>
 
-          <!-- ── the inspector.  Lunar has no numeric position readout at
-               all; this is the cheapest thing we can add that it lacks. ── -->
+          <!-- ── the inspector.  HUD editors rarely have a numeric position
+               readout at all; this is the cheapest thing we can add. ── -->
           <aside class="hud-insp" aria-label="Selected element">
             <div class="insp-head">
               <h2 class="insp-name" id="inspName">Ping</h2>
@@ -2021,12 +2022,12 @@
       </section>
 
       <!-- ══ PRESETS ═════════════════════════════════════════════════════
-           Lunar's clearest gap.  Sharing a layout there means zipping
-           %appdata%/.minecraft/config/lunar and hand-editing
-           profile_manager.json, which is why "post your profile" threads
-           exist at all.  A preset here carries the layout and the module
-           configuration together, and the share code is the differentiator:
-           one line of text that reconstructs both. -->
+           The clearest gap in HUD clients.  Sharing a layout usually means
+           zipping a config folder and hand-editing a profile file, which is
+           why "post your profile" threads exist at all.  A preset here
+           carries the layout and the module configuration together, and the
+           share code is the differentiator: one line of text that
+           reconstructs both. -->
       <section class="screen" id="screen-presets" aria-label="Presets">
         <header class="pane-head">
           <a class="back" href="#modules" aria-label="Back to tweaks"><svg width="14" height="14" aria-hidden="true"><use href="#r-chev"/></svg></a>
@@ -3015,8 +3016,8 @@
       <!-- ══ BROWSE ══════════════════════════════════════════════════════
            A CONTENT BROWSER IS NOT A STORE.  Nothing here is promoted, ranked
            by anything but the sort you picked, or sponsored, and there is no
-           second currency — see the Lunar complaints in docs/lunar.md for why
-           that absence is the product.
+           second currency — see docs/thesis.md for why that absence is the
+           product.
 
            IT IS ALWAYS SCOPED TO AN INSTANCE, and that is the whole reason it
            earns a screen rather than a link out to a website.  A browser that

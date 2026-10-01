@@ -12,7 +12,7 @@
   },
   "structuralRefs": [
     "ref/modrinth-app.png",
-    "ref/lunar-home.png",
+    "ref/client-home.png",
     "ref/prism.png"
   ],
   "loopCap": 50,

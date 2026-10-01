@@ -76,6 +76,23 @@ function argfileLine(a) {
 /* ── the plan ─────────────────────────────────────────────────────────────
    Pure: takes a version json and a session, returns the argument vector.  No
    spawning, no disk, so it can be unit-checked and printed.               */
+/* ── THE CLASSPATH IS WHERE THE FILES REALLY ARE ──────────────────────────
+   Java 25 turns every classpath entry into its final path on disk — through
+   symbolic links, junctions, and Windows' redirection of AppData for apps
+   installed as packages — and records THAT as where each class came from.
+   Fabric Loader decides which jars it must leave to Java (its own, Mixin,
+   ASM) by comparing those origins with the classpath it was given. When the
+   two spell the same file differently they do not match, Fabric loads its own
+   classes a second time, and every mod fails with "X cannot be cast to X".
+   That is exactly what 26.3 did the first time it was launched: the launcher
+   ran inside a packaged app, its new files were redirected, and Java 25 named
+   the redirected copies. So each entry is passed as the OS's own final path,
+   and both sides read the same string. An entry that cannot be resolved —
+   not downloaded yet — is passed as it was, and the JVM says why. */
+function finalPath(p) {
+  try { return fs.realpathSync.native(p); } catch (e) { return p; }
+}
+
 function buildArgs(o) {
   const vjson = o.vjson;
   const L = o.layout;
@@ -83,14 +100,14 @@ function buildArgs(o) {
 
   const libs = V.librariesFor(vjson);
   const cp = [];
-  for (const l of libs.jars) cp.push(L.library(l.path));
+  for (const l of libs.jars) cp.push(finalPath(L.library(l.path)));
   /* THE CLIENT JAR GOES LAST, and for a merged loader profile it is the
      PARENT's jar — `jar` in the version format means exactly that.  Last is
      not arbitrary either: a loader ships its own build of ASM or Guava and
      expects to shadow the game's copy, so every loader library is ahead of
      the client on the classpath.  merge() puts the child's libraries first
      for the same reason. */
-  cp.push(L.versionJar(String(vjson.jar || id)));
+  cp.push(finalPath(L.versionJar(String(vjson.jar || id))));
 
   const assetsRoot = L.assets;
   const assetIndexId = (vjson.assetIndex && vjson.assetIndex.id) || vjson.assets || 'legacy';

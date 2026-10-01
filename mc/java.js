@@ -19,14 +19,16 @@
      <= 1.16      Java 8      (1.17 was the break; 1.16.5 will not start on 17+
                                because of the LWJGL/ASM it ships)
      1.17-1.20.4  Java 17
-     1.20.5+      Java 21
+     1.20.5-1.21  Java 21
+     26.x         Java 25
 
    Modern version manifests state this themselves in `javaVersion.majorVersion`
    and that is preferred when present; the table above is the fallback for the
    versions that predate the field.
 
-   WHEN THE RIGHT ONE IS MISSING WE SAY SO.  We do not launch Java 8 at 1.21
-   and let the JVM produce a stack trace the user has to interpret.
+   WHEN THE RIGHT ONE IS MISSING, mc/runtime.js FETCHES MOJANG'S OWN — and
+   only when that is impossible too do we say so.  We do not launch Java 8 at
+   1.21 and let the JVM produce a stack trace the user has to interpret.
    ========================================================================= */
 
 const fs = require('node:fs');
@@ -230,8 +232,7 @@ async function pick(mcId, manifestMajor, override) {
     : 'none';
   return {
     runtime: null, want: want, have: all,
-    message: 'Minecraft ' + mcId + ' needs Java ' + want + ' and this machine has ' + list
-      + '. Install a Java ' + want + ' runtime (Adoptium Temurin ' + want + ') and it will be picked up automatically.'
+    message: 'Minecraft ' + mcId + ' needs Java ' + want + ' and this machine has ' + list + '.'
   };
 }
 

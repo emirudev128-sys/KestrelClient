@@ -292,8 +292,8 @@
      the palette and they do not invert in the light theme: the game is dark
      in both.  They are here rather than in the components because the rule is
      that no component names a colour, and a preview is still a component.
-     --hud-* are the values Lunar ships as defaults, composited: a background
-     at 44% black and a border at 62%.                                       */
+     --hud-* are the defaults players already know from HUD clients,
+     composited: a background at 44% black and a border at 62%.              */
   --game-ground: #0D0F12;
   --game-ink:    #ECEFF2;
   --game-dim:    #9BA1A7;

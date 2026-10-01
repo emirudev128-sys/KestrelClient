@@ -1,131 +1,84 @@
-# What Lunar actually did well, and what it actually did wrong
+# What a launcher should take away, and what it should never add
+
+The conclusions of the research done before the shell was designed: what players praise in the
+clients they used, what they complain about, and what that means for this one. It names no other
+product, because none of it depends on one — these are rules for Kestrel.
 
 ## The design thesis, in one line
 
-**Lunar removed decisions rather than organising them.** Every recurring piece of praise is about a
-decision that was taken away; every recurring complaint is about commercial surface that was added
-or control that was taken away. Those two are separable — which is the entire opening for this
-project.
+**Remove decisions rather than organise them.** Every recurring piece of praise for a game client
+is about a decision that was taken away; every recurring complaint is about commercial surface
+that was added, or control that was taken away. Those two are separable — which is the entire
+opening for this project.
 
-Removed decisions that earned the praise:
-- **No Java path in the default flow.** Lunar bundles the correct JRE per version and picks it.
+Removed decisions that earn the praise:
+- **No Java path in the default flow.** The launcher picks the correct runtime for the version.
   This is the single largest contributor to "it just works", and it is a deliberate omission.
-- RAM auto-detected, with a `Detect Recommended` action and a live `4.1GB / 28.5GB left to
-  allocate` readout rather than a bare number field.
-- No loader choice on legacy versions; no per-mod install; auto-update on new MC releases.
-- The launch button states the whole current selection in one line: `LAUNCH GAME` over
-  `Lunar Client 1.21 with Fabric`. You never have to look elsewhere to know what will start.
-- One `ADVANCED MODE` toggle gates every expert control inside the normal settings list, with an
-  `ADVANCED` badge per row — instead of a separate expert UI.
+- RAM auto-detected, with a recommend action and a live readout of what is left to allocate,
+  rather than a bare number field.
+- The launch button states the whole current selection in one line — version, loader, instance.
+  You never have to look elsewhere to know what will start.
+- One `Advanced` toggle gates every expert control inside the normal settings list, with a badge
+  per row — instead of a separate expert UI.
 
-Added surface that earned the complaints: an ad slot, a store tab, promoted servers that overwrote
-user-added entries, a subscription, cosmetics loading that slowed startup, and closed source.
+Added surface that earns the complaints, wherever it appears: an ad slot, a store tab, promoted
+servers that overwrite the player's own entries, a subscription, cosmetics whose loading slows
+startup, and closed source.
 
 **We take the first list and ship none of the second.** Keep the Java path control — but behind
 Advanced, with auto-detect as the default path, so power users have it and nobody else meets it.
 
-## Structure worth copying
+## Structure worth having
 
-v2 used top tabs `Home | Servers | Settings | About | Store`. **v3 deliberately moved to an icon
-rail + top bar.** They abandoned tabs on purpose, which is a useful data point for our rail choice.
+- An icon rail and a top bar rather than top tabs. The rail carries navigation and nothing else;
+  settings sit pinned at its foot with the version string beneath.
+- The launch button as a state machine: `Play` / `Install & Play` / `Downloading 43%` / `Running` /
+  `Stop` / `Repair`. The button *is* the status display.
+- A `Ctrl/Cmd+K` palette that jumps to any page, setting or action.
+- Logs as a real destination, not a hidden panel — with a redact toggle for anyone streaming.
+- Accounts as a slide-over panel, not a page.
+- A first run that lets you see the app before committing an account.
 
-- Rail ~100px, active item marked by a pill bleeding off the far-left screen edge, settings gear
-  pinned bottom with the version string beneath it.
-- Launch button state machine: `Play` / `Install & Play` / `Downloading 43%` / `Running` / `Stop` /
-  `Repair`. The button *is* the status display.
-- `Ctrl/Cmd+K` global palette jumping to any page, setting, or action.
-- Logs get a whole second window ("Mission Control"), opening on the second monitor by default,
-  with a **privacy blur toggle for streaming**. Logs as a real destination, not a hidden panel.
-- Accounts as a ~385px slide-over panel, not a page.
-- First run offers `Continue as Guest` — you can see the app before committing an account.
+## The privacy page: claims we can defend
 
-## The privacy story, accurately
+**Claim exactly this and nothing more:** no ad slot, no data-broker sharing, no behavioural
+profiling, analytics off by default, and source you can read. We win on what we verifiably do not
+do.
 
-This matters because our Privacy page has to make claims we can defend.
+Two rules for the copy:
 
-**There was no single dated exodus event.** There were four waves of alarm (2021-2025), each set
-off by someone rediscovering policy text that had been sitting there since 2019.
+- **"A policy permitted X" is not "a client did X".** Alarm about game clients is usually an
+  argument from policy text, not from packet capture or decompilation. Do not repeat it, and never
+  call another product spyware — it is not supportable and it is not needed.
+- **Argue the commercial case, which anybody can check, and leave the forensic one alone.** An ad
+  slot, a store and a subscription are visible to everyone who opens an app. Their absence here is
+  just as visible.
 
-**The scary text was real but misread.** The April 2019 policy did permit collecting hardware
-serials, "information about running processes, drivers and other executable code", screenshots of
-your computer, and memory contents for manual analysis, retained indefinitely. However: that
-language is anticheat boilerplate lifted near-verbatim from PunkBuster, Lunar removed the
-client-side anticheat in October 2020, and the clauses were deleted from the policy in January
-2021 — yet the largest wave, in May 2023, was still circulating screenshots of the old text.
+## The strongest wedge: honesty about memory and speed
 
-**The real, material change was 13 August 2024:** the Overwolf partnership added an ad slot and
-began targeted cross-contextual behavioural advertising — what the policy itself calls the "sale"
-or "sharing" of personal information. The current policy collects identifiers, device info
-including installed apps and fonts and battery level, navigation paths, voice-chat recordings, and
-inferred behavioural profiles, shared with advertisers and data brokers.
+The most persistent complaints about game clients are not about privacy at all. They are **memory
+use past the allocation, slow launches, and crashes** — year after year, on every platform where
+players leave reviews.
 
-**Substantiated:** the 2024 advertising change, the broker sharing, the behavioural profiling, and
-the fact that closed source makes any of it unverifiable.
-**Overblown:** "the policy permitted X" is not "the client did X". No packet capture,
-decompilation, or sandbox report ever demonstrated Lunar exfiltrating arbitrary files, and the
-antivirus hits were treated as false positives.
+It is a UI problem as much as an engine one: show allocated *and actual* usage rather than just
+the slider value; never silently exceed the allocation; make startup time visible instead of
+asking for faith. A launcher that shows its own resource cost is making a claim others cannot
+match.
 
-**So our Privacy page claims exactly this and nothing more:** no ad slot, no data-broker sharing,
-no behavioural profiling, analytics off by default, and source you can read. We win on what we
-verifiably do not do. We do not need to call Lunar spyware, and we should not.
+The second cluster is ads inside navigation — a server list or a settings route that doubles as a
+promotion. Our rail carries navigation only, and a player's server list holds only what they put
+there.
 
----
+## No server-facing surface
 
-## Sentiment dossier — the strongest wedge
+Some clients ship a server plugin API through which a server can ask which of the client's mods a
+player has installed. Documented and opt-in or not, that is a client-to-server disclosure.
 
-Trustpilot sits at **1.9/5 across 100 reviews, 54% one-star**. The complaint cluster driving it is
-not privacy at all: it is **RAM overrun, slow launch, and crashes**, and it is the most persistent
-theme in the evidence — spanning Aug 2021 to Jul 2026 across three independent platforms.
+Kestrel has no equivalent, because the launcher has no server-facing surface at all. That is worth
+stating plainly on the Privacy page as a thing we do not do, alongside no ad slot, no broker
+sharing and no behavioural profiling.
 
-Representative, all verifiable:
-- Allocated 3 GB, using 4.5 GB. Allocated 2 GB, "takes up around 5-6 gigs". On an M1, "bypasses the
-  RAM allocation and eats up to 60 gigs".
-- "The game takes 10-15 minutes to even start." "Long (5+ minutes) launch times." Startup slowness
-  is widely attributed to cosmetics loading — which we do not have.
-- "Crashes all the time and has a memory leak." Multiple independent world-loss reports.
-
-**So the wedge is honesty about memory and speed, and it is a UI problem as much as an engine one:**
-show allocated *and actual* usage rather than just the slider value; never silently exceed the
-allocation; make startup time visible instead of asking for faith. A launcher that shows its own
-resource cost is making a claim its competitor cannot match.
-
-Second cluster: ads inside navigation. "I don't want my server menu to be an ad." Lunar pins
-promoted servers into the user's own server list, and one reviewer was soft-locked out of settings
-by a cosmetics promo. Our rail carries navigation only.
-
-## Two more corrections to carry
-
-1. **"You can't add your own mods" is out of date.** True through 2023; since Jan 2024 Lunar loads
-   third-party Fabric mods, and later NeoForge/Quilt/CurseForge. It is now only true for 1.7, 1.8
-   and 1.12 — per Lunar's own FAQ. Do not build positioning on this.
-2. **The forced v3 launcher migration (12-13 Aug 2023) predates the Badlion acquisition
-   (11-12 Mar 2025) by about 19 months.** They are unrelated events, frequently conflated.
-
-## On the "spyware" videos
-
-The main one — "How LUNAR CLIENT Could Be SPYWARE", 3,381 views — links exactly one source: Lunar's
-own published privacy policy. It is an argument from the policy text, not from packet capture or
-decompilation, and the title itself hedges. The 2025 follow-up "Investigating Lunar Client's New
-Policy" carries an explicit disclaimer that everything in it is a joke, and an affiliate link to a
-paid cheat client. Neither is evidence of anything technical. This reinforces the earlier
-conclusion: argue the commercial case, which is documented, and leave the forensic case alone.
-
-
----
-
-## Apollo, and why having no server-facing surface is a feature
-
-Lunar's current server-facing component is **Apollo**, an opt-in server plugin API. It includes an
-**InstalledMods API**, so a server can query which Lunar mods a player has. It is documented for
-operators and scoped to Lunar's own mod set — not OS-level scanning — but it is a genuine
-client-to-server disclosure, and the Apollo FAQ does not document the data flow, which is a fair
-transparency criticism.
-
-Kestrel has no equivalent, because it has no server-facing surface at all. That is worth stating
-plainly on the Privacy page as a thing we do not do, alongside no ad slot, no broker sharing and no
-behavioural profiling.
-
-It also settles the mod-loading question: a launcher that never talks to servers has nothing to
+It also settles the mod-loading question: a launcher that never reports to servers has nothing to
 report, so "we do not tell servers what you are running" is a property of the architecture rather
 than a promise we have to be trusted on. Pair it with the caveat that servers still run their own
 anticheat — what we do not send says nothing about what a server can detect.
